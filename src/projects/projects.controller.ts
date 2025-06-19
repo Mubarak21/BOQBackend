@@ -1,0 +1,178 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Request,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  Req,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { ProjectsService } from "./projects.service";
+import { CreateProjectDto } from "./dto/create-project.dto";
+import { UpdateProjectDto } from "./dto/update-project.dto";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { UsersService } from "../users/users.service";
+import { RequestWithUser } from "../auth/interfaces/request-with-user.interface";
+import { CreatePhaseDto } from "./dto/create-phase.dto";
+import { UpdatePhaseDto } from "./dto/update-phase.dto";
+
+@Controller("projects")
+@UseGuards(JwtAuthGuard)
+export class ProjectsController {
+  constructor(
+    private readonly projectsService: ProjectsService,
+    private readonly usersService: UsersService
+  ) {}
+
+  @Post()
+  create(@Body() createProjectDto: CreateProjectDto, @Request() req) {
+    return this.projectsService.create(createProjectDto, req.user);
+  }
+
+  @Get()
+  findAll(@Request() req) {
+    return this.projectsService.findAll(req.user.id);
+  }
+
+  @Get(":id")
+  async findOne(@Param("id") id: string, @Req() req: RequestWithUser) {
+    return this.projectsService.findOne(id, req.user.id);
+  }
+
+  @Patch(":id")
+  update(
+    @Param("id") id: string,
+    @Body() updateProjectDto: UpdateProjectDto,
+    @Request() req
+  ) {
+    return this.projectsService.update(id, updateProjectDto, req.user.id);
+  }
+
+  @Delete(":id")
+  remove(@Param("id") id: string, @Request() req) {
+    return this.projectsService.remove(id, req.user.id);
+  }
+
+  @Post(":id/collaborators/:userId")
+  async addCollaborator(
+    @Param("id") id: string,
+    @Param("userId") userId: string,
+    @Request() req
+  ) {
+    const collaborator = await this.usersService.findOne(userId);
+    return this.projectsService.addCollaborator(id, collaborator, req.user.id);
+  }
+
+  @Delete(":id/collaborators/:userId")
+  removeCollaborator(
+    @Param("id") id: string,
+    @Param("userId") userId: string,
+    @Request() req
+  ) {
+    return this.projectsService.removeCollaborator(id, userId, req.user.id);
+  }
+
+  @Post(":id/boq")
+  @UseInterceptors(FileInterceptor("file"))
+  async uploadBoq(
+    @Param("id") id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: RequestWithUser
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+
+    if (
+      !file.mimetype.includes("spreadsheet") &&
+      !file.mimetype.includes("excel")
+    ) {
+      throw new BadRequestException("File must be an Excel spreadsheet");
+    }
+
+    return this.projectsService.processBoqFile(id, file, req.user.id);
+  }
+
+  @Post(":id/phases")
+  async createPhase(
+    @Param("id") id: string,
+    @Body() createPhaseDto: CreatePhaseDto,
+    @Req() req: RequestWithUser
+  ) {
+    console.log(
+      "Creating phase with data:",
+      JSON.stringify(createPhaseDto, null, 2)
+    );
+    try {
+      return await this.projectsService.createPhase(
+        id,
+        createPhaseDto,
+        req.user.id
+      );
+    } catch (error) {
+      console.error("Error creating phase:", error);
+      if (error.response?.data?.message) {
+        throw new BadRequestException(error.response.data.message);
+      }
+      throw error;
+    }
+  }
+
+  @Get(":id/phases")
+  async getProjectPhases(@Param("id") id: string, @Req() req: RequestWithUser) {
+    return this.projectsService.getProjectPhases(id, req.user.id);
+  }
+
+  @Get("available-assignees")
+  async getAvailableAssignees() {
+    return this.projectsService.getAvailableAssignees();
+  }
+
+  @Patch(":projectId/phases/:phaseId")
+  async updatePhase(
+    @Param("projectId") projectId: string,
+    @Param("phaseId") phaseId: string,
+    @Body() updatePhaseDto: UpdatePhaseDto,
+    @Req() req: RequestWithUser
+  ) {
+    try {
+      return await this.projectsService.updatePhase(
+        projectId,
+        phaseId,
+        updatePhaseDto,
+        req.user.id
+      );
+    } catch (error) {
+      console.error("Error updating phase:", error);
+      if (error.response?.data?.message) {
+        throw new BadRequestException(error.response.data.message);
+      }
+      throw error;
+    }
+  }
+
+  @Delete(":projectId/phases/:phaseId")
+  async deletePhase(
+    @Param("projectId") projectId: string,
+    @Param("phaseId") phaseId: string,
+    @Req() req: RequestWithUser
+  ) {
+    try {
+      await this.projectsService.deletePhase(projectId, phaseId, req.user.id);
+      return { message: "Phase deleted successfully" };
+    } catch (error) {
+      console.error("Error deleting phase:", error);
+      if (error.response?.data?.message) {
+        throw new BadRequestException(error.response.data.message);
+      }
+      throw error;
+    }
+  }
+}
