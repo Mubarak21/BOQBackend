@@ -62,6 +62,19 @@ __decorate([
     (0, typeorm_1.UpdateDateColumn)(),
     __metadata("design:type", Date)
 ], Task.prototype, "updated_at", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => Task, (task) => task.subTasks, { nullable: true }),
+    (0, typeorm_1.JoinColumn)({ name: "parent_task_id" }),
+    __metadata("design:type", Task)
+], Task.prototype, "parentTask", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => Task, (task) => task.parentTask),
+    __metadata("design:type", Array)
+], Task.prototype, "subTasks", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], Task.prototype, "parent_task_id", void 0);
 exports.Task = Task = __decorate([
     (0, typeorm_1.Entity)()
 ], Task);

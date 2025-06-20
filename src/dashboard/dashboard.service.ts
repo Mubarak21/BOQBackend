@@ -3,7 +3,8 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, Between } from "typeorm";
 import { Project, ProjectStatus } from "../entities/project.entity";
 import { User } from "../entities/user.entity";
-import { Task, TaskStatus } from "../entities/task.entity";
+import { Task } from "../entities/task.entity";
+import { Phase } from "../entities/phase.entity";
 
 @Injectable()
 export class DashboardService {
@@ -25,6 +26,9 @@ export class DashboardService {
       phaseStats,
       monthlyGrowth,
       totalProjectValues,
+      taskStats,
+      phasePriorityBreakdown,
+      averagePhaseProgress,
     ] = await Promise.all([
       this.getTotalProjects(userId),
       this.getActiveProjects(userId),
@@ -33,18 +37,31 @@ export class DashboardService {
       this.getPhaseStats(userId),
       this.getMonthlyGrowth(userId),
       this.getTotalProjectValues(userId),
+      this.getTaskStats(userId),
+      this.getPhasePriorityBreakdown(userId),
+      this.getAveragePhaseProgress(userId),
     ]);
 
     return {
-      total_projects: totalProjects,
-      active_projects: activeProjects,
-      completed_projects: completedProjects,
-      total_team_members: totalTeamMembers,
-      phase_statistics: phaseStats,
-      monthly_growth: monthlyGrowth,
-      total_project_values: totalProjectValues,
+      totalProjects: totalProjects,
+      activeProjects: activeProjects,
+      completedProjects: completedProjects,
+      totalValue: totalProjectValues,
+      monthlyGrowth: monthlyGrowth,
+      teamMembers: totalTeamMembers,
+      phaseStats: {
+        totalPhases: phaseStats.total_phases,
+        completedPhases: phaseStats.completed_phases,
+        inProgressPhases: phaseStats.in_progress_phases,
+        totalBudget: phaseStats.total_budget,
+        spentBudget: phaseStats.spent_budget,
+      },
       completion_rate:
         totalProjects > 0 ? (completedProjects / totalProjects) * 100 : 0,
+      total_tasks: taskStats.total_tasks,
+      tasks_per_phase: taskStats.tasks_per_phase,
+      average_phase_progress: averagePhaseProgress,
+      phase_priority_breakdown: phasePriorityBreakdown,
     };
   }
 
@@ -106,13 +123,13 @@ export class DashboardService {
     };
 
     projects.forEach((project) => {
-      const projectPhases = project.phases || [];
+      const projectPhases: Phase[] = project.phases || [];
       stats.total_phases += projectPhases.length;
       stats.completed_phases += projectPhases.filter(
-        (phase) => phase.status === TaskStatus.COMPLETED
+        (phase) => phase.status === "completed"
       ).length;
       stats.in_progress_phases += projectPhases.filter(
-        (phase) => phase.status === TaskStatus.IN_PROGRESS
+        (phase) => phase.status === "in_progress"
       ).length;
       stats.total_budget += projectPhases.reduce(
         (sum, phase) => sum + (phase.budget || 0),
@@ -183,7 +200,7 @@ export class DashboardService {
     const projectPhases = project.phases || [];
     const totalPhases = projectPhases.length;
     const completedPhases = projectPhases.filter(
-      (phase) => phase.status === TaskStatus.COMPLETED
+      (phase) => phase.status === "completed"
     ).length;
 
     return {
@@ -210,5 +227,60 @@ export class DashboardService {
       spent,
       remaining: totalBudget - spent,
     };
+  }
+
+  private async getTaskStats(userId: string) {
+    // Get all projects and their phases/tasks
+    const projects = await this.projectsRepository.find({
+      where: [{ owner_id: userId }, { collaborators: { id: userId } }],
+      relations: ["phases", "phases.tasks"],
+    });
+    let totalTasks = 0;
+    let totalPhases = 0;
+    projects.forEach((project) => {
+      (project.phases || []).forEach((phase) => {
+        totalPhases++;
+        const tasks = phase.tasks || [];
+        totalTasks += tasks.length;
+      });
+    });
+    return {
+      total_tasks: totalTasks,
+      tasks_per_phase: totalPhases > 0 ? totalTasks / totalPhases : 0,
+    };
+  }
+
+  private async getPhasePriorityBreakdown(userId: string) {
+    const projects = await this.projectsRepository.find({
+      where: [{ owner_id: userId }, { collaborators: { id: userId } }],
+      relations: ["phases"],
+    });
+    const breakdown = { low: 0, medium: 0, high: 0, urgent: 0, none: 0 };
+    projects.forEach((project) => {
+      (project.phases || []).forEach((phase) => {
+        const p = (phase.priority || "none").toLowerCase();
+        if (breakdown[p] !== undefined) breakdown[p]++;
+        else breakdown.none++;
+      });
+    });
+    return breakdown;
+  }
+
+  private async getAveragePhaseProgress(userId: string) {
+    const projects = await this.projectsRepository.find({
+      where: [{ owner_id: userId }, { collaborators: { id: userId } }],
+      relations: ["phases"],
+    });
+    let totalProgress = 0;
+    let count = 0;
+    projects.forEach((project) => {
+      (project.phases || []).forEach((phase) => {
+        if (typeof phase.progress === "number") {
+          totalProgress += phase.progress;
+          count++;
+        }
+      });
+    });
+    return count > 0 ? totalProgress / count : 0;
   }
 }

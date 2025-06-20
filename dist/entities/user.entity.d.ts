@@ -1,5 +1,4 @@
 import { Project } from "./project.entity";
-import { Task } from "./task.entity";
 import { Comment } from "./comment.entity";
 export declare enum UserRole {
     USER = "user",
@@ -22,6 +21,5 @@ export declare class User {
     updated_at: Date;
     owned_projects: Project[];
     collaborating_projects: Project[];
-    assigned_tasks: Task[];
     comments: Comment[];
 }

@@ -6,6 +6,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from "typeorm";
 import { Project } from "./project.entity";
 import { Phase } from "./phase.entity";
@@ -46,4 +47,14 @@ export class Task {
 
   @UpdateDateColumn()
   updated_at: Date;
+
+  @ManyToOne(() => Task, (task) => task.subTasks, { nullable: true })
+  @JoinColumn({ name: "parent_task_id" })
+  parentTask: Task;
+
+  @OneToMany(() => Task, (task) => task.parentTask)
+  subTasks: Task[];
+
+  @Column({ nullable: true })
+  parent_task_id: string;
 }

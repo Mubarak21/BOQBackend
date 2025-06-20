@@ -12,7 +12,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.User = exports.UserRole = void 0;
 const typeorm_1 = require("typeorm");
 const project_entity_1 = require("./project.entity");
-const task_entity_1 = require("./task.entity");
 const comment_entity_1 = require("./comment.entity");
 var UserRole;
 (function (UserRole) {
@@ -77,10 +76,6 @@ __decorate([
     (0, typeorm_1.ManyToMany)(() => project_entity_1.Project, (project) => project.collaborators),
     __metadata("design:type", Array)
 ], User.prototype, "collaborating_projects", void 0);
-__decorate([
-    (0, typeorm_1.OneToMany)(() => task_entity_1.Task, (task) => task.assignee),
-    __metadata("design:type", Array)
-], User.prototype, "assigned_tasks", void 0);
 __decorate([
     (0, typeorm_1.OneToMany)(() => comment_entity_1.Comment, (comment) => comment.author),
     __metadata("design:type", Array)

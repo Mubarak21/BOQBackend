@@ -1,43 +1,34 @@
-import {
-  IsString,
-  IsOptional,
-  IsEnum,
-  IsDate,
-  IsUUID,
-  IsInt,
-  Min,
-} from "class-validator";
-import { TaskStatus, TaskPriority } from "../../entities/task.entity";
+import { IsString, IsOptional, IsUUID, IsNumber, Min } from "class-validator";
+import { Type } from "class-transformer";
+import { ValidateNested } from "class-validator";
 
 export class CreateTaskDto {
   @IsString()
-  title: string;
+  description: string;
 
   @IsString()
   @IsOptional()
-  description?: string;
+  unit?: string;
 
-  @IsEnum(TaskStatus)
-  @IsOptional()
-  status?: TaskStatus;
-
-  @IsEnum(TaskPriority)
-  @IsOptional()
-  priority?: TaskPriority;
-
-  @IsDate()
-  @IsOptional()
-  due_date?: Date;
-
-  @IsInt()
+  @IsNumber()
   @Min(0)
   @IsOptional()
-  estimated_hours?: number;
+  quantity?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  price?: number;
 
   @IsUUID()
   project_id: string;
 
   @IsUUID()
   @IsOptional()
-  assignee_id?: string;
+  phase_id?: string;
+
+  @ValidateNested({ each: true })
+  @Type(() => CreateTaskDto)
+  @IsOptional()
+  subTasks?: CreateTaskDto[];
 }

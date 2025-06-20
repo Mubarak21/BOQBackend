@@ -15,15 +15,16 @@ const tasks_controller_1 = require("./tasks.controller");
 const users_module_1 = require("../users/users.module");
 const projects_module_1 = require("../projects/projects.module");
 const auth_module_1 = require("../auth/auth.module");
+const project_entity_1 = require("../entities/project.entity");
 let TasksModule = class TasksModule {
 };
 exports.TasksModule = TasksModule;
 exports.TasksModule = TasksModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            typeorm_1.TypeOrmModule.forFeature([task_entity_1.Task]),
+            typeorm_1.TypeOrmModule.forFeature([project_entity_1.Project, task_entity_1.Task]),
             users_module_1.UsersModule,
-            projects_module_1.ProjectsModule,
+            (0, common_1.forwardRef)(() => projects_module_1.ProjectsModule),
             auth_module_1.AuthModule,
         ],
         providers: [tasks_service_1.TasksService],

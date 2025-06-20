@@ -1,21 +1,21 @@
-import { TaskStatus, TaskPriority } from "../../entities/task.entity";
 export declare class UpdatePhaseDto {
     title?: string;
     description?: string;
-    work_description?: string;
+    workDescription?: string;
     deliverables?: string;
     requirements?: string;
     risks?: string;
     dependencies?: string;
-    status?: TaskStatus;
-    priority?: TaskPriority;
-    start_date?: string;
-    end_date?: string;
-    due_date?: string;
+    startDate?: string;
+    endDate?: string;
+    dueDate?: string;
     budget?: number;
     spent?: number;
     progress?: number;
-    estimated_hours?: number;
-    assignee_id?: string;
-    parent_phase_id?: string;
+    estimatedHours?: number;
+    status?: string;
+    assigneeId?: string;
+    parentPhaseId?: string;
+    priority?: string;
+    referenceTaskId?: string;
 }

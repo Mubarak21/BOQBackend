@@ -11,21 +11,24 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const project_entity_1 = require("../entities/project.entity");
 const task_entity_1 = require("../entities/task.entity");
+const phase_entity_1 = require("../entities/phase.entity");
 const projects_service_1 = require("./projects.service");
 const projects_controller_1 = require("./projects.controller");
 const users_module_1 = require("../users/users.module");
 const auth_module_1 = require("../auth/auth.module");
 const activities_module_1 = require("../activities/activities.module");
+const tasks_module_1 = require("../tasks/tasks.module");
 let ProjectsModule = class ProjectsModule {
 };
 exports.ProjectsModule = ProjectsModule;
 exports.ProjectsModule = ProjectsModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            typeorm_1.TypeOrmModule.forFeature([project_entity_1.Project, task_entity_1.Task]),
+            typeorm_1.TypeOrmModule.forFeature([project_entity_1.Project, task_entity_1.Task, phase_entity_1.Phase]),
             users_module_1.UsersModule,
             auth_module_1.AuthModule,
             activities_module_1.ActivitiesModule,
+            tasks_module_1.TasksModule,
         ],
         providers: [projects_service_1.ProjectsService],
         controllers: [projects_controller_1.ProjectsController],

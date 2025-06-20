@@ -8,14 +8,30 @@ export declare class DashboardService {
     private tasksRepository;
     constructor(projectsRepository: Repository<Project>, usersRepository: Repository<User>, tasksRepository: Repository<Task>);
     getStats(userId: string): Promise<{
-        total_projects: number;
-        active_projects: number;
-        completed_projects: number;
-        total_team_members: number;
-        phase_statistics: any;
-        monthly_growth: number;
-        total_project_values: number;
+        totalProjects: number;
+        activeProjects: number;
+        completedProjects: number;
+        totalValue: number;
+        monthlyGrowth: number;
+        teamMembers: number;
+        phaseStats: {
+            totalPhases: any;
+            completedPhases: any;
+            inProgressPhases: any;
+            totalBudget: any;
+            spentBudget: any;
+        };
         completion_rate: number;
+        total_tasks: number;
+        tasks_per_phase: number;
+        average_phase_progress: number;
+        phase_priority_breakdown: {
+            low: number;
+            medium: number;
+            high: number;
+            urgent: number;
+            none: number;
+        };
     }>;
     private getTotalProjects;
     private getActiveProjects;
@@ -34,4 +50,7 @@ export declare class DashboardService {
         spent: number;
         remaining: number;
     }>;
+    private getTaskStats;
+    private getPhasePriorityBreakdown;
+    private getAveragePhaseProgress;
 }

@@ -14,7 +14,7 @@ import {
   Req,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { ProjectsService } from "./projects.service";
+import { ProjectsService, ProcessBoqResult } from "./projects.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -22,6 +22,7 @@ import { UsersService } from "../users/users.service";
 import { RequestWithUser } from "../auth/interfaces/request-with-user.interface";
 import { CreatePhaseDto } from "./dto/create-phase.dto";
 import { UpdatePhaseDto } from "./dto/update-phase.dto";
+import { Phase } from "../entities/phase.entity";
 
 @Controller("projects")
 @UseGuards(JwtAuthGuard)
@@ -43,7 +44,8 @@ export class ProjectsController {
 
   @Get(":id")
   async findOne(@Param("id") id: string, @Req() req: RequestWithUser) {
-    return this.projectsService.findOne(id, req.user.id);
+    const project = await this.projectsService.findOne(id, req.user.id);
+    return await this.projectsService.getProjectResponse(project);
   }
 
   @Patch(":id")
@@ -85,7 +87,7 @@ export class ProjectsController {
     @Param("id") id: string,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: RequestWithUser
-  ) {
+  ): Promise<ProcessBoqResult> {
     if (!file) {
       throw new BadRequestException("No file uploaded");
     }
@@ -105,34 +107,25 @@ export class ProjectsController {
     @Param("id") id: string,
     @Body() createPhaseDto: CreatePhaseDto,
     @Req() req: RequestWithUser
-  ) {
-    console.log(
-      "Creating phase with data:",
-      JSON.stringify(createPhaseDto, null, 2)
-    );
-    try {
-      return await this.projectsService.createPhase(
-        id,
-        createPhaseDto,
-        req.user.id
-      );
-    } catch (error) {
-      console.error("Error creating phase:", error);
-      if (error.response?.data?.message) {
-        throw new BadRequestException(error.response.data.message);
-      }
-      throw error;
-    }
+  ): Promise<Phase> {
+    return this.projectsService.createPhase(id, createPhaseDto, req.user.id);
   }
 
   @Get(":id/phases")
-  async getProjectPhases(@Param("id") id: string, @Req() req: RequestWithUser) {
+  async getProjectPhases(
+    @Param("id") id: string,
+    @Req() req: RequestWithUser
+  ): Promise<Phase[]> {
     return this.projectsService.getProjectPhases(id, req.user.id);
   }
 
   @Get("available-assignees")
-  async getAvailableAssignees() {
-    return this.projectsService.getAvailableAssignees();
+  async getAvailableAssignees(@Request() req) {
+    const projectId = req.query.projectId;
+    if (!projectId) {
+      throw new BadRequestException("projectId query parameter is required");
+    }
+    return this.projectsService.getAvailableAssignees(projectId);
   }
 
   @Patch(":projectId/phases/:phaseId")
@@ -141,21 +134,13 @@ export class ProjectsController {
     @Param("phaseId") phaseId: string,
     @Body() updatePhaseDto: UpdatePhaseDto,
     @Req() req: RequestWithUser
-  ) {
-    try {
-      return await this.projectsService.updatePhase(
-        projectId,
-        phaseId,
-        updatePhaseDto,
-        req.user.id
-      );
-    } catch (error) {
-      console.error("Error updating phase:", error);
-      if (error.response?.data?.message) {
-        throw new BadRequestException(error.response.data.message);
-      }
-      throw error;
-    }
+  ): Promise<Phase> {
+    return this.projectsService.updatePhase(
+      projectId,
+      phaseId,
+      updatePhaseDto,
+      req.user.id
+    );
   }
 
   @Delete(":projectId/phases/:phaseId")
@@ -163,16 +148,8 @@ export class ProjectsController {
     @Param("projectId") projectId: string,
     @Param("phaseId") phaseId: string,
     @Req() req: RequestWithUser
-  ) {
-    try {
-      await this.projectsService.deletePhase(projectId, phaseId, req.user.id);
-      return { message: "Phase deleted successfully" };
-    } catch (error) {
-      console.error("Error deleting phase:", error);
-      if (error.response?.data?.message) {
-        throw new BadRequestException(error.response.data.message);
-      }
-      throw error;
-    }
+  ): Promise<{ message: string }> {
+    await this.projectsService.deletePhase(projectId, phaseId, req.user.id);
+    return { message: "Phase deleted successfully" };
   }
 }

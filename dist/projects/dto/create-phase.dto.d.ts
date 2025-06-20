@@ -1,19 +1,23 @@
-import { TaskStatus, TaskPriority } from "../../entities/task.entity";
+import { CreateTaskDto } from "../../tasks/dto/create-task.dto";
 export declare class CreatePhaseDto {
-    title: string;
+    title?: string;
     description?: string;
-    work_description?: string;
+    workDescription?: string;
     deliverables?: string;
     requirements?: string;
     risks?: string;
     dependencies?: string;
-    status?: TaskStatus;
-    priority?: TaskPriority;
-    start_date?: string;
-    end_date?: string;
-    budget: number;
+    priority?: string;
+    startDate?: string;
+    endDate?: string;
+    dueDate?: string;
+    estimatedHours?: number;
+    budget?: number;
     spent?: number;
     progress?: number;
-    assignee_id?: string;
-    parent_phase_id?: string;
+    status?: string;
+    assigneeId?: string;
+    parentPhaseId?: string;
+    referenceTaskId?: string;
+    tasks?: CreateTaskDto[];
 }

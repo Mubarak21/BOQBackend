@@ -8,16 +8,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreatePhaseDto = void 0;
 const class_validator_1 = require("class-validator");
-const task_entity_1 = require("../../entities/task.entity");
+const class_transformer_1 = require("class-transformer");
+const class_validator_2 = require("class-validator");
+const create_task_dto_1 = require("../../tasks/dto/create-task.dto");
 class CreatePhaseDto {
 }
 exports.CreatePhaseDto = CreatePhaseDto;
 __decorate([
     (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], CreatePhaseDto.prototype, "title", void 0);
 __decorate([
@@ -29,7 +31,7 @@ __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
-], CreatePhaseDto.prototype, "work_description", void 0);
+], CreatePhaseDto.prototype, "workDescription", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),
@@ -51,28 +53,35 @@ __decorate([
     __metadata("design:type", String)
 ], CreatePhaseDto.prototype, "dependencies", void 0);
 __decorate([
-    (0, class_validator_1.IsEnum)(task_entity_1.TaskStatus),
+    (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", typeof (_a = typeof task_entity_1.TaskStatus !== "undefined" && task_entity_1.TaskStatus) === "function" ? _a : Object)
-], CreatePhaseDto.prototype, "status", void 0);
-__decorate([
-    (0, class_validator_1.IsEnum)(task_entity_1.TaskPriority),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", typeof (_b = typeof task_entity_1.TaskPriority !== "undefined" && task_entity_1.TaskPriority) === "function" ? _b : Object)
+    __metadata("design:type", String)
 ], CreatePhaseDto.prototype, "priority", void 0);
 __decorate([
-    (0, class_validator_1.IsISO8601)(),
+    (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
-], CreatePhaseDto.prototype, "start_date", void 0);
+], CreatePhaseDto.prototype, "startDate", void 0);
 __decorate([
-    (0, class_validator_1.IsISO8601)(),
+    (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
-], CreatePhaseDto.prototype, "end_date", void 0);
+], CreatePhaseDto.prototype, "endDate", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreatePhaseDto.prototype, "dueDate", void 0);
 __decorate([
     (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.Min)(0),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Number)
+], CreatePhaseDto.prototype, "estimatedHours", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Number)
 ], CreatePhaseDto.prototype, "budget", void 0);
 __decorate([
@@ -92,10 +101,26 @@ __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
-], CreatePhaseDto.prototype, "assignee_id", void 0);
+], CreatePhaseDto.prototype, "status", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
-], CreatePhaseDto.prototype, "parent_phase_id", void 0);
+], CreatePhaseDto.prototype, "assigneeId", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreatePhaseDto.prototype, "parentPhaseId", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreatePhaseDto.prototype, "referenceTaskId", void 0);
+__decorate([
+    (0, class_validator_2.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => create_task_dto_1.CreateTaskDto),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Array)
+], CreatePhaseDto.prototype, "tasks", void 0);
 //# sourceMappingURL=create-phase.dto.js.map

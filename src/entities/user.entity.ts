@@ -65,9 +65,6 @@ export class User {
   @ManyToMany(() => Project, (project) => project.collaborators)
   collaborating_projects: Project[];
 
-  @OneToMany(() => Task, (task) => task.assignee)
-  assigned_tasks: Task[];
-
   @OneToMany(() => Comment, (comment) => comment.author)
   comments: Comment[];
 }

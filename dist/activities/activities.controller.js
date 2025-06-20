@@ -21,13 +21,16 @@ let ActivitiesController = class ActivitiesController {
         this.activitiesService = activitiesService;
     }
     async getRecentActivities(limit, offset) {
-        return this.activitiesService.getRecentActivities(limit, offset);
+        return this.activitiesService.getRecentActivities(limit ? Number(limit) : undefined, offset ? Number(offset) : undefined);
     }
     async getProjectActivities(projectId, limit, offset) {
-        return this.activitiesService.getProjectActivities(projectId, limit, offset);
+        return this.activitiesService.getProjectActivities(projectId, limit ? Number(limit) : undefined, offset ? Number(offset) : undefined);
     }
     async getUserActivities(req, limit, offset) {
-        return this.activitiesService.getUserActivities(req.user.id, limit, offset);
+        return this.activitiesService.getUserActivities(req.user.id, limit ? Number(limit) : undefined, offset ? Number(offset) : undefined);
+    }
+    async getPhaseActivities(phaseId, limit, offset) {
+        return this.activitiesService.getPhaseActivities(phaseId, limit ? Number(limit) : undefined, offset ? Number(offset) : undefined);
     }
 };
 exports.ActivitiesController = ActivitiesController;
@@ -36,7 +39,7 @@ __decorate([
     __param(0, (0, common_1.Query)("limit")),
     __param(1, (0, common_1.Query)("offset")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, Number]),
+    __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", Promise)
 ], ActivitiesController.prototype, "getRecentActivities", null);
 __decorate([
@@ -45,7 +48,7 @@ __decorate([
     __param(1, (0, common_1.Query)("limit")),
     __param(2, (0, common_1.Query)("offset")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Number, Number]),
+    __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", Promise)
 ], ActivitiesController.prototype, "getProjectActivities", null);
 __decorate([
@@ -54,9 +57,18 @@ __decorate([
     __param(1, (0, common_1.Query)("limit")),
     __param(2, (0, common_1.Query)("offset")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Number, Number]),
+    __metadata("design:paramtypes", [Object, String, String]),
     __metadata("design:returntype", Promise)
 ], ActivitiesController.prototype, "getUserActivities", null);
+__decorate([
+    (0, common_1.Get)("phase/:phaseId"),
+    __param(0, (0, common_1.Param)("phaseId")),
+    __param(1, (0, common_1.Query)("limit")),
+    __param(2, (0, common_1.Query)("offset")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", Promise)
+], ActivitiesController.prototype, "getPhaseActivities", null);
 exports.ActivitiesController = ActivitiesController = __decorate([
     (0, common_1.Controller)("activities"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

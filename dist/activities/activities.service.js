@@ -21,14 +21,13 @@ let ActivitiesService = class ActivitiesService {
     constructor(activitiesRepository) {
         this.activitiesRepository = activitiesRepository;
     }
-    async createActivity(type, description, user, project, task, metadata) {
+    async createActivity(type, description, user, project, phaseOrTask, metadata = {}) {
         const activity = this.activitiesRepository.create({
             type,
             description,
             user_id: user.id,
             project_id: project.id,
-            task_id: task?.id,
-            metadata: metadata ? JSON.stringify(metadata) : null,
+            metadata: JSON.stringify(metadata),
         });
         return this.activitiesRepository.save(activity);
     }
@@ -67,6 +66,7 @@ let ActivitiesService = class ActivitiesService {
     }
     async logPhaseCreated(user, project, phase, phaseNumber, totalPhases) {
         return this.createActivity(activity_entity_1.ActivityType.TASK_CREATED, `Phase ${phaseNumber}/${totalPhases}: "${phase.title}" was created`, user, project, phase, {
+            phase_id: phase.id,
             phase_number: phaseNumber,
             total_phases: totalPhases,
             budget: phase.budget,
@@ -75,29 +75,32 @@ let ActivitiesService = class ActivitiesService {
     }
     async logPhaseCompleted(user, project, phase, phaseNumber, totalPhases) {
         return this.createActivity(activity_entity_1.ActivityType.PHASE_COMPLETED, `Phase ${phaseNumber}/${totalPhases}: "${phase.title}" was completed`, user, project, phase, {
+            phase_id: phase.id,
             phase_number: phaseNumber,
             total_phases: totalPhases,
-            completion_date: new Date().toISOString(),
         });
     }
     async logPhaseProgress(user, project, phase, phaseNumber, totalPhases, progress) {
         return this.createActivity(activity_entity_1.ActivityType.TASK_UPDATED, `Phase ${phaseNumber}/${totalPhases}: "${phase.title}" progress updated to ${progress}%`, user, project, phase, {
+            phase_id: phase.id,
             phase_number: phaseNumber,
             total_phases: totalPhases,
             progress,
-            previous_progress: (phase.spent / phase.budget) * 100,
+            previous_progress: phase.progress,
         });
     }
     async logPhaseDelay(user, project, phase, phaseNumber, totalPhases, delayDays) {
-        return this.createActivity(activity_entity_1.ActivityType.SCHEDULE_DELAY, `Phase ${phaseNumber}/${totalPhases}: "${phase.title}" is ${delayDays} days behind schedule`, user, project, phase, {
+        return this.createActivity(activity_entity_1.ActivityType.TASK_UPDATED, `Phase ${phaseNumber}/${totalPhases}: "${phase.title}" is ${delayDays} days behind schedule`, user, project, phase, {
+            phase_id: phase.id,
             phase_number: phaseNumber,
             total_phases: totalPhases,
             delay_days: delayDays,
-            due_date: phase.due_date,
+            end_date: phase.end_date,
         });
     }
     async logPhaseBudgetUpdate(user, project, phase, phaseNumber, totalPhases, oldBudget, newBudget) {
         return this.createActivity(activity_entity_1.ActivityType.TASK_UPDATED, `Phase ${phaseNumber}/${totalPhases}: "${phase.title}" budget updated from ${oldBudget} to ${newBudget}`, user, project, phase, {
+            phase_id: phase.id,
             phase_number: phaseNumber,
             total_phases: totalPhases,
             old_budget: oldBudget,
@@ -106,23 +109,33 @@ let ActivitiesService = class ActivitiesService {
     }
     async logPhaseDeleted(user, project, phase, phaseNumber, totalPhases) {
         return this.createActivity(activity_entity_1.ActivityType.TASK_DELETED, `Phase ${phaseNumber}/${totalPhases}: "${phase.title}" was deleted`, user, project, phase, {
+            phase_id: phase.id,
             phase_number: phaseNumber,
             total_phases: totalPhases,
             budget: phase.budget,
             estimated_hours: phase.estimated_hours,
         });
     }
-    async logProjectCreated(user, project) {
-        return this.createActivity(activity_entity_1.ActivityType.PROJECT_CREATED, `Project "${project.title}" was created`, user, project);
+    async logProjectCreated(user, project, task) {
+        return this.createActivity(activity_entity_1.ActivityType.PROJECT_CREATED, `Project "${project.title}" was created`, user, project, task);
     }
     async logTaskCompleted(user, project, task) {
-        return this.createActivity(activity_entity_1.ActivityType.TASK_COMPLETED, `Task "${task.title}" was completed`, user, project, task);
+        return this.createActivity(activity_entity_1.ActivityType.TASK_COMPLETED, `Task "${task.description}" was completed`, user, project, task);
     }
-    async logCommentAdded(user, project, task, commentContent) {
-        return this.createActivity(activity_entity_1.ActivityType.COMMENT_ADDED, `Comment added on "${task.title}"`, user, project, task, { comment_content: commentContent });
+    async logCommentAdded(user, project, task) {
+        return this.createActivity(activity_entity_1.ActivityType.COMMENT_ADDED, `Comment added on "${task.description}"`, user, project, task);
     }
     async logCollaboratorAdded(user, project, collaborator) {
         return this.createActivity(activity_entity_1.ActivityType.COLLABORATOR_ADDED, `${collaborator.display_name} was added as a collaborator`, user, project, null, { collaborator_id: collaborator.id });
+    }
+    async getPhaseActivities(phaseId, limit = 10, offset = 0) {
+        return this.activitiesRepository
+            .createQueryBuilder("activity")
+            .where(`activity.metadata::jsonb ->> 'phase_id' = :phaseId`, { phaseId })
+            .orderBy("activity.created_at", "DESC")
+            .take(limit)
+            .skip(offset)
+            .getMany();
     }
 };
 exports.ActivitiesService = ActivitiesService;

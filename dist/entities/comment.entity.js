@@ -58,7 +58,7 @@ __decorate([
     __metadata("design:type", project_entity_1.Project)
 ], Comment.prototype, "project", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => task_entity_1.Task, (task) => task.comments, { onDelete: "CASCADE" }),
+    (0, typeorm_1.ManyToOne)(() => task_entity_1.Task, { onDelete: "CASCADE" }),
     (0, typeorm_1.JoinColumn)({ name: "task_id" }),
     __metadata("design:type", task_entity_1.Task)
 ], Comment.prototype, "task", void 0);

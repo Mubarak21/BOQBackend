@@ -1,5 +1,5 @@
 import { Project, ProjectStatus } from "../entities/project.entity";
-import { TaskStatus } from "../entities/task.entity";
+import { Phase } from "../entities/phase.entity";
 
 export interface DashboardStats {
   total_projects: number;
@@ -46,13 +46,13 @@ export function calculateStatsFromProjects(
   };
 
   projects.forEach((project) => {
-    const projectPhases = project.phases || [];
+    const projectPhases: Phase[] = project.phases || [];
     phaseStats.total_phases += projectPhases.length;
     phaseStats.completed_phases += projectPhases.filter(
-      (phase) => phase.status === TaskStatus.COMPLETED
+      (phase) => phase.status === "completed"
     ).length;
     phaseStats.in_progress_phases += projectPhases.filter(
-      (phase) => phase.status === TaskStatus.IN_PROGRESS
+      (phase) => phase.status === "in_progress"
     ).length;
     phaseStats.total_budget += projectPhases.reduce(
       (sum, phase) => sum + (phase.budget || 0),
@@ -80,7 +80,9 @@ export function calculateStatsFromProjects(
   // Calculate project counts
   const totalProjects = projects.length;
   const activeProjects = projects.filter(
-    (project) => project.status === ProjectStatus.IN_PROGRESS
+    (project) =>
+      project.status !== ProjectStatus.COMPLETED &&
+      project.status !== ProjectStatus.CANCELLED
   ).length;
   const completedProjects = projects.filter(
     (project) => project.status === ProjectStatus.COMPLETED
@@ -92,6 +94,9 @@ export function calculateStatsFromProjects(
     0
   );
 
+  const completionRate =
+    totalProjects > 0 ? (completedProjects / totalProjects) * 100 : 0;
+
   return {
     total_projects: totalProjects,
     active_projects: activeProjects,
@@ -100,7 +105,6 @@ export function calculateStatsFromProjects(
     phase_statistics: phaseStats,
     monthly_growth: monthlyGrowth,
     total_project_values: totalProjectValues,
-    completion_rate:
-      totalProjects > 0 ? (completedProjects / totalProjects) * 100 : 0,
+    completion_rate: completionRate,
   };
 }

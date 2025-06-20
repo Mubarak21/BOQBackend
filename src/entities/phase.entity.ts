@@ -10,19 +10,20 @@ import {
 } from "typeorm";
 import { Project } from "./project.entity";
 import { Task } from "./task.entity";
+import { User } from "./user.entity";
 
 @Entity()
 export class Phase {
   @PrimaryGeneratedColumn("uuid")
   id: string;
 
-  @Column()
+  @Column({ nullable: true })
   title: string;
 
   @Column({ nullable: true })
   description: string;
 
-  @Column({ type: "timestamp", nullable: true })
+  @Column({ type: "date", nullable: true })
   start_date: Date;
 
   @Column({ type: "timestamp", nullable: true })
@@ -46,6 +47,10 @@ export class Phase {
   @Column({ nullable: true })
   assignee_id: string;
 
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: "assignee_id" })
+  assignee: User;
+
   @ManyToOne(() => Project, (project) => project.phases)
   @JoinColumn({ name: "project_id" })
   project: Project;
@@ -61,4 +66,38 @@ export class Phase {
 
   @UpdateDateColumn()
   updated_at: Date;
+
+  @ManyToOne(() => Phase, (phase) => phase.sub_phases, { nullable: true })
+  @JoinColumn({ name: "parent_phase_id" })
+  parent_phase: Phase;
+
+  @OneToMany(() => Phase, (phase) => phase.parent_phase)
+  sub_phases: Phase[];
+
+  @Column({ nullable: true })
+  parent_phase_id: string;
+
+  @Column({ nullable: true })
+  work_description: string;
+
+  @Column({ nullable: true })
+  deliverables: string;
+
+  @Column({ nullable: true })
+  requirements: string;
+
+  @Column({ nullable: true })
+  risks: string;
+
+  @Column({ nullable: true })
+  dependencies: string;
+
+  @Column({ nullable: true })
+  priority: string;
+
+  @Column({ type: "timestamp", nullable: true })
+  due_date: Date;
+
+  @Column({ nullable: true })
+  reference_task_id: string;
 }

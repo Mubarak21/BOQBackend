@@ -13,6 +13,7 @@ exports.Phase = void 0;
 const typeorm_1 = require("typeorm");
 const project_entity_1 = require("./project.entity");
 const task_entity_1 = require("./task.entity");
+const user_entity_1 = require("./user.entity");
 let Phase = class Phase {
 };
 exports.Phase = Phase;
@@ -21,7 +22,7 @@ __decorate([
     __metadata("design:type", String)
 ], Phase.prototype, "id", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
 ], Phase.prototype, "title", void 0);
 __decorate([
@@ -29,7 +30,7 @@ __decorate([
     __metadata("design:type", String)
 ], Phase.prototype, "description", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "timestamp", nullable: true }),
+    (0, typeorm_1.Column)({ type: "date", nullable: true }),
     __metadata("design:type", Date)
 ], Phase.prototype, "start_date", void 0);
 __decorate([
@@ -61,6 +62,11 @@ __decorate([
     __metadata("design:type", String)
 ], Phase.prototype, "assignee_id", void 0);
 __decorate([
+    (0, typeorm_1.ManyToOne)(() => user_entity_1.User, { nullable: true }),
+    (0, typeorm_1.JoinColumn)({ name: "assignee_id" }),
+    __metadata("design:type", user_entity_1.User)
+], Phase.prototype, "assignee", void 0);
+__decorate([
     (0, typeorm_1.ManyToOne)(() => project_entity_1.Project, (project) => project.phases),
     (0, typeorm_1.JoinColumn)({ name: "project_id" }),
     __metadata("design:type", project_entity_1.Project)
@@ -81,6 +87,51 @@ __decorate([
     (0, typeorm_1.UpdateDateColumn)(),
     __metadata("design:type", Date)
 ], Phase.prototype, "updated_at", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => Phase, (phase) => phase.sub_phases, { nullable: true }),
+    (0, typeorm_1.JoinColumn)({ name: "parent_phase_id" }),
+    __metadata("design:type", Phase)
+], Phase.prototype, "parent_phase", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => Phase, (phase) => phase.parent_phase),
+    __metadata("design:type", Array)
+], Phase.prototype, "sub_phases", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], Phase.prototype, "parent_phase_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], Phase.prototype, "work_description", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], Phase.prototype, "deliverables", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], Phase.prototype, "requirements", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], Phase.prototype, "risks", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], Phase.prototype, "dependencies", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], Phase.prototype, "priority", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "timestamp", nullable: true }),
+    __metadata("design:type", Date)
+], Phase.prototype, "due_date", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], Phase.prototype, "reference_task_id", void 0);
 exports.Phase = Phase = __decorate([
     (0, typeorm_1.Entity)()
 ], Phase);

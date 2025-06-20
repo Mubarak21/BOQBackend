@@ -44,7 +44,7 @@ export class Comment {
   @JoinColumn({ name: "project_id" })
   project: Project;
 
-  @ManyToOne(() => Task, (task) => task.comments, { onDelete: "CASCADE" })
+  @ManyToOne(() => Task, { onDelete: "CASCADE" })
   @JoinColumn({ name: "task_id" })
   task: Task;
 }

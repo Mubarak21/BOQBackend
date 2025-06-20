@@ -18,6 +18,7 @@ const project_entity_1 = require("./entities/project.entity");
 const task_entity_1 = require("./entities/task.entity");
 const comment_entity_1 = require("./entities/comment.entity");
 const activity_entity_1 = require("./entities/activity.entity");
+const phase_entity_1 = require("./entities/phase.entity");
 const projects_module_1 = require("./projects/projects.module");
 const tasks_module_1 = require("./tasks/tasks.module");
 const comments_module_1 = require("./comments/comments.module");
@@ -37,7 +38,7 @@ exports.AppModule = AppModule = __decorate([
                 username: process.env.DB_USERNAME || "postgres",
                 password: process.env.DB_PASSWORD || "postgres",
                 database: process.env.DB_DATABASE || "project_tracker_db",
-                entities: [user_entity_1.User, project_entity_1.Project, task_entity_1.Task, comment_entity_1.Comment, activity_entity_1.Activity],
+                entities: [user_entity_1.User, project_entity_1.Project, task_entity_1.Task, comment_entity_1.Comment, activity_entity_1.Activity, phase_entity_1.Phase],
                 synchronize: process.env.NODE_ENV !== "production",
             }),
             auth_module_1.AuthModule,

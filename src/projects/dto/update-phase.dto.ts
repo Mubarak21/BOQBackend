@@ -1,13 +1,11 @@
 import {
   IsString,
   IsOptional,
-  IsEnum,
   IsNumber,
   IsISO8601,
   Min,
   Max,
 } from "class-validator";
-import { TaskStatus, TaskPriority } from "../../entities/task.entity";
 
 export class UpdatePhaseDto {
   @IsString()
@@ -20,7 +18,7 @@ export class UpdatePhaseDto {
 
   @IsString()
   @IsOptional()
-  work_description?: string;
+  workDescription?: string;
 
   @IsString()
   @IsOptional()
@@ -38,25 +36,17 @@ export class UpdatePhaseDto {
   @IsOptional()
   dependencies?: string;
 
-  @IsEnum(TaskStatus)
+  @IsISO8601()
   @IsOptional()
-  status?: TaskStatus;
-
-  @IsEnum(TaskPriority)
-  @IsOptional()
-  priority?: TaskPriority;
+  startDate?: string;
 
   @IsISO8601()
   @IsOptional()
-  start_date?: string;
+  endDate?: string;
 
   @IsISO8601()
   @IsOptional()
-  end_date?: string;
-
-  @IsISO8601()
-  @IsOptional()
-  due_date?: string;
+  dueDate?: string;
 
   @IsNumber()
   @Min(0)
@@ -77,13 +67,25 @@ export class UpdatePhaseDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
-  estimated_hours?: number;
+  estimatedHours?: number;
 
   @IsString()
   @IsOptional()
-  assignee_id?: string;
+  status?: string;
 
   @IsString()
   @IsOptional()
-  parent_phase_id?: string;
+  assigneeId?: string;
+
+  @IsString()
+  @IsOptional()
+  parentPhaseId?: string;
+
+  @IsString()
+  @IsOptional()
+  priority?: string;
+
+  @IsString()
+  @IsOptional()
+  referenceTaskId?: string;
 }

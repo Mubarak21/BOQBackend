@@ -68,7 +68,7 @@ __decorate([
     __metadata("design:type", String)
 ], Activity.prototype, "project_id", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => project_entity_1.Project),
+    (0, typeorm_1.ManyToOne)(() => project_entity_1.Project, { onDelete: "CASCADE" }),
     (0, typeorm_1.JoinColumn)({ name: "project_id" }),
     __metadata("design:type", project_entity_1.Project)
 ], Activity.prototype, "project", void 0);

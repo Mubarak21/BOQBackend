@@ -21,44 +21,58 @@ const task_entity_1 = require("../entities/task.entity");
 const XLSX = require("xlsx");
 const activities_service_1 = require("../activities/activities.service");
 const users_service_1 = require("../users/users.service");
+const phase_entity_1 = require("../entities/phase.entity");
+const tasks_service_1 = require("../tasks/tasks.service");
+function normalizeColumnName(name) {
+    return name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
 let ProjectsService = class ProjectsService {
-    constructor(projectsRepository, tasksRepository, usersService, activitiesService) {
+    constructor(projectsRepository, tasksRepository, phasesRepository, usersService, activitiesService, tasksService) {
         this.projectsRepository = projectsRepository;
         this.tasksRepository = tasksRepository;
+        this.phasesRepository = phasesRepository;
         this.usersService = usersService;
         this.activitiesService = activitiesService;
+        this.tasksService = tasksService;
     }
     async findAll(userId) {
+        if (!userId) {
+            throw new common_1.BadRequestException("User ID is required");
+        }
         return this.projectsRepository.find({
             where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-            relations: ["owner", "collaborators", "phases", "phases.assignee"],
+            relations: ["owner", "collaborators", "phases"],
         });
     }
     async findOne(id, userId) {
+        if (!id) {
+            throw new common_1.BadRequestException("Project ID is required");
+        }
         const project = await this.projectsRepository.findOne({
             where: { id },
             relations: [
                 "owner",
                 "collaborators",
                 "phases",
-                "phases.assignee",
                 "phases.parent_phase",
                 "phases.sub_phases",
-                "phases.sub_phases.assignee",
             ],
         });
         if (!project) {
             throw new common_1.NotFoundException(`Project with ID ${id} not found`);
         }
-        if (userId &&
-            project.owner_id !== userId &&
-            !project.collaborators.some((c) => c.id === userId)) {
+        if (userId && !this.hasProjectAccess(project, userId)) {
             throw new common_1.ForbiddenException("You don't have access to this project");
         }
-        project.phases.sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
+        if (project.phases?.length > 0) {
+            project.phases.sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
+        }
         return project;
     }
     async create(createProjectDto, owner) {
+        if (!owner?.id) {
+            throw new common_1.BadRequestException("Owner is required");
+        }
         const project = this.projectsRepository.create({
             title: createProjectDto.title,
             description: createProjectDto.description,
@@ -74,11 +88,16 @@ let ProjectsService = class ProjectsService {
             owner_id: owner.id,
         });
         if (createProjectDto.collaborator_ids?.length) {
-            const collaborators = await Promise.all(createProjectDto.collaborator_ids.map((id) => this.usersService.findOne(id)));
+            const collaborators = await this.getValidatedCollaborators(createProjectDto.collaborator_ids);
             project.collaborators = collaborators;
         }
         const savedProject = await this.projectsRepository.save(project);
-        await this.activitiesService.logProjectCreated(owner, savedProject);
+        try {
+            await this.activitiesService.logProjectCreated(owner, savedProject, null);
+        }
+        catch (error) {
+            console.warn("Failed to log project creation activity:", error);
+        }
         return this.findOne(savedProject.id);
     }
     async update(id, updateProjectDto, userId) {
@@ -86,7 +105,20 @@ let ProjectsService = class ProjectsService {
         if (project.owner_id !== userId) {
             throw new common_1.ForbiddenException("Only the project owner can update the project");
         }
-        Object.assign(project, updateProjectDto);
+        if (updateProjectDto.collaborator_ids) {
+            const collaborators = await this.getValidatedCollaborators(updateProjectDto.collaborator_ids);
+            project.collaborators = collaborators;
+        }
+        const updateData = {
+            ...updateProjectDto,
+            start_date: updateProjectDto.start_date
+                ? new Date(updateProjectDto.start_date)
+                : project.start_date,
+            end_date: updateProjectDto.end_date
+                ? new Date(updateProjectDto.end_date)
+                : project.end_date,
+        };
+        Object.assign(project, updateData);
         return this.projectsRepository.save(project);
     }
     async remove(id, userId) {
@@ -105,7 +137,10 @@ let ProjectsService = class ProjectsService {
             project.collaborators = [];
         }
         if (project.collaborators.some((c) => c.id === collaborator.id)) {
-            throw new common_1.ForbiddenException("User is already a collaborator");
+            throw new common_1.BadRequestException("User is already a collaborator");
+        }
+        if (project.owner_id === collaborator.id) {
+            throw new common_1.BadRequestException("Owner cannot be added as collaborator");
         }
         project.collaborators.push(collaborator);
         return this.projectsRepository.save(project);
@@ -115,15 +150,13 @@ let ProjectsService = class ProjectsService {
         if (project.owner_id !== userId) {
             throw new common_1.ForbiddenException("Only the project owner can remove collaborators");
         }
-        project.collaborators = project.collaborators.filter((c) => c.id !== collaboratorId);
+        const initialLength = project.collaborators?.length || 0;
+        project.collaborators =
+            project.collaborators?.filter((c) => c.id !== collaboratorId) || [];
+        if (project.collaborators.length === initialLength) {
+            throw new common_1.NotFoundException("Collaborator not found in project");
+        }
         return this.projectsRepository.save(project);
-    }
-    parseAmount(value) {
-        if (typeof value === "number")
-            return value;
-        if (!value)
-            return 0;
-        return Number(value.toString().replace(/[^0-9.-]+/g, ""));
     }
     async processBoqFile(projectId, file, userId) {
         console.log("\n=== BOQ File Processing Started ===");
@@ -132,58 +165,25 @@ let ProjectsService = class ProjectsService {
         console.log(`File Type: ${file.mimetype}`);
         const project = await this.findOne(projectId, userId);
         console.log(`\nProcessing BOQ for Project: ${project.title} (ID: ${project.id})`);
+        if (!file?.buffer) {
+            throw new common_1.BadRequestException("No file uploaded or file buffer missing");
+        }
         try {
-            const workbook = XLSX.read(file.buffer, { type: "buffer" });
-            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-            const data = XLSX.utils.sheet_to_json(worksheet);
-            console.log("\n=== BOQ Data Analysis ===");
-            console.log(`Total Rows in BOQ: ${data.length}`);
-            const totalRow = data.find((row) => row["Description"]?.toLowerCase().includes("total") ||
-                row["Description"]?.toLowerCase().includes("sum"));
-            let totalAmount = 0;
-            if (totalRow) {
-                totalAmount = this.parseAmount(totalRow["Amount"]);
-                console.log(`\nFound Total Row:`);
-                console.log(`Description: ${totalRow["Description"]}`);
-                console.log(`Amount: ${totalAmount}`);
-            }
-            else {
-                totalAmount = data.reduce((sum, row) => sum + this.parseAmount(row["Amount"]), 0);
-                console.log(`\nNo Total Row Found - Calculated Total: ${totalAmount}`);
-            }
-            const taskData = data.filter((row) => row["Description"] &&
-                !row["Description"].toLowerCase().includes("total") &&
-                !row["Description"].toLowerCase().includes("sum"));
-            console.log(`\n=== Task Creation ===`);
-            console.log(`Number of Tasks to Create: ${taskData.length}`);
-            const tasks = [];
-            for (const row of taskData) {
-                const description = row["Description"] || "";
-                const unit = row["Unit"] || "";
-                const quantity = this.parseAmount(row["Quantity"] || row["Qty"]);
-                const price = this.parseAmount(row["Price"] || row["Unit Price"]);
-                const task = {
-                    description,
-                    unit,
-                    quantity,
-                    price,
-                    project: { id: projectId },
-                };
-                tasks.push(task);
-                console.log(`Created Task: ${description} (${quantity} ${unit} @ ${price})`);
-            }
-            const savedTasks = await this.tasksRepository.save(tasks);
-            console.log(`\n=== Task Creation Complete ===`);
-            console.log(`Successfully Created ${savedTasks.length} Tasks`);
+            const { data, totalAmount } = await this.parseBoqFile(file);
+            const tasks = await this.createTasksFromBoqData(data, projectId);
             project.total_amount = totalAmount;
             await this.projectsRepository.save(project);
-            console.log(`\nUpdated Project Total Amount: ${totalAmount}`);
-            await this.activitiesService.logBoqUploaded(project.owner, project, file.originalname, savedTasks.length, totalAmount);
+            try {
+                await this.activitiesService.logBoqUploaded(project.owner, project, file.originalname, tasks.length, totalAmount);
+            }
+            catch (error) {
+                console.warn("Failed to log BOQ upload activity:", error);
+            }
             console.log("\n=== BOQ Processing Complete ===");
             return {
-                message: `Successfully processed BOQ file and created ${savedTasks.length} tasks`,
+                message: `Successfully processed BOQ file and created ${tasks.length} tasks`,
                 totalAmount,
-                tasks: savedTasks,
+                tasks,
             };
         }
         catch (error) {
@@ -193,121 +193,291 @@ let ProjectsService = class ProjectsService {
         }
     }
     async createPhase(projectId, createPhaseDto, userId) {
-        const project = await this.findOne(projectId, userId);
-        if (createPhaseDto.parent_phase_id) {
-            const parentPhase = await this.tasksRepository.findOne({
-                where: { id: createPhaseDto.parent_phase_id, project_id: projectId },
-            });
-            if (!parentPhase) {
-                throw new common_1.NotFoundException("Parent phase not found");
-            }
+        await this.findOne(projectId, userId);
+        if (createPhaseDto.assigneeId) {
+            await this.validateAssignee(createPhaseDto.assigneeId);
         }
-        if (createPhaseDto.assignee_id) {
-            const assignee = await this.usersService.findOne(createPhaseDto.assignee_id);
-            if (!assignee) {
-                throw new common_1.NotFoundException("Assignee not found");
-            }
-        }
-        const phase = this.tasksRepository.create({
-            ...createPhaseDto,
+        const phaseData = {
+            title: createPhaseDto.title,
+            description: createPhaseDto.description,
+            work_description: createPhaseDto.workDescription,
+            deliverables: createPhaseDto.deliverables,
+            requirements: createPhaseDto.requirements,
+            risks: createPhaseDto.risks,
+            dependencies: createPhaseDto.dependencies,
+            priority: createPhaseDto.priority,
+            start_date: createPhaseDto.startDate,
+            end_date: createPhaseDto.endDate,
+            due_date: createPhaseDto.dueDate,
+            estimated_hours: createPhaseDto.estimatedHours,
+            budget: createPhaseDto.budget,
+            spent: createPhaseDto.spent,
+            progress: createPhaseDto.progress,
+            status: createPhaseDto.status,
+            assignee_id: createPhaseDto.assigneeId || null,
+            parent_phase_id: createPhaseDto.parentPhaseId || null,
+            reference_task_id: createPhaseDto.referenceTaskId || null,
             project_id: projectId,
-            start_date: createPhaseDto.start_date
-                ? new Date(createPhaseDto.start_date)
-                : null,
-            end_date: createPhaseDto.end_date
-                ? new Date(createPhaseDto.end_date)
-                : null,
-            spent: 0,
-            progress: 0,
-            status: createPhaseDto.status || TaskStatus.NOT_STARTED,
-            priority: createPhaseDto.priority || TaskPriority.MEDIUM,
+        };
+        const phase = this.phasesRepository.create(phaseData);
+        const savedPhase = await this.phasesRepository.save(phase);
+        if (createPhaseDto.tasks?.length) {
+            await this.createTasksRecursive(createPhaseDto.tasks, projectId, savedPhase.id);
+        }
+        return savedPhase;
+    }
+    async updatePhase(projectId, phaseId, updatePhaseDto, userId) {
+        await this.findOne(projectId, userId);
+        const phase = await this.phasesRepository.findOne({
+            where: { id: phaseId, project_id: projectId },
         });
-        const savedPhase = await this.tasksRepository.save(phase);
-        await this.activitiesService.logPhaseCreated(project.owner, project, savedPhase, await this.tasksRepository.count({ where: { project_id: projectId } }), await this.tasksRepository.count({ where: { project_id: projectId } }));
-        return this.tasksRepository.findOne({
-            where: { id: savedPhase.id },
-            relations: ["assignee", "parent_phase", "sub_phases"],
+        if (!phase) {
+            throw new common_1.NotFoundException("Phase not found");
+        }
+        if (updatePhaseDto.assigneeId) {
+            await this.validateAssignee(updatePhaseDto.assigneeId);
+        }
+        const updateData = {
+            title: updatePhaseDto.title,
+            description: updatePhaseDto.description,
+            work_description: updatePhaseDto.workDescription,
+            deliverables: updatePhaseDto.deliverables,
+            requirements: updatePhaseDto.requirements,
+            risks: updatePhaseDto.risks,
+            dependencies: updatePhaseDto.dependencies,
+            priority: updatePhaseDto.priority,
+            start_date: updatePhaseDto.startDate,
+            end_date: updatePhaseDto.endDate,
+            due_date: updatePhaseDto.dueDate,
+            estimated_hours: updatePhaseDto.estimatedHours,
+            budget: updatePhaseDto.budget,
+            spent: updatePhaseDto.spent,
+            progress: updatePhaseDto.progress,
+            status: updatePhaseDto.status,
+            assignee_id: updatePhaseDto.assigneeId || null,
+            parent_phase_id: updatePhaseDto.parentPhaseId || null,
+            reference_task_id: updatePhaseDto.referenceTaskId || null,
+        };
+        Object.assign(phase, updateData);
+        const updatedPhase = await this.phasesRepository.save(phase);
+        if (updatePhaseDto.status === "completed" && phase.status !== "completed") {
+            const project = await this.projectsRepository.findOne({
+                where: { id: projectId },
+            });
+            const user = await this.usersService.findOne(userId);
+            const allPhases = await this.phasesRepository.find({
+                where: { project_id: projectId },
+            });
+            const phaseNumber = allPhases.findIndex((p) => p.id === phaseId) + 1;
+            const totalPhases = allPhases.length;
+            await this.activitiesService.logPhaseCompleted(user, project, updatedPhase, phaseNumber, totalPhases);
+            if (updatedPhase.end_date &&
+                new Date(updatedPhase.end_date) < new Date()) {
+                const delayDays = Math.ceil((new Date().getTime() - new Date(updatedPhase.end_date).getTime()) /
+                    (1000 * 60 * 60 * 24));
+                await this.activitiesService.logPhaseDelay(user, project, updatedPhase, phaseNumber, totalPhases, delayDays);
+            }
+        }
+        return updatedPhase;
+    }
+    async deletePhase(projectId, phaseId, userId) {
+        await this.findOne(projectId, userId);
+        const phase = await this.phasesRepository.findOne({
+            where: { id: phaseId, project_id: projectId },
         });
+        if (!phase) {
+            throw new common_1.NotFoundException("Phase not found");
+        }
+        await this.phasesRepository.remove(phase);
     }
     async getProjectPhases(projectId, userId) {
         await this.findOne(projectId, userId);
-        return this.tasksRepository.find({
+        return this.phasesRepository.find({
             where: { project_id: projectId },
-            relations: ["assignee", "parent_phase", "sub_phases"],
-            order: {
-                created_at: "ASC",
-            },
+            order: { created_at: "ASC" },
         });
     }
-    async getAvailableAssignees() {
-        return this.usersService.findAll();
-    }
-    async updatePhase(projectId, phaseId, updatePhaseDto, userId) {
-        const project = await this.findOne(projectId, userId);
-        const phase = await this.tasksRepository.findOne({
-            where: { id: phaseId, project_id: projectId },
-            relations: ["assignee", "parent_phase", "sub_phases"],
+    async getAvailableAssignees(projectId) {
+        const project = await this.projectsRepository.findOne({
+            where: { id: projectId },
+            relations: ["owner", "collaborators"],
         });
-        if (!phase) {
-            throw new common_1.NotFoundException("Phase not found");
+        if (!project) {
+            throw new common_1.NotFoundException("Project not found");
         }
-        if (updatePhaseDto.parent_phase_id) {
-            const parentPhase = await this.tasksRepository.findOne({
-                where: { id: updatePhaseDto.parent_phase_id, project_id: projectId },
+        return [project.owner, ...(project.collaborators || [])];
+    }
+    async getProjectResponse(project) {
+        const phases = project.phases || [];
+        const completedPhases = phases.filter((phase) => phase.status === "completed").length;
+        const totalPhases = phases.length;
+        let progress = 0;
+        if (totalPhases > 0) {
+            const totalProgress = phases.reduce((sum, phase) => sum + (phase.progress || 0), 0);
+            progress = Math.round(totalProgress / totalPhases);
+        }
+        return {
+            id: project.id,
+            name: project.title,
+            startDate: project.start_date,
+            estimatedCompletion: project.end_date,
+            progress,
+            completedPhases,
+            totalPhases,
+        };
+    }
+    hasProjectAccess(project, userId) {
+        return (project.owner_id === userId ||
+            project.collaborators?.some((c) => c.id === userId) ||
+            false);
+    }
+    async getValidatedCollaborators(collaboratorIds) {
+        const collaborators = await Promise.all(collaboratorIds.map(async (id) => {
+            try {
+                return await this.usersService.findOne(id);
+            }
+            catch (error) {
+                throw new common_1.BadRequestException(`Collaborator with ID ${id} not found`);
+            }
+        }));
+        return collaborators;
+    }
+    async validateAssignee(assigneeId) {
+        try {
+            await this.usersService.findOne(assigneeId);
+        }
+        catch (error) {
+            throw new common_1.NotFoundException("Assignee not found");
+        }
+    }
+    parseAmount(value) {
+        if (typeof value === "number")
+            return value;
+        if (!value)
+            return 0;
+        const numStr = value.toString().replace(/[^0-9.-]+/g, "");
+        const parsed = Number(numStr);
+        return isNaN(parsed) ? 0 : parsed;
+    }
+    async parseBoqFile(file) {
+        console.log("[DEBUG] Reading Excel file buffer...");
+        const workbook = XLSX.read(file.buffer, { type: "buffer" });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        if (!worksheet) {
+            throw new common_1.BadRequestException("No worksheet found in uploaded file");
+        }
+        const data = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        console.log(`[DEBUG] Parsed ${data.length} rows from Excel file`);
+        const columnMappings = this.getColumnMappings(worksheet);
+        const { descriptionCol, quantityCol, priceCol } = columnMappings;
+        const totalRow = data.find((row) => row[descriptionCol]?.toLowerCase().includes("total") ||
+            row[descriptionCol]?.toLowerCase().includes("sum"));
+        let totalAmount = 0;
+        if (totalRow) {
+            totalAmount =
+                this.parseAmount(totalRow[quantityCol]) ||
+                    this.parseAmount(totalRow[priceCol]);
+            console.log(`Found total row with amount: ${totalAmount}`);
+        }
+        else {
+            totalAmount = data.reduce((sum, row) => {
+                const amount = this.parseAmount(row[quantityCol]) || this.parseAmount(row[priceCol]);
+                return sum + amount;
+            }, 0);
+            console.log(`Calculated total amount: ${totalAmount}`);
+        }
+        const validData = data.filter((row) => row[descriptionCol] &&
+            typeof row[descriptionCol] === "string" &&
+            !row[descriptionCol].toLowerCase().includes("total") &&
+            !row[descriptionCol].toLowerCase().includes("sum") &&
+            row[descriptionCol].trim() !== "");
+        return { data: validData, totalAmount };
+    }
+    getColumnMappings(worksheet) {
+        const headerRow = XLSX.utils.sheet_to_json(worksheet, {
+            header: 1,
+            range: 0,
+            blankrows: false,
+        })[0] || [];
+        const normalizedMap = {};
+        for (const col of headerRow) {
+            if (typeof col === "string") {
+                normalizedMap[normalizeColumnName(col)] = col;
+            }
+        }
+        const columnSynonyms = {
+            description: [
+                "description",
+                "desc",
+                "itemdescription",
+                "workdescription",
+            ],
+            unit: ["unit", "units", "uom"],
+            quantity: ["quantity", "qty", "quantities"],
+            price: [
+                "price",
+                "unitprice",
+                "rate",
+                "amount",
+                "totalprice",
+                "totalamount",
+            ],
+        };
+        const findColumn = (field) => {
+            for (const synonym of columnSynonyms[field]) {
+                const norm = normalizeColumnName(synonym);
+                if (normalizedMap[norm])
+                    return normalizedMap[norm];
+            }
+            return undefined;
+        };
+        return {
+            descriptionCol: findColumn("description"),
+            unitCol: findColumn("unit"),
+            quantityCol: findColumn("quantity"),
+            priceCol: findColumn("price"),
+        };
+    }
+    async createTasksFromBoqData(data, projectId) {
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const columnMappings = this.getColumnMappings(worksheet);
+        const { descriptionCol, unitCol, quantityCol, priceCol } = columnMappings;
+        const tasks = [];
+        console.log(`Creating ${data.length} tasks from BOQ data`);
+        for (const row of data) {
+            const description = row[descriptionCol] || "";
+            const unit = unitCol ? row[unitCol] || "" : "";
+            const quantity = this.parseAmount(quantityCol ? row[quantityCol] : undefined);
+            const price = this.parseAmount(priceCol ? row[priceCol] : undefined);
+            if (description.trim()) {
+                const task = this.tasksRepository.create({
+                    description: description.trim(),
+                    unit: unit.trim(),
+                    quantity,
+                    price,
+                    project: { id: projectId },
+                });
+                const savedTask = await this.tasksRepository.save(task);
+                tasks.push(savedTask);
+                console.log(`Created task: ${description} (${quantity} ${unit} @ ${price})`);
+            }
+        }
+        return tasks;
+    }
+    async createTasksRecursive(tasks, projectId, phaseId, parentTaskId = null) {
+        for (const taskDto of tasks) {
+            const { subTasks, ...taskData } = taskDto;
+            const task = this.tasksRepository.create({
+                ...taskData,
+                project_id: projectId,
+                phase_id: phaseId,
+                parent_task_id: parentTaskId,
             });
-            if (!parentPhase) {
-                throw new common_1.NotFoundException("Parent phase not found");
-            }
-            if (updatePhaseDto.parent_phase_id === phaseId) {
-                throw new common_1.BadRequestException("A phase cannot be its own parent");
+            const savedTask = await this.tasksRepository.save(task);
+            if (subTasks?.length) {
+                await this.createTasksRecursive(subTasks, projectId, phaseId, savedTask.id);
             }
         }
-        if (updatePhaseDto.assignee_id) {
-            const assignee = await this.usersService.findOne(updatePhaseDto.assignee_id);
-            if (!assignee) {
-                throw new common_1.NotFoundException("Assignee not found");
-            }
-        }
-        const oldBudget = phase.budget;
-        const oldProgress = phase.progress;
-        const updatedPhase = await this.tasksRepository.save({
-            ...phase,
-            ...updatePhaseDto,
-            start_date: updatePhaseDto.start_date
-                ? new Date(updatePhaseDto.start_date)
-                : phase.start_date,
-            end_date: updatePhaseDto.end_date
-                ? new Date(updatePhaseDto.end_date)
-                : phase.end_date,
-            due_date: updatePhaseDto.due_date
-                ? new Date(updatePhaseDto.due_date)
-                : phase.due_date,
-        });
-        if (updatePhaseDto.budget && updatePhaseDto.budget !== oldBudget) {
-            await this.activitiesService.logPhaseBudgetUpdate(project.owner, project, updatedPhase, await this.tasksRepository.count({ where: { project_id: projectId } }), await this.tasksRepository.count({ where: { project_id: projectId } }), oldBudget, updatePhaseDto.budget);
-        }
-        if (updatePhaseDto.progress && updatePhaseDto.progress !== oldProgress) {
-            await this.activitiesService.logPhaseProgress(project.owner, project, updatedPhase, await this.tasksRepository.count({ where: { project_id: projectId } }), await this.tasksRepository.count({ where: { project_id: projectId } }), updatePhaseDto.progress);
-        }
-        return this.tasksRepository.findOne({
-            where: { id: updatedPhase.id },
-            relations: ["assignee", "parent_phase", "sub_phases"],
-        });
-    }
-    async deletePhase(projectId, phaseId, userId) {
-        const project = await this.findOne(projectId, userId);
-        const phase = await this.tasksRepository.findOne({
-            where: { id: phaseId, project_id: projectId },
-            relations: ["sub_phases"],
-        });
-        if (!phase) {
-            throw new common_1.NotFoundException("Phase not found");
-        }
-        if (phase.sub_phases && phase.sub_phases.length > 0) {
-            throw new common_1.BadRequestException("Cannot delete phase with sub-phases. Please delete or reassign sub-phases first.");
-        }
-        await this.tasksRepository.remove(phase);
-        await this.activitiesService.logPhaseDeleted(project.owner, project, phase, await this.tasksRepository.count({ where: { project_id: projectId } }), await this.tasksRepository.count({ where: { project_id: projectId } }));
     }
 };
 exports.ProjectsService = ProjectsService;
@@ -315,9 +485,12 @@ exports.ProjectsService = ProjectsService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(project_entity_1.Project)),
     __param(1, (0, typeorm_1.InjectRepository)(task_entity_1.Task)),
+    __param(2, (0, typeorm_1.InjectRepository)(phase_entity_1.Phase)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         typeorm_2.Repository,
+        typeorm_2.Repository,
         users_service_1.UsersService,
-        activities_service_1.ActivitiesService])
+        activities_service_1.ActivitiesService,
+        tasks_service_1.TasksService])
 ], ProjectsService);
 //# sourceMappingURL=projects.service.js.map

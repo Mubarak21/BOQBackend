@@ -5,6 +5,7 @@ import { Activity, ActivityType } from "../entities/activity.entity";
 import { User } from "../entities/user.entity";
 import { Project } from "../entities/project.entity";
 import { Task } from "../entities/task.entity";
+import { Phase } from "../entities/phase.entity";
 
 @Injectable()
 export class ActivitiesService {
@@ -18,18 +19,16 @@ export class ActivitiesService {
     description: string,
     user: User,
     project: Project,
-    task?: Task,
-    metadata?: any
+    phaseOrTask: Phase | Task | null,
+    metadata: any = {}
   ): Promise<Activity> {
     const activity = this.activitiesRepository.create({
       type,
       description,
       user_id: user.id,
       project_id: project.id,
-      task_id: task?.id,
-      metadata: metadata ? JSON.stringify(metadata) : null,
+      metadata: JSON.stringify(metadata),
     });
-
     return this.activitiesRepository.save(activity);
   }
 
@@ -98,7 +97,7 @@ export class ActivitiesService {
   async logPhaseCreated(
     user: User,
     project: Project,
-    phase: Task,
+    phase: Phase,
     phaseNumber: number,
     totalPhases: number
   ): Promise<Activity> {
@@ -109,6 +108,7 @@ export class ActivitiesService {
       project,
       phase,
       {
+        phase_id: phase.id,
         phase_number: phaseNumber,
         total_phases: totalPhases,
         budget: phase.budget,
@@ -120,7 +120,7 @@ export class ActivitiesService {
   async logPhaseCompleted(
     user: User,
     project: Project,
-    phase: Task,
+    phase: Phase,
     phaseNumber: number,
     totalPhases: number
   ): Promise<Activity> {
@@ -131,9 +131,9 @@ export class ActivitiesService {
       project,
       phase,
       {
+        phase_id: phase.id,
         phase_number: phaseNumber,
         total_phases: totalPhases,
-        completion_date: new Date().toISOString(),
       }
     );
   }
@@ -141,7 +141,7 @@ export class ActivitiesService {
   async logPhaseProgress(
     user: User,
     project: Project,
-    phase: Task,
+    phase: Phase,
     phaseNumber: number,
     totalPhases: number,
     progress: number
@@ -153,10 +153,11 @@ export class ActivitiesService {
       project,
       phase,
       {
+        phase_id: phase.id,
         phase_number: phaseNumber,
         total_phases: totalPhases,
         progress,
-        previous_progress: (phase.spent / phase.budget) * 100,
+        previous_progress: phase.progress,
       }
     );
   }
@@ -164,22 +165,23 @@ export class ActivitiesService {
   async logPhaseDelay(
     user: User,
     project: Project,
-    phase: Task,
+    phase: Phase,
     phaseNumber: number,
     totalPhases: number,
     delayDays: number
   ): Promise<Activity> {
     return this.createActivity(
-      ActivityType.SCHEDULE_DELAY,
+      ActivityType.TASK_UPDATED,
       `Phase ${phaseNumber}/${totalPhases}: "${phase.title}" is ${delayDays} days behind schedule`,
       user,
       project,
       phase,
       {
+        phase_id: phase.id,
         phase_number: phaseNumber,
         total_phases: totalPhases,
         delay_days: delayDays,
-        due_date: phase.due_date,
+        end_date: phase.end_date,
       }
     );
   }
@@ -187,7 +189,7 @@ export class ActivitiesService {
   async logPhaseBudgetUpdate(
     user: User,
     project: Project,
-    phase: Task,
+    phase: Phase,
     phaseNumber: number,
     totalPhases: number,
     oldBudget: number,
@@ -200,6 +202,7 @@ export class ActivitiesService {
       project,
       phase,
       {
+        phase_id: phase.id,
         phase_number: phaseNumber,
         total_phases: totalPhases,
         old_budget: oldBudget,
@@ -211,7 +214,7 @@ export class ActivitiesService {
   async logPhaseDeleted(
     user: User,
     project: Project,
-    phase: Task,
+    phase: Phase,
     phaseNumber: number,
     totalPhases: number
   ): Promise<Activity> {
@@ -222,6 +225,7 @@ export class ActivitiesService {
       project,
       phase,
       {
+        phase_id: phase.id,
         phase_number: phaseNumber,
         total_phases: totalPhases,
         budget: phase.budget,
@@ -231,12 +235,17 @@ export class ActivitiesService {
   }
 
   // Other activity logging methods...
-  async logProjectCreated(user: User, project: Project): Promise<Activity> {
+  async logProjectCreated(
+    user: User,
+    project: Project,
+    task: Task
+  ): Promise<Activity> {
     return this.createActivity(
       ActivityType.PROJECT_CREATED,
       `Project "${project.title}" was created`,
       user,
-      project
+      project,
+      task
     );
   }
 
@@ -247,7 +256,7 @@ export class ActivitiesService {
   ): Promise<Activity> {
     return this.createActivity(
       ActivityType.TASK_COMPLETED,
-      `Task "${task.title}" was completed`,
+      `Task "${task.description}" was completed`,
       user,
       project,
       task
@@ -257,16 +266,14 @@ export class ActivitiesService {
   async logCommentAdded(
     user: User,
     project: Project,
-    task: Task,
-    commentContent: string
+    task: Task
   ): Promise<Activity> {
     return this.createActivity(
       ActivityType.COMMENT_ADDED,
-      `Comment added on "${task.title}"`,
+      `Comment added on "${task.description}"`,
       user,
       project,
-      task,
-      { comment_content: commentContent }
+      task
     );
   }
 
@@ -283,5 +290,20 @@ export class ActivitiesService {
       null,
       { collaborator_id: collaborator.id }
     );
+  }
+
+  async getPhaseActivities(
+    phaseId: string,
+    limit: number = 10,
+    offset: number = 0
+  ): Promise<Activity[]> {
+    // phase_id is not a direct column, so filter by phase_id in metadata
+    return this.activitiesRepository
+      .createQueryBuilder("activity")
+      .where(`activity.metadata::jsonb ->> 'phase_id' = :phaseId`, { phaseId })
+      .orderBy("activity.created_at", "DESC")
+      .take(limit)
+      .skip(offset)
+      .getMany();
   }
 }

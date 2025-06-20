@@ -1,17 +1,19 @@
 import {
   IsString,
   IsOptional,
-  IsEnum,
   IsNumber,
   IsISO8601,
   Min,
   Max,
 } from "class-validator";
-import { TaskStatus, TaskPriority } from "../../entities/task.entity";
+import { Type } from "class-transformer";
+import { ValidateNested } from "class-validator";
+import { CreateTaskDto } from "../../tasks/dto/create-task.dto";
 
 export class CreatePhaseDto {
   @IsString()
-  title: string;
+  @IsOptional()
+  title?: string;
 
   @IsString()
   @IsOptional()
@@ -19,7 +21,7 @@ export class CreatePhaseDto {
 
   @IsString()
   @IsOptional()
-  work_description?: string;
+  workDescription?: string;
 
   @IsString()
   @IsOptional()
@@ -37,25 +39,31 @@ export class CreatePhaseDto {
   @IsOptional()
   dependencies?: string;
 
-  @IsEnum(TaskStatus)
+  @IsString()
   @IsOptional()
-  status?: TaskStatus;
+  priority?: string;
 
-  @IsEnum(TaskPriority)
+  @IsString()
   @IsOptional()
-  priority?: TaskPriority;
+  startDate?: string;
 
-  @IsISO8601()
+  @IsString()
   @IsOptional()
-  start_date?: string;
+  endDate?: string;
 
-  @IsISO8601()
+  @IsString()
   @IsOptional()
-  end_date?: string;
+  dueDate?: string;
 
   @IsNumber()
   @Min(0)
-  budget: number;
+  @IsOptional()
+  estimatedHours?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  budget?: number;
 
   @IsNumber()
   @Min(0)
@@ -70,9 +78,22 @@ export class CreatePhaseDto {
 
   @IsString()
   @IsOptional()
-  assignee_id?: string;
+  status?: string;
 
   @IsString()
   @IsOptional()
-  parent_phase_id?: string;
+  assigneeId?: string;
+
+  @IsString()
+  @IsOptional()
+  parentPhaseId?: string;
+
+  @IsString()
+  @IsOptional()
+  referenceTaskId?: string;
+
+  @ValidateNested({ each: true })
+  @Type(() => CreateTaskDto)
+  @IsOptional()
+  tasks?: CreateTaskDto[];
 }

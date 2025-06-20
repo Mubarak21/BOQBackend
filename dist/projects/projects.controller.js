@@ -34,7 +34,8 @@ let ProjectsController = class ProjectsController {
         return this.projectsService.findAll(req.user.id);
     }
     async findOne(id, req) {
-        return this.projectsService.findOne(id, req.user.id);
+        const project = await this.projectsService.findOne(id, req.user.id);
+        return await this.projectsService.getProjectResponse(project);
     }
     update(id, updateProjectDto, req) {
         return this.projectsService.update(id, updateProjectDto, req.user.id);
@@ -60,48 +61,24 @@ let ProjectsController = class ProjectsController {
         return this.projectsService.processBoqFile(id, file, req.user.id);
     }
     async createPhase(id, createPhaseDto, req) {
-        console.log("Creating phase with data:", JSON.stringify(createPhaseDto, null, 2));
-        try {
-            return await this.projectsService.createPhase(id, createPhaseDto, req.user.id);
-        }
-        catch (error) {
-            console.error("Error creating phase:", error);
-            if (error.response?.data?.message) {
-                throw new common_1.BadRequestException(error.response.data.message);
-            }
-            throw error;
-        }
+        return this.projectsService.createPhase(id, createPhaseDto, req.user.id);
     }
     async getProjectPhases(id, req) {
         return this.projectsService.getProjectPhases(id, req.user.id);
     }
-    async getAvailableAssignees() {
-        return this.projectsService.getAvailableAssignees();
+    async getAvailableAssignees(req) {
+        const projectId = req.query.projectId;
+        if (!projectId) {
+            throw new common_1.BadRequestException("projectId query parameter is required");
+        }
+        return this.projectsService.getAvailableAssignees(projectId);
     }
     async updatePhase(projectId, phaseId, updatePhaseDto, req) {
-        try {
-            return await this.projectsService.updatePhase(projectId, phaseId, updatePhaseDto, req.user.id);
-        }
-        catch (error) {
-            console.error("Error updating phase:", error);
-            if (error.response?.data?.message) {
-                throw new common_1.BadRequestException(error.response.data.message);
-            }
-            throw error;
-        }
+        return this.projectsService.updatePhase(projectId, phaseId, updatePhaseDto, req.user.id);
     }
     async deletePhase(projectId, phaseId, req) {
-        try {
-            await this.projectsService.deletePhase(projectId, phaseId, req.user.id);
-            return { message: "Phase deleted successfully" };
-        }
-        catch (error) {
-            console.error("Error deleting phase:", error);
-            if (error.response?.data?.message) {
-                throw new common_1.BadRequestException(error.response.data.message);
-            }
-            throw error;
-        }
+        await this.projectsService.deletePhase(projectId, phaseId, req.user.id);
+        return { message: "Phase deleted successfully" };
     }
 };
 exports.ProjectsController = ProjectsController;
@@ -192,8 +169,9 @@ __decorate([
 ], ProjectsController.prototype, "getProjectPhases", null);
 __decorate([
     (0, common_1.Get)("available-assignees"),
+    __param(0, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "getAvailableAssignees", null);
 __decorate([

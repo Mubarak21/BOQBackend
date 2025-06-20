@@ -12,4 +12,7 @@ export declare class Task {
     phase: Phase;
     created_at: Date;
     updated_at: Date;
+    parentTask: Task;
+    subTasks: Task[];
+    parent_task_id: string;
 }

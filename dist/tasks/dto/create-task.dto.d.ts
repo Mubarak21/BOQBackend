@@ -1,11 +1,9 @@
-import { TaskStatus, TaskPriority } from "../../entities/task.entity";
 export declare class CreateTaskDto {
-    title: string;
-    description?: string;
-    status?: TaskStatus;
-    priority?: TaskPriority;
-    due_date?: Date;
-    estimated_hours?: number;
+    description: string;
+    unit?: string;
+    quantity?: number;
+    price?: number;
     project_id: string;
-    assignee_id?: string;
+    phase_id?: string;
+    subTasks?: CreateTaskDto[];
 }

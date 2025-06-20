@@ -55,7 +55,7 @@ export class Activity {
   @Column()
   project_id: string;
 
-  @ManyToOne(() => Project)
+  @ManyToOne(() => Project, { onDelete: "CASCADE" })
   @JoinColumn({ name: "project_id" })
   project: Project;
 

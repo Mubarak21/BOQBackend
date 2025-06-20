@@ -8,44 +8,35 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateTaskDto = void 0;
 const class_validator_1 = require("class-validator");
-const task_entity_1 = require("../../entities/task.entity");
+const class_transformer_1 = require("class-transformer");
+const class_validator_2 = require("class-validator");
 class CreateTaskDto {
 }
 exports.CreateTaskDto = CreateTaskDto;
 __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], CreateTaskDto.prototype, "title", void 0);
+], CreateTaskDto.prototype, "description", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
-], CreateTaskDto.prototype, "description", void 0);
+], CreateTaskDto.prototype, "unit", void 0);
 __decorate([
-    (0, class_validator_1.IsEnum)(task_entity_1.TaskStatus),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", typeof (_a = typeof task_entity_1.TaskStatus !== "undefined" && task_entity_1.TaskStatus) === "function" ? _a : Object)
-], CreateTaskDto.prototype, "status", void 0);
-__decorate([
-    (0, class_validator_1.IsEnum)(task_entity_1.TaskPriority),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", typeof (_b = typeof task_entity_1.TaskPriority !== "undefined" && task_entity_1.TaskPriority) === "function" ? _b : Object)
-], CreateTaskDto.prototype, "priority", void 0);
-__decorate([
-    (0, class_validator_1.IsDate)(),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", Date)
-], CreateTaskDto.prototype, "due_date", void 0);
-__decorate([
-    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.Min)(0),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Number)
-], CreateTaskDto.prototype, "estimated_hours", void 0);
+], CreateTaskDto.prototype, "quantity", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Number)
+], CreateTaskDto.prototype, "price", void 0);
 __decorate([
     (0, class_validator_1.IsUUID)(),
     __metadata("design:type", String)
@@ -54,5 +45,11 @@ __decorate([
     (0, class_validator_1.IsUUID)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
-], CreateTaskDto.prototype, "assignee_id", void 0);
+], CreateTaskDto.prototype, "phase_id", void 0);
+__decorate([
+    (0, class_validator_2.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => CreateTaskDto),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Array)
+], CreateTaskDto.prototype, "subTasks", void 0);
 //# sourceMappingURL=create-task.dto.js.map

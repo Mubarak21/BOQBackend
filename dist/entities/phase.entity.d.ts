@@ -1,5 +1,6 @@
 import { Project } from "./project.entity";
 import { Task } from "./task.entity";
+import { User } from "./user.entity";
 export declare class Phase {
     id: string;
     title: string;
@@ -12,9 +13,21 @@ export declare class Phase {
     progress: number;
     status: string;
     assignee_id: string;
+    assignee: User;
     project: Project;
     project_id: string;
     tasks: Task[];
     created_at: Date;
     updated_at: Date;
+    parent_phase: Phase;
+    sub_phases: Phase[];
+    parent_phase_id: string;
+    work_description: string;
+    deliverables: string;
+    requirements: string;
+    risks: string;
+    dependencies: string;
+    priority: string;
+    due_date: Date;
+    reference_task_id: string;
 }

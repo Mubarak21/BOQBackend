@@ -17,48 +17,62 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const task_entity_1 = require("../entities/task.entity");
+const project_entity_1 = require("../entities/project.entity");
 const projects_service_1 = require("../projects/projects.service");
 let TasksService = class TasksService {
-    constructor(tasksRepository, projectsService) {
+    constructor(tasksRepository, projectsRepository, projectsService) {
         this.tasksRepository = tasksRepository;
+        this.projectsRepository = projectsRepository;
         this.projectsService = projectsService;
     }
     async findAllByProject(projectId, userId) {
-        await this.projectsService.findOne(projectId, userId);
+        await this.projectsRepository.findOne({ where: { id: projectId } });
         return this.tasksRepository.find({
-            where: { project_id: projectId },
-            relations: ["assignee", "project"],
+            where: { project: { id: projectId } },
+            relations: ["project"],
         });
     }
     async findAllByUser(userId) {
         return this.tasksRepository.find({
-            where: { assignee_id: userId },
-            relations: ["assignee", "project"],
+            relations: ["project"],
         });
     }
     async findOne(id, userId) {
         const task = await this.tasksRepository.findOne({
             where: { id },
-            relations: ["assignee", "project"],
+            relations: ["project"],
         });
         if (!task) {
             throw new common_1.NotFoundException(`Task with ID ${id} not found`);
         }
-        await this.projectsService.findOne(task.project_id, userId);
+        await this.projectsRepository.findOne({ where: { id: task.project_id } });
         return task;
     }
     async create(createTaskDto, userId) {
         const project = await this.projectsService.findOne(createTaskDto.project_id, userId);
-        const task = this.tasksRepository.create({
-            ...createTaskDto,
-            project,
-        });
-        return this.tasksRepository.save(task);
+        const createTaskRecursive = async (dto, parentTaskId = null) => {
+            const { subTasks, ...taskData } = dto;
+            const task = this.tasksRepository.create({
+                ...taskData,
+                project,
+                parent_task_id: parentTaskId,
+            });
+            const savedTask = await this.tasksRepository.save(task);
+            if (subTasks && Array.isArray(subTasks) && subTasks.length > 0) {
+                for (const subTaskDto of subTasks) {
+                    await createTaskRecursive(subTaskDto, savedTask.id);
+                }
+            }
+            return savedTask;
+        };
+        return createTaskRecursive(createTaskDto);
     }
     async update(id, updateTaskDto, userId) {
         const task = await this.findOne(id, userId);
-        const project = await this.projectsService.findOne(task.project_id, userId);
-        if (project.owner_id !== userId && task.assignee_id !== userId) {
+        const project = await this.projectsRepository.findOne({
+            where: { id: task.project_id },
+        });
+        if (project.owner_id !== userId) {
             throw new common_1.ForbiddenException("You don't have permission to update this task");
         }
         Object.assign(task, updateTaskDto);
@@ -66,7 +80,9 @@ let TasksService = class TasksService {
     }
     async remove(id, userId) {
         const task = await this.findOne(id, userId);
-        const project = await this.projectsService.findOne(task.project_id, userId);
+        const project = await this.projectsRepository.findOne({
+            where: { id: task.project_id },
+        });
         if (project.owner_id !== userId) {
             throw new common_1.ForbiddenException("Only the project owner can delete tasks");
         }
@@ -78,7 +94,6 @@ let TasksService = class TasksService {
         if (project.owner_id !== userId) {
             throw new common_1.ForbiddenException("Only the project owner can assign tasks");
         }
-        task.assignee_id = assigneeId;
         return this.tasksRepository.save(task);
     }
 };
@@ -86,7 +101,10 @@ exports.TasksService = TasksService;
 exports.TasksService = TasksService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(task_entity_1.Task)),
+    __param(1, (0, typeorm_1.InjectRepository)(project_entity_1.Project)),
+    __param(2, (0, common_1.Inject)((0, common_1.forwardRef)(() => projects_service_1.ProjectsService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         projects_service_1.ProjectsService])
 ], TasksService);
 //# sourceMappingURL=tasks.service.js.map
