@@ -87,6 +87,17 @@ let UsersService = class UsersService {
             },
         });
     }
+    async findAllUsers() {
+        const users = await this.usersRepository.find({
+            select: ["id", "display_name", "email"],
+            order: { display_name: "ASC" },
+        });
+        return users.map((u) => ({
+            id: u.id,
+            display_name: u.display_name,
+            email: u.email,
+        }));
+    }
 };
 exports.UsersService = UsersService;
 exports.UsersService = UsersService = __decorate([

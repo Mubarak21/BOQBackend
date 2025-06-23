@@ -51,7 +51,9 @@ export class Phase {
   @JoinColumn({ name: "assignee_id" })
   assignee: User;
 
-  @ManyToOne(() => Project, (project) => project.phases)
+  @ManyToOne(() => Project, (project) => project.phases, {
+    onDelete: "CASCADE",
+  })
   @JoinColumn({ name: "project_id" })
   project: Project;
 

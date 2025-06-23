@@ -1,6 +1,7 @@
 import { Repository } from "typeorm";
 import { User } from "../entities/user.entity";
 import { UpdateUserDto } from "./dto/update-user.dto";
+import { UserResponseDto } from "./dto/user-response.dto";
 export declare class UsersService {
     private usersRepository;
     constructor(usersRepository: Repository<User>);
@@ -11,4 +12,5 @@ export declare class UsersService {
     create(userData: Partial<User>): Promise<User>;
     update(id: string, updateUserDto: UpdateUserDto): Promise<Omit<User, "password">>;
     findAll(): Promise<User[]>;
+    findAllUsers(): Promise<UserResponseDto[]>;
 }

@@ -71,4 +71,8 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], CreateProjectDto.prototype, "boq_mimetype", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Number)
+], CreateProjectDto.prototype, "totalAmount", void 0);
 //# sourceMappingURL=create-project.dto.js.map

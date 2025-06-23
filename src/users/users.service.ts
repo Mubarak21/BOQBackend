@@ -4,6 +4,7 @@ import { Repository, Like } from "typeorm";
 import { User } from "../entities/user.entity";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import * as bcrypt from "bcrypt";
+import { UserResponseDto } from "./dto/user-response.dto";
 
 @Injectable()
 export class UsersService {
@@ -89,5 +90,17 @@ export class UsersService {
         display_name: "ASC",
       },
     });
+  }
+
+  async findAllUsers(): Promise<UserResponseDto[]> {
+    const users = await this.usersRepository.find({
+      select: ["id", "display_name", "email"],
+      order: { display_name: "ASC" },
+    });
+    return users.map((u) => ({
+      id: u.id,
+      display_name: u.display_name,
+      email: u.email,
+    }));
   }
 }

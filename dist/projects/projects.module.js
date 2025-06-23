@@ -18,20 +18,23 @@ const users_module_1 = require("../users/users.module");
 const auth_module_1 = require("../auth/auth.module");
 const activities_module_1 = require("../activities/activities.module");
 const tasks_module_1 = require("../tasks/tasks.module");
+const project_access_service_1 = require("./services/project-access.service");
+const collaboration_request_entity_1 = require("../entities/collaboration-request.entity");
+const collaboration_requests_controller_1 = require("../collaboration-requests.controller");
 let ProjectsModule = class ProjectsModule {
 };
 exports.ProjectsModule = ProjectsModule;
 exports.ProjectsModule = ProjectsModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            typeorm_1.TypeOrmModule.forFeature([project_entity_1.Project, task_entity_1.Task, phase_entity_1.Phase]),
+            typeorm_1.TypeOrmModule.forFeature([project_entity_1.Project, task_entity_1.Task, phase_entity_1.Phase, collaboration_request_entity_1.CollaborationRequest]),
             users_module_1.UsersModule,
             auth_module_1.AuthModule,
             activities_module_1.ActivitiesModule,
             tasks_module_1.TasksModule,
         ],
-        providers: [projects_service_1.ProjectsService],
-        controllers: [projects_controller_1.ProjectsController],
+        providers: [projects_service_1.ProjectsService, project_access_service_1.ProjectAccessService],
+        controllers: [projects_controller_1.ProjectsController, collaboration_requests_controller_1.CollaborationRequestsController],
         exports: [projects_service_1.ProjectsService],
     })
 ], ProjectsModule);

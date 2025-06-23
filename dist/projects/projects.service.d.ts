@@ -10,6 +10,8 @@ import { CreatePhaseDto } from "./dto/create-phase.dto";
 import { UpdatePhaseDto } from "./dto/update-phase.dto";
 import { Phase } from "../entities/phase.entity";
 import { TasksService } from "../tasks/tasks.service";
+import { ProjectResponseDto, PublicProjectResponseDto } from "./dto/project-response.dto";
+import { ProjectAccessService } from "./services/project-access.service";
 export interface ProcessBoqResult {
     message: string;
     totalAmount: number;
@@ -22,8 +24,9 @@ export declare class ProjectsService {
     private readonly usersService;
     private readonly activitiesService;
     private readonly tasksService;
-    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService);
-    findAll(userId: string): Promise<Project[]>;
+    private readonly projectAccessService;
+    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService, projectAccessService: ProjectAccessService);
+    findAll(userId: string, all?: boolean): Promise<ProjectResponseDto[]>;
     findOne(id: string, userId?: string): Promise<Project>;
     create(createProjectDto: CreateProjectDto, owner: User): Promise<Project>;
     update(id: string, updateProjectDto: UpdateProjectDto, userId: string): Promise<Project>;
@@ -36,7 +39,9 @@ export declare class ProjectsService {
     deletePhase(projectId: string, phaseId: string, userId: string): Promise<void>;
     getProjectPhases(projectId: string, userId: string): Promise<Phase[]>;
     getAvailableAssignees(projectId: string): Promise<User[]>;
-    getProjectResponse(project: Project): Promise<any>;
+    getProjectResponse(project: Project, userId?: string): Promise<ProjectResponseDto | PublicProjectResponseDto>;
+    findAllProjects(): Promise<Project[]>;
+    joinProject(projectId: string, user: User): Promise<Project>;
     private hasProjectAccess;
     private getValidatedCollaborators;
     private validateAssignee;

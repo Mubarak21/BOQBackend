@@ -33,6 +33,9 @@ let UsersController = class UsersController {
     getUserById(id) {
         return this.usersService.findOne(id);
     }
+    async getAllUsers() {
+        return this.usersService.findAllUsers();
+    }
 };
 exports.UsersController = UsersController;
 __decorate([
@@ -64,6 +67,12 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "getUserById", null);
+__decorate([
+    (0, common_1.Get)(),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "getAllUsers", null);
 exports.UsersController = UsersController = __decorate([
     (0, common_1.Controller)("users"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

@@ -11,4 +11,5 @@ export declare class CreateProjectDto {
     boq_file?: string;
     boq_filename?: string;
     boq_mimetype?: string;
+    totalAmount?: number;
 }

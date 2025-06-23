@@ -52,4 +52,7 @@ export class CreateProjectDto {
   @IsString()
   @IsOptional()
   boq_mimetype?: string;
+
+  @IsOptional()
+  totalAmount?: number;
 }

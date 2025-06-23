@@ -22,6 +22,11 @@ import { CreatePhaseDto } from "./dto/create-phase.dto";
 import { UpdatePhaseDto } from "./dto/update-phase.dto";
 import { Phase } from "../entities/phase.entity";
 import { TasksService } from "../tasks/tasks.service";
+import {
+  ProjectResponseDto,
+  PublicProjectResponseDto,
+} from "./dto/project-response.dto";
+import { ProjectAccessService } from "./services/project-access.service";
 
 interface BoqRow {
   Description?: string;
@@ -65,18 +70,26 @@ export class ProjectsService {
     private readonly phasesRepository: Repository<Phase>,
     private readonly usersService: UsersService,
     private readonly activitiesService: ActivitiesService,
-    private readonly tasksService: TasksService
+    private readonly tasksService: TasksService,
+    private readonly projectAccessService: ProjectAccessService
   ) {}
 
-  async findAll(userId: string): Promise<Project[]> {
-    if (!userId) {
-      throw new BadRequestException("User ID is required");
+  async findAll(
+    userId: string,
+    all: boolean = false
+  ): Promise<ProjectResponseDto[]> {
+    let projects: Project[];
+    if (all) {
+      projects = await this.projectsRepository.find({
+        relations: ["owner", "collaborators", "phases"],
+      });
+    } else {
+      projects = await this.projectsRepository.find({
+        where: [{ owner_id: userId }, { collaborators: { id: userId } }],
+        relations: ["owner", "collaborators", "phases"],
+      });
     }
-
-    return this.projectsRepository.find({
-      where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-      relations: ["owner", "collaborators", "phases"],
-    });
+    return Promise.all(projects.map((p) => this.getProjectResponse(p, userId)));
   }
 
   async findOne(id: string, userId?: string): Promise<Project> {
@@ -134,6 +147,7 @@ export class ProjectsService {
         : null,
       tags: createProjectDto.tags,
       owner_id: owner.id,
+      total_amount: createProjectDto.totalAmount ?? 0,
     });
 
     // Handle collaborators if provided
@@ -210,25 +224,22 @@ export class ProjectsService {
   ): Promise<Project> {
     const project = await this.findOne(projectId);
 
-    if (project.owner_id !== userId) {
-      throw new ForbiddenException(
-        "Only the project owner can add collaborators"
-      );
-    }
+    this.projectAccessService.validateCollaboratorOperation({
+      project,
+      collaborator,
+      userId,
+    });
 
     if (!project.collaborators) {
       project.collaborators = [];
     }
 
-    if (project.collaborators.some((c) => c.id === collaborator.id)) {
-      throw new BadRequestException("User is already a collaborator");
-    }
-
-    if (project.owner_id === collaborator.id) {
-      throw new BadRequestException("Owner cannot be added as collaborator");
-    }
-
     project.collaborators.push(collaborator);
+    await this.activitiesService.logCollaboratorAdded(
+      collaborator,
+      project,
+      collaborator
+    );
     return this.projectsRepository.save(project);
   }
 
@@ -320,6 +331,16 @@ export class ProjectsService {
     // Verify project access
     await this.findOne(projectId, userId);
 
+    // Prevent duplicate phase titles for the same project
+    const existingPhase = await this.phasesRepository.findOne({
+      where: { project_id: projectId, title: createPhaseDto.title },
+    });
+    if (existingPhase) {
+      throw new BadRequestException(
+        "A phase with this title already exists for this project."
+      );
+    }
+
     // Validate assignee if specified
     if (createPhaseDto.assigneeId) {
       await this.validateAssignee(createPhaseDto.assigneeId);
@@ -350,6 +371,18 @@ export class ProjectsService {
     };
     const phase = this.phasesRepository.create(phaseData);
     const savedPhase = await this.phasesRepository.save(phase);
+
+    // After creating the phase, update the project's total_amount to sum of all phase budgets
+    const phases = await this.phasesRepository.find({
+      where: { project_id: projectId },
+    });
+    const totalAmount = phases.reduce(
+      (sum, phase) => sum + (Number(phase.budget) || 0),
+      0
+    );
+    await this.projectsRepository.update(projectId, {
+      total_amount: totalAmount,
+    });
 
     // Create tasks if provided
     if (createPhaseDto.tasks?.length) {
@@ -411,6 +444,18 @@ export class ProjectsService {
     Object.assign(phase, updateData);
 
     const updatedPhase = await this.phasesRepository.save(phase);
+
+    // After updating the phase, update the project's total_amount to sum of all phase budgets
+    const phases = await this.phasesRepository.find({
+      where: { project_id: projectId },
+    });
+    const totalAmount = phases.reduce(
+      (sum, phase) => sum + (Number(phase.budget) || 0),
+      0
+    );
+    await this.projectsRepository.update(projectId, {
+      total_amount: totalAmount,
+    });
 
     // Log phase completion and overdue
     if (updatePhaseDto.status === "completed" && phase.status !== "completed") {
@@ -474,6 +519,18 @@ export class ProjectsService {
     }
 
     await this.phasesRepository.remove(phase);
+
+    // After deleting the phase, update the project's total_amount to sum of all phase budgets
+    const phases = await this.phasesRepository.find({
+      where: { project_id: projectId },
+    });
+    const totalAmount = phases.reduce(
+      (sum, phase) => sum + (Number(phase.budget) || 0),
+      0
+    );
+    await this.projectsRepository.update(projectId, {
+      total_amount: totalAmount,
+    });
   }
 
   async getProjectPhases(projectId: string, userId: string): Promise<Phase[]> {
@@ -500,14 +557,16 @@ export class ProjectsService {
     return [project.owner, ...(project.collaborators || [])];
   }
 
-  async getProjectResponse(project: Project): Promise<any> {
-    // Calculate completed and total phases
+  async getProjectResponse(
+    project: Project,
+    userId?: string
+  ): Promise<ProjectResponseDto | PublicProjectResponseDto> {
+    const { isOwner, isCollaborator } =
+      this.projectAccessService.checkProjectAccess({ project, userId });
+
+    // Calculate project stats
     const phases = project.phases || [];
-    const completedPhases = phases.filter(
-      (phase) => phase.status === "completed"
-    ).length;
     const totalPhases = phases.length;
-    // Calculate progress (average of phase progress or 0)
     let progress = 0;
     if (totalPhases > 0) {
       const totalProgress = phases.reduce(
@@ -515,17 +574,69 @@ export class ProjectsService {
         0
       );
       progress = Math.round(totalProgress / totalPhases);
+      if (progress > 100) progress = 100;
     }
+    const completedPhases = phases.filter(
+      (phase) => phase.status === "completed"
+    ).length;
+
+    // Return full or public response based on access
+    if (isOwner || isCollaborator) {
+      return {
+        id: project.id,
+        name: project.title,
+        description: project.description,
+        progress,
+        completedPhases,
+        totalPhases,
+        totalAmount: project.total_amount,
+        startDate: project.start_date,
+        estimatedCompletion: project.end_date,
+        owner: project.owner?.display_name || project.owner_id,
+        collaborators: (project.collaborators || []).map(
+          (c) => c.display_name || c.id
+        ),
+        tags: project.tags,
+        phases: phases,
+        isOwner,
+        isCollaborator,
+      };
+    }
+
     return {
       id: project.id,
       name: project.title,
-      startDate: project.start_date,
-      estimatedCompletion: project.end_date,
+      description: project.description,
       progress,
-      completedPhases,
       totalPhases,
-      // ...add other fields as needed
+      owner: project.owner?.display_name || project.owner_id,
+      tags: project.tags,
+      isOwner,
+      isCollaborator,
     };
+  }
+
+  async findAllProjects(): Promise<Project[]> {
+    return this.projectsRepository.find({
+      relations: ["owner", "collaborators", "phases"],
+    });
+  }
+
+  async joinProject(projectId: string, user: User): Promise<Project> {
+    const project = await this.findOne(projectId);
+
+    if (project.owner_id === user.id) {
+      throw new BadRequestException("Owner cannot join as collaborator");
+    }
+    if (project.collaborators?.some((c) => c.id === user.id)) {
+      throw new BadRequestException("User is already a collaborator");
+    }
+    if (!project.collaborators) {
+      project.collaborators = [];
+    }
+    project.collaborators.push(user);
+    await this.activitiesService.logCollaboratorAdded(user, project, user);
+    return this.projectsRepository.save(project);
   }
 
   // Private helper methods

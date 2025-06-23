@@ -12,6 +12,7 @@ import {
   UploadedFile,
   BadRequestException,
   Req,
+  ForbiddenException,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ProjectsService, ProcessBoqResult } from "./projects.service";
@@ -23,13 +24,21 @@ import { RequestWithUser } from "../auth/interfaces/request-with-user.interface"
 import { CreatePhaseDto } from "./dto/create-phase.dto";
 import { UpdatePhaseDto } from "./dto/update-phase.dto";
 import { Phase } from "../entities/phase.entity";
+import {
+  CollaborationRequest,
+  CollaborationRequestStatus,
+} from "../entities/collaboration-request.entity";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
 
 @Controller("projects")
 @UseGuards(JwtAuthGuard)
 export class ProjectsController {
   constructor(
     private readonly projectsService: ProjectsService,
-    private readonly usersService: UsersService
+    private readonly usersService: UsersService,
+    @InjectRepository(CollaborationRequest)
+    private readonly collaborationRequestRepository: Repository<CollaborationRequest>
   ) {}
 
   @Post()
@@ -38,8 +47,10 @@ export class ProjectsController {
   }
 
   @Get()
-  findAll(@Request() req) {
-    return this.projectsService.findAll(req.user.id);
+  async findAll(@Request() req) {
+    const all = req.query.all === "true";
+    const projects = await this.projectsService.findAll(req.user.id, all);
+    return projects;
   }
 
   @Get(":id")
@@ -79,6 +90,46 @@ export class ProjectsController {
     @Request() req
   ) {
     return this.projectsService.removeCollaborator(id, userId, req.user.id);
+  }
+
+  @Post(":id/collaborators/invite")
+  async inviteCollaborator(
+    @Param("id") id: string,
+    @Body("userId") userId: string,
+    @Request() req
+  ) {
+    // Only owner can invite
+    const project = await this.projectsService.findOne(id, req.user.id);
+    if (project.owner_id !== req.user.id) {
+      throw new ForbiddenException(
+        "Only the project owner can invite collaborators"
+      );
+    }
+    // Check if already a collaborator
+    if (project.collaborators?.some((c) => c.id === userId)) {
+      throw new BadRequestException("User is already a collaborator");
+    }
+    // Check if already has a pending request
+    const existing = await this.collaborationRequestRepository.findOne({
+      where: {
+        projectId: id,
+        userId,
+        status: CollaborationRequestStatus.PENDING,
+      },
+    });
+    if (existing) {
+      throw new BadRequestException("User already has a pending invite");
+    }
+    // Create request
+    const invite = this.collaborationRequestRepository.create({
+      projectId: id,
+      userId,
+      inviterId: req.user.id,
+      status: CollaborationRequestStatus.PENDING,
+    });
+    await this.collaborationRequestRepository.save(invite);
+    // TODO: Notify user (stub)
+    return { message: "Invitation sent" };
   }
 
   @Post(":id/boq")
@@ -151,5 +202,15 @@ export class ProjectsController {
   ): Promise<{ message: string }> {
     await this.projectsService.deletePhase(projectId, phaseId, req.user.id);
     return { message: "Phase deleted successfully" };
+  }
+
+  @Post(":id/join")
+  async joinProject(@Param("id") id: string, @Request() req) {
+    return this.projectsService.joinProject(id, req.user);
+  }
+
+  @Get("all")
+  findAllProjects() {
+    return this.projectsService.findAllProjects();
   }
 }
