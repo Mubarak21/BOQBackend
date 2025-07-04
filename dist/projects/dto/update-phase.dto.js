@@ -28,11 +28,6 @@ __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
-], UpdatePhaseDto.prototype, "workDescription", void 0);
-__decorate([
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", String)
 ], UpdatePhaseDto.prototype, "deliverables", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
@@ -73,32 +68,15 @@ __decorate([
 __decorate([
     (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.Min)(0),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", Number)
-], UpdatePhaseDto.prototype, "spent", void 0);
-__decorate([
-    (0, class_validator_1.IsNumber)(),
-    (0, class_validator_1.Min)(0),
     (0, class_validator_1.Max)(100),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Number)
 ], UpdatePhaseDto.prototype, "progress", void 0);
 __decorate([
-    (0, class_validator_1.IsNumber)(),
-    (0, class_validator_1.Min)(0),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", Number)
-], UpdatePhaseDto.prototype, "estimatedHours", void 0);
-__decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], UpdatePhaseDto.prototype, "status", void 0);
-__decorate([
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", String)
-], UpdatePhaseDto.prototype, "assigneeId", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),

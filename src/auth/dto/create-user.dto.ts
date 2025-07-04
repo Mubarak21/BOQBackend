@@ -35,4 +35,12 @@ export class CreateUserDto {
     project_updates: boolean;
     task_updates: boolean;
   };
+
+  @IsOptional()
+  @IsString()
+  department?: string;
+
+  @IsOptional()
+  @IsString()
+  departmentId?: string;
 }

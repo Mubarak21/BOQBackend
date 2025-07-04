@@ -14,10 +14,5 @@ export declare class AuthController {
         refresh_token: string;
         user: Omit<import("../entities/user.entity").User, "password">;
     }>;
-    refreshToken(refreshToken: string): Promise<{
-        access_token: string;
-    }>;
-    logout(authHeader: string): Promise<{
-        message: string;
-    }>;
+    getMe(req: any): Promise<any>;
 }

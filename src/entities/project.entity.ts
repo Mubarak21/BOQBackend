@@ -14,6 +14,7 @@ import { User } from "./user.entity";
 import { Task } from "./task.entity";
 import { Comment } from "./comment.entity";
 import { Phase } from "./phase.entity";
+import { Department } from "./department.entity";
 
 export enum ProjectStatus {
   PLANNING = "planning",
@@ -105,4 +106,13 @@ export class Project {
 
   @OneToMany(() => Comment, (comment) => comment.project)
   comments: Comment[];
+
+  @Column({ nullable: true })
+  department_id: string;
+
+  @ManyToOne(() => Department, (department) => department.projects, {
+    nullable: true,
+  })
+  @JoinColumn({ name: "department_id" })
+  department: Department;
 }

@@ -19,6 +19,7 @@ const create_user_dto_1 = require("./dto/create-user.dto");
 const login_dto_1 = require("./dto/login.dto");
 const rate_limit_guard_1 = require("./guards/rate-limit.guard");
 const public_decorator_1 = require("./decorators/public.decorator");
+const jwt_auth_guard_1 = require("./guards/jwt-auth.guard");
 let AuthController = class AuthController {
     constructor(authService) {
         this.authService = authService;
@@ -28,9 +29,6 @@ let AuthController = class AuthController {
             return await this.authService.register(createUserDto);
         }
         catch (error) {
-            if (error instanceof common_1.HttpException) {
-                throw error;
-            }
             throw new common_1.HttpException({
                 statusCode: common_1.HttpStatus.BAD_REQUEST,
                 error: "Bad Request",
@@ -43,9 +41,6 @@ let AuthController = class AuthController {
             return await this.authService.login(loginDto.email, loginDto.password);
         }
         catch (error) {
-            if (error instanceof common_1.HttpException) {
-                throw error;
-            }
             throw new common_1.HttpException({
                 statusCode: common_1.HttpStatus.BAD_REQUEST,
                 error: "Bad Request",
@@ -53,22 +48,8 @@ let AuthController = class AuthController {
             }, common_1.HttpStatus.BAD_REQUEST);
         }
     }
-    async refreshToken(refreshToken) {
-        if (!refreshToken) {
-            throw new common_1.UnauthorizedException("Refresh token is required");
-        }
-        return this.authService.refreshToken(refreshToken);
-    }
-    async logout(authHeader) {
-        if (!authHeader) {
-            throw new common_1.UnauthorizedException("Authorization header is required");
-        }
-        const [type, token] = authHeader.split(" ");
-        if (type !== "Bearer" || !token) {
-            throw new common_1.UnauthorizedException("Invalid authorization header format");
-        }
-        await this.authService.logout(token);
-        return { message: "Logged out successfully" };
+    async getMe(req) {
+        return req.user;
     }
 };
 exports.AuthController = AuthController;
@@ -82,7 +63,6 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "register", null);
 __decorate([
-    (0, public_decorator_1.Public)(),
     (0, common_1.UseGuards)(rate_limit_guard_1.RateLimitGuard),
     (0, common_1.Post)("login"),
     __param(0, (0, common_1.Body)()),
@@ -91,21 +71,13 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
 __decorate([
-    (0, public_decorator_1.Public)(),
-    (0, common_1.Post)("refresh"),
-    __param(0, (0, common_1.Body)("refresh_token")),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.Get)("me"),
+    __param(0, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
-], AuthController.prototype, "refreshToken", null);
-__decorate([
-    (0, public_decorator_1.Public)(),
-    (0, common_1.Post)("logout"),
-    __param(0, (0, common_1.Headers)("authorization")),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
-    __metadata("design:returntype", Promise)
-], AuthController.prototype, "logout", null);
+], AuthController.prototype, "getMe", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)("auth"),
     __metadata("design:paramtypes", [auth_service_1.AuthService])

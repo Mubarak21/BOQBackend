@@ -67,4 +67,41 @@ export class CommentsService {
       throw new ForbiddenException("You can only delete your own comments");
     await this.commentsRepository.remove(comment);
   }
+
+  // Consultant: List feedback/notes for a project (consultant-facing)
+  async listConsultantFeedbackByProject(projectId: string): Promise<any[]> {
+    const comments = await this.commentsRepository.find({
+      where: { project_id: projectId },
+      relations: ["author"],
+    });
+    return comments.map((c) => ({
+      id: c.id,
+      content: c.content,
+      author: c.author
+        ? { id: c.author.id, display_name: c.author.display_name }
+        : undefined,
+      created_at: c.created_at,
+    }));
+  }
+
+  // Consultant: Create feedback/notes for a project
+  async createConsultantFeedback(
+    projectId: string,
+    content: string,
+    author: User
+  ): Promise<any> {
+    const comment = this.commentsRepository.create({
+      content,
+      project_id: projectId,
+      author,
+      author_id: author.id,
+    });
+    const saved = await this.commentsRepository.save(comment);
+    return {
+      id: saved.id,
+      content: saved.content,
+      author: { id: author.id, display_name: author.display_name },
+      created_at: saved.created_at,
+    };
+  }
 }

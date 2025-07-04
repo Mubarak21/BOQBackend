@@ -54,7 +54,6 @@ export class DashboardService {
         completedPhases: phaseStats.completed_phases,
         inProgressPhases: phaseStats.in_progress_phases,
         totalBudget: phaseStats.total_budget,
-        spentBudget: phaseStats.spent_budget,
       },
       completion_rate:
         totalProjects > 0 ? (completedProjects / totalProjects) * 100 : 0,
@@ -119,7 +118,6 @@ export class DashboardService {
       completed_phases: 0,
       in_progress_phases: 0,
       total_budget: 0,
-      spent_budget: 0,
     };
 
     projects.forEach((project) => {
@@ -133,10 +131,6 @@ export class DashboardService {
       ).length;
       stats.total_budget += projectPhases.reduce(
         (sum, phase) => sum + (phase.budget || 0),
-        0
-      );
-      stats.spent_budget += projectPhases.reduce(
-        (sum, phase) => sum + (phase.spent || 0),
         0
       );
     });
@@ -220,12 +214,11 @@ export class DashboardService {
       (sum, phase) => sum + phase.budget,
       0
     );
-    const spent = projectPhases.reduce((sum, phase) => sum + phase.spent, 0);
 
     return {
       totalBudget,
-      spent,
-      remaining: totalBudget - spent,
+      spent: 0, // Placeholder, as 'spent' is removed from Phase
+      remaining: totalBudget,
     };
   }
 

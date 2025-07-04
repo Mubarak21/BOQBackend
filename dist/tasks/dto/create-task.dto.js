@@ -47,6 +47,11 @@ __decorate([
     __metadata("design:type", String)
 ], CreateTaskDto.prototype, "phase_id", void 0);
 __decorate([
+    (0, class_validator_1.IsUUID)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreateTaskDto.prototype, "id", void 0);
+__decorate([
     (0, class_validator_2.ValidateNested)({ each: true }),
     (0, class_transformer_1.Type)(() => CreateTaskDto),
     (0, class_validator_1.IsOptional)(),

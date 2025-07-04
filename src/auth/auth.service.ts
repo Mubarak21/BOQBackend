@@ -11,6 +11,7 @@ import { User } from "../entities/user.entity";
 import { CreateUserDto } from "./dto/create-user.dto";
 import * as bcrypt from "bcrypt";
 import { ConfigService } from "@nestjs/config";
+import { Department } from "../entities/department.entity";
 
 @Injectable()
 export class AuthService {
@@ -20,7 +21,9 @@ export class AuthService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private jwtService: JwtService,
-    private configService: ConfigService
+    private configService: ConfigService,
+    @InjectRepository(Department)
+    private departmentRepository: Repository<Department>
   ) {}
 
   async register(createUserDto: CreateUserDto): Promise<{
@@ -37,9 +40,37 @@ export class AuthService {
     }
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+    let departmentId = undefined;
+    if (createUserDto.departmentId) {
+      departmentId = createUserDto.departmentId;
+    } else if (createUserDto.department) {
+      let department = await this.departmentRepository.findOne({
+        where: { name: createUserDto.department },
+      });
+      if (!department) {
+        try {
+          department = this.departmentRepository.create({
+            name: createUserDto.department,
+          });
+          department = await this.departmentRepository.save(department);
+        } catch (err) {
+          // If another request created the department in the meantime, fetch it
+          department = await this.departmentRepository.findOne({
+            where: { name: createUserDto.department },
+          });
+          if (!department) throw err;
+        }
+      }
+      departmentId = department.id;
+    }
     const user = this.userRepository.create({
-      ...createUserDto,
+      display_name: createUserDto.display_name,
+      email: createUserDto.email,
       password: hashedPassword,
+      bio: createUserDto.bio,
+      avatar_url: createUserDto.avatar_url,
+      notification_preferences: createUserDto.notification_preferences,
+      department_id: departmentId,
     });
 
     await this.userRepository.save(user);
@@ -130,6 +161,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       type: "access",
+      role: user.role,
     };
 
     return this.jwtService.sign(payload, {
@@ -143,6 +175,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       type: "refresh",
+      role: user.role,
     };
 
     return this.jwtService.sign(payload, {
@@ -190,8 +223,6 @@ export class AuthService {
       const payload = this.jwtService.verify(token);
       this.tokenBlacklist.add(token);
 
-      // Optional: Clean up old blacklisted tokens periodically
-      // This could be moved to a scheduled task
       if (this.tokenBlacklist.size > 1000) {
         this.cleanupBlacklist();
       }

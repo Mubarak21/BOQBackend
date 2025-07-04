@@ -1,9 +1,16 @@
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { AppModule } from "./app.module";
+import { getDataSourceToken } from "@nestjs/typeorm";
+import { DataSource } from "typeorm";
+import { SeedService } from "./commands/seed.command";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Run seeding before starting the server
+  const seedService = app.get(SeedService);
+  await seedService.seed();
 
   // Enable CORS
   app.enableCors({
@@ -31,12 +38,18 @@ async function bootstrap() {
   const port = process.env.PORT || 3001;
   await app.listen(port);
 
-  // Log database connection and server status
-  console.log("=================================");
-  console.log("🚀 Application is running!");
-  console.log(`📡 Server: http://localhost:${port}/api`);
-  console.log("📦 Database: Connected successfully");
-  console.log("=================================");
+  // Debug: Check database connection
+  try {
+    const dataSource = app.get<DataSource>(getDataSourceToken());
+    if (dataSource.isInitialized) {
+      console.log("✅ Database connection established successfully!");
+    } else {
+      await dataSource.initialize();
+      console.log("✅ Database connection established (after manual init)!");
+    }
+  } catch (err) {
+    console.error("❌ Database connection failed:", err);
+  }
 }
 
 bootstrap();

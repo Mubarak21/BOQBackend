@@ -2,6 +2,7 @@ import { User } from "./user.entity";
 import { Task } from "./task.entity";
 import { Comment } from "./comment.entity";
 import { Phase } from "./phase.entity";
+import { Department } from "./department.entity";
 export declare enum ProjectStatus {
     PLANNING = "planning",
     IN_PROGRESS = "in_progress",
@@ -36,4 +37,6 @@ export declare class Project {
     created_at: Date;
     updated_at: Date;
     comments: Comment[];
+    department_id: string;
+    department: Department;
 }

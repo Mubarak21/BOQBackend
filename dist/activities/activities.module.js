@@ -13,12 +13,17 @@ const activities_service_1 = require("./activities.service");
 const activities_controller_1 = require("./activities.controller");
 const activity_entity_1 = require("../entities/activity.entity");
 const auth_module_1 = require("../auth/auth.module");
+const projects_module_1 = require("../projects/projects.module");
 let ActivitiesModule = class ActivitiesModule {
 };
 exports.ActivitiesModule = ActivitiesModule;
 exports.ActivitiesModule = ActivitiesModule = __decorate([
     (0, common_1.Module)({
-        imports: [typeorm_1.TypeOrmModule.forFeature([activity_entity_1.Activity]), auth_module_1.AuthModule],
+        imports: [
+            typeorm_1.TypeOrmModule.forFeature([activity_entity_1.Activity]),
+            auth_module_1.AuthModule,
+            (0, common_1.forwardRef)(() => projects_module_1.ProjectsModule),
+        ],
         controllers: [activities_controller_1.ActivitiesController],
         providers: [activities_service_1.ActivitiesService],
         exports: [activities_service_1.ActivitiesService],

@@ -11,6 +11,14 @@ import {
 import { Project } from "./project.entity";
 import { Task } from "./task.entity";
 import { User } from "./user.entity";
+import { SubPhase } from "./sub-phase.entity";
+
+export enum PhaseStatus {
+  NOT_STARTED = "not_started",
+  IN_PROGRESS = "in_progress",
+  COMPLETED = "completed",
+  DELAYED = "delayed",
+}
 
 @Entity()
 export class Phase {
@@ -35,14 +43,15 @@ export class Phase {
   @Column({ type: "decimal", precision: 10, scale: 2, nullable: true })
   budget: number;
 
-  @Column({ type: "decimal", precision: 10, scale: 2, nullable: true })
-  spent: number;
-
   @Column({ type: "decimal", precision: 5, scale: 2, nullable: true })
   progress: number;
 
-  @Column({ nullable: true })
-  status: string;
+  @Column({
+    type: "enum",
+    enum: PhaseStatus,
+    default: PhaseStatus.NOT_STARTED,
+  })
+  status: PhaseStatus;
 
   @Column({ nullable: true })
   assignee_id: string;
@@ -69,16 +78,6 @@ export class Phase {
   @UpdateDateColumn()
   updated_at: Date;
 
-  @ManyToOne(() => Phase, (phase) => phase.sub_phases, { nullable: true })
-  @JoinColumn({ name: "parent_phase_id" })
-  parent_phase: Phase;
-
-  @OneToMany(() => Phase, (phase) => phase.parent_phase)
-  sub_phases: Phase[];
-
-  @Column({ nullable: true })
-  parent_phase_id: string;
-
   @Column({ nullable: true })
   work_description: string;
 
@@ -102,4 +101,10 @@ export class Phase {
 
   @Column({ nullable: true })
   reference_task_id: string;
+
+  @OneToMany(() => SubPhase, (subPhase) => subPhase.phase, {
+    cascade: true,
+    eager: true,
+  })
+  subPhases: SubPhase[];
 }

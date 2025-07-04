@@ -3,10 +3,11 @@ import { JwtModule } from "@nestjs/jwt";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { AuthService } from "./auth.service";
-import { AuthController } from "./auth.controller";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RateLimitGuard } from "./guards/rate-limit.guard";
 import { User } from "../entities/user.entity";
+import { AuthController } from "./auth.controller";
+import { Department } from "../entities/department.entity";
 
 @Module({
   imports: [
@@ -21,7 +22,7 @@ import { User } from "../entities/user.entity";
       }),
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, Department]),
   ],
   controllers: [AuthController],
   providers: [

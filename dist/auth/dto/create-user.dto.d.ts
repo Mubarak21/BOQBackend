@@ -9,4 +9,6 @@ export declare class CreateUserDto {
         project_updates: boolean;
         task_updates: boolean;
     };
+    department?: string;
+    departmentId?: string;
 }

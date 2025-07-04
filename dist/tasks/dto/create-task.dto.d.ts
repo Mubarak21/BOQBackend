@@ -5,5 +5,6 @@ export declare class CreateTaskDto {
     price?: number;
     project_id: string;
     phase_id?: string;
+    id?: string;
     subTasks?: CreateTaskDto[];
 }

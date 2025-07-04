@@ -1,17 +1,20 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject, forwardRef } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, In } from "typeorm";
 import { Activity, ActivityType } from "../entities/activity.entity";
 import { User } from "../entities/user.entity";
 import { Project } from "../entities/project.entity";
 import { Task } from "../entities/task.entity";
 import { Phase } from "../entities/phase.entity";
+import { ProjectsService } from "../projects/projects.service";
 
 @Injectable()
 export class ActivitiesService {
   constructor(
     @InjectRepository(Activity)
-    private activitiesRepository: Repository<Activity>
+    private activitiesRepository: Repository<Activity>,
+    @Inject(forwardRef(() => ProjectsService))
+    private readonly projectsService: ProjectsService
   ) {}
 
   async createActivity(
@@ -284,7 +287,7 @@ export class ActivitiesService {
   ): Promise<Activity> {
     return this.createActivity(
       ActivityType.COLLABORATOR_ADDED,
-      `${collaborator.display_name} was added as a collaborator`,
+      `${collaborator.display_name} joined as a collaborator in ${project.title}`,
       user,
       project,
       null,
@@ -305,5 +308,44 @@ export class ActivitiesService {
       .take(limit)
       .skip(offset)
       .getMany();
+  }
+
+  async logJoinRequest(
+    owner: User,
+    project: Project,
+    requester: User
+  ): Promise<Activity> {
+    return this.createActivity(
+      ActivityType.COLLABORATOR_ADDED,
+      `${requester.display_name} requested to join your project`,
+      owner,
+      project,
+      null,
+      { requester_id: requester.id }
+    );
+  }
+
+  async getUserProjectActivities(
+    userId: string,
+    limit: number = 10,
+    offset: number = 0
+  ): Promise<Activity[]> {
+    // Get all projects and filter for those where user is owner or collaborator
+    const projects = await this.projectsService.findAll();
+    const userProjectIds = projects
+      .filter(
+        (p) =>
+          p.owner_id === userId ||
+          (p.collaborators && p.collaborators.some((c) => c.id === userId))
+      )
+      .map((p) => p.id);
+    if (userProjectIds.length === 0) return [];
+    return this.activitiesRepository.find({
+      where: { project_id: In(userProjectIds) },
+      relations: ["user", "project", "task"],
+      order: { created_at: "DESC" },
+      take: limit,
+      skip: offset,
+    });
   }
 }

@@ -21,21 +21,38 @@ const tasks_module_1 = require("../tasks/tasks.module");
 const project_access_service_1 = require("./services/project-access.service");
 const collaboration_request_entity_1 = require("../entities/collaboration-request.entity");
 const collaboration_requests_controller_1 = require("../collaboration-requests.controller");
+const project_access_request_entity_1 = require("../entities/project-access-request.entity");
+const comments_module_1 = require("../comments/comments.module");
+const sub_phase_entity_1 = require("../entities/sub-phase.entity");
+const subphases_controller_1 = require("./subphases.controller");
+const subphases_service_1 = require("./subphases.service");
 let ProjectsModule = class ProjectsModule {
 };
 exports.ProjectsModule = ProjectsModule;
 exports.ProjectsModule = ProjectsModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            typeorm_1.TypeOrmModule.forFeature([project_entity_1.Project, task_entity_1.Task, phase_entity_1.Phase, collaboration_request_entity_1.CollaborationRequest]),
+            typeorm_1.TypeOrmModule.forFeature([
+                project_entity_1.Project,
+                task_entity_1.Task,
+                phase_entity_1.Phase,
+                sub_phase_entity_1.SubPhase,
+                collaboration_request_entity_1.CollaborationRequest,
+                project_access_request_entity_1.ProjectAccessRequest,
+            ]),
             users_module_1.UsersModule,
             auth_module_1.AuthModule,
-            activities_module_1.ActivitiesModule,
+            (0, common_1.forwardRef)(() => activities_module_1.ActivitiesModule),
             tasks_module_1.TasksModule,
+            (0, common_1.forwardRef)(() => comments_module_1.CommentsModule),
         ],
-        providers: [projects_service_1.ProjectsService, project_access_service_1.ProjectAccessService],
-        controllers: [projects_controller_1.ProjectsController, collaboration_requests_controller_1.CollaborationRequestsController],
-        exports: [projects_service_1.ProjectsService],
+        providers: [projects_service_1.ProjectsService, project_access_service_1.ProjectAccessService, subphases_service_1.SubPhasesService],
+        controllers: [
+            projects_controller_1.ProjectsController,
+            collaboration_requests_controller_1.CollaborationRequestsController,
+            subphases_controller_1.SubPhasesController,
+        ],
+        exports: [projects_service_1.ProjectsService, typeorm_1.TypeOrmModule],
     })
 ], ProjectsModule);
 //# sourceMappingURL=projects.module.js.map

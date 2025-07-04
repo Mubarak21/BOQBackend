@@ -50,7 +50,6 @@ let DashboardService = class DashboardService {
                 completedPhases: phaseStats.completed_phases,
                 inProgressPhases: phaseStats.in_progress_phases,
                 totalBudget: phaseStats.total_budget,
-                spentBudget: phaseStats.spent_budget,
             },
             completion_rate: totalProjects > 0 ? (completedProjects / totalProjects) * 100 : 0,
             total_tasks: taskStats.total_tasks,
@@ -106,7 +105,6 @@ let DashboardService = class DashboardService {
             completed_phases: 0,
             in_progress_phases: 0,
             total_budget: 0,
-            spent_budget: 0,
         };
         projects.forEach((project) => {
             const projectPhases = project.phases || [];
@@ -114,7 +112,6 @@ let DashboardService = class DashboardService {
             stats.completed_phases += projectPhases.filter((phase) => phase.status === "completed").length;
             stats.in_progress_phases += projectPhases.filter((phase) => phase.status === "in_progress").length;
             stats.total_budget += projectPhases.reduce((sum, phase) => sum + (phase.budget || 0), 0);
-            stats.spent_budget += projectPhases.reduce((sum, phase) => sum + (phase.spent || 0), 0);
         });
         return stats;
     }
@@ -172,11 +169,10 @@ let DashboardService = class DashboardService {
     async getProjectBudget(project) {
         const projectPhases = project.phases || [];
         const totalBudget = projectPhases.reduce((sum, phase) => sum + phase.budget, 0);
-        const spent = projectPhases.reduce((sum, phase) => sum + phase.spent, 0);
         return {
             totalBudget,
-            spent,
-            remaining: totalBudget - spent,
+            spent: 0,
+            remaining: totalBudget,
         };
     }
     async getTaskStats(userId) {

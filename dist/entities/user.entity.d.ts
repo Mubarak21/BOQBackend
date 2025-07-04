@@ -1,8 +1,10 @@
 import { Project } from "./project.entity";
 import { Comment } from "./comment.entity";
+import { Department } from "./department.entity";
 export declare enum UserRole {
     USER = "user",
-    ADMIN = "admin"
+    ADMIN = "admin",
+    CONSULTANT = "consultant"
 }
 export declare class User {
     id: string;
@@ -22,4 +24,6 @@ export declare class User {
     owned_projects: Project[];
     collaborating_projects: Project[];
     comments: Comment[];
+    department_id: string;
+    department: Department;
 }

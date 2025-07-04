@@ -12,7 +12,6 @@ import {
   UploadedFile,
   BadRequestException,
   Req,
-  ForbiddenException,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ProjectsService, ProcessBoqResult } from "./projects.service";
@@ -24,21 +23,13 @@ import { RequestWithUser } from "../auth/interfaces/request-with-user.interface"
 import { CreatePhaseDto } from "./dto/create-phase.dto";
 import { UpdatePhaseDto } from "./dto/update-phase.dto";
 import { Phase } from "../entities/phase.entity";
-import {
-  CollaborationRequest,
-  CollaborationRequestStatus,
-} from "../entities/collaboration-request.entity";
-import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
 
 @Controller("projects")
 @UseGuards(JwtAuthGuard)
 export class ProjectsController {
   constructor(
     private readonly projectsService: ProjectsService,
-    private readonly usersService: UsersService,
-    @InjectRepository(CollaborationRequest)
-    private readonly collaborationRequestRepository: Repository<CollaborationRequest>
+    private readonly usersService: UsersService
   ) {}
 
   @Post()
@@ -47,10 +38,11 @@ export class ProjectsController {
   }
 
   @Get()
-  async findAll(@Request() req) {
-    const all = req.query.all === "true";
-    const projects = await this.projectsService.findAll(req.user.id, all);
-    return projects;
+  async findAll() {
+    const projects = await this.projectsService.findAll();
+    return Promise.all(
+      projects.map((p) => this.projectsService.getProjectResponse(p))
+    );
   }
 
   @Get(":id")
@@ -90,46 +82,6 @@ export class ProjectsController {
     @Request() req
   ) {
     return this.projectsService.removeCollaborator(id, userId, req.user.id);
-  }
-
-  @Post(":id/collaborators/invite")
-  async inviteCollaborator(
-    @Param("id") id: string,
-    @Body("userId") userId: string,
-    @Request() req
-  ) {
-    // Only owner can invite
-    const project = await this.projectsService.findOne(id, req.user.id);
-    if (project.owner_id !== req.user.id) {
-      throw new ForbiddenException(
-        "Only the project owner can invite collaborators"
-      );
-    }
-    // Check if already a collaborator
-    if (project.collaborators?.some((c) => c.id === userId)) {
-      throw new BadRequestException("User is already a collaborator");
-    }
-    // Check if already has a pending request
-    const existing = await this.collaborationRequestRepository.findOne({
-      where: {
-        projectId: id,
-        userId,
-        status: CollaborationRequestStatus.PENDING,
-      },
-    });
-    if (existing) {
-      throw new BadRequestException("User already has a pending invite");
-    }
-    // Create request
-    const invite = this.collaborationRequestRepository.create({
-      projectId: id,
-      userId,
-      inviterId: req.user.id,
-      status: CollaborationRequestStatus.PENDING,
-    });
-    await this.collaborationRequestRepository.save(invite);
-    // TODO: Notify user (stub)
-    return { message: "Invitation sent" };
   }
 
   @Post(":id/boq")
@@ -212,5 +164,68 @@ export class ProjectsController {
   @Get("all")
   findAllProjects() {
     return this.projectsService.findAllProjects();
+  }
+
+  @Post(":projectId/join-request")
+  async createJoinRequest(
+    @Param("projectId") projectId: string,
+    @Request() req
+  ) {
+    return this.projectsService.createJoinRequest(projectId, req.user.id);
+  }
+
+  @Get(":projectId/join-requests")
+  async listJoinRequestsForProject(
+    @Param("projectId") projectId: string,
+    @Request() req
+  ) {
+    return this.projectsService.listJoinRequestsForProject(
+      projectId,
+      req.user.id
+    );
+  }
+
+  @Post(":projectId/join-requests/:requestId/approve")
+  async approveJoinRequest(
+    @Param("projectId") projectId: string,
+    @Param("requestId") requestId: string,
+    @Request() req
+  ) {
+    return this.projectsService.approveJoinRequest(
+      projectId,
+      requestId,
+      req.user.id
+    );
+  }
+
+  @Post(":projectId/join-requests/:requestId/deny")
+  async denyJoinRequest(
+    @Param("projectId") projectId: string,
+    @Param("requestId") requestId: string,
+    @Request() req
+  ) {
+    return this.projectsService.denyJoinRequest(
+      projectId,
+      requestId,
+      req.user.id
+    );
+  }
+
+  @Get("/my/join-requests")
+  async listMyJoinRequests(@Request() req) {
+    return this.projectsService.listMyJoinRequests(req.user.id);
+  }
+
+  @Get("/owner/join-requests")
+  async listJoinRequestsForOwner(@Request() req) {
+    return this.projectsService.listJoinRequestsForOwner(req.user.id);
+  }
+
+  @Get(":id/available-phase-tasks")
+  async getAvailablePhaseTasks(
+    @Param("id") id: string,
+    @Req() req: RequestWithUser
+  ): Promise<any[]> {
+    return this.projectsService.getAvailablePhaseTasks(id, req.user.id);
   }
 }

@@ -13,10 +13,12 @@ exports.User = exports.UserRole = void 0;
 const typeorm_1 = require("typeorm");
 const project_entity_1 = require("./project.entity");
 const comment_entity_1 = require("./comment.entity");
+const department_entity_1 = require("./department.entity");
 var UserRole;
 (function (UserRole) {
     UserRole["USER"] = "user";
     UserRole["ADMIN"] = "admin";
+    UserRole["CONSULTANT"] = "consultant";
 })(UserRole || (exports.UserRole = UserRole = {}));
 let User = class User {
 };
@@ -80,6 +82,17 @@ __decorate([
     (0, typeorm_1.OneToMany)(() => comment_entity_1.Comment, (comment) => comment.author),
     __metadata("design:type", Array)
 ], User.prototype, "comments", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], User.prototype, "department_id", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => department_entity_1.Department, (department) => department.users, {
+        nullable: true,
+    }),
+    (0, typeorm_1.JoinColumn)({ name: "department_id" }),
+    __metadata("design:type", department_entity_1.Department)
+], User.prototype, "department", void 0);
 exports.User = User = __decorate([
     (0, typeorm_1.Entity)("users")
 ], User);

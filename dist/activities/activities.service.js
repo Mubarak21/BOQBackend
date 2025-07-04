@@ -17,9 +17,11 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const activity_entity_1 = require("../entities/activity.entity");
+const projects_service_1 = require("../projects/projects.service");
 let ActivitiesService = class ActivitiesService {
-    constructor(activitiesRepository) {
+    constructor(activitiesRepository, projectsService) {
         this.activitiesRepository = activitiesRepository;
+        this.projectsService = projectsService;
     }
     async createActivity(type, description, user, project, phaseOrTask, metadata = {}) {
         const activity = this.activitiesRepository.create({
@@ -126,7 +128,7 @@ let ActivitiesService = class ActivitiesService {
         return this.createActivity(activity_entity_1.ActivityType.COMMENT_ADDED, `Comment added on "${task.description}"`, user, project, task);
     }
     async logCollaboratorAdded(user, project, collaborator) {
-        return this.createActivity(activity_entity_1.ActivityType.COLLABORATOR_ADDED, `${collaborator.display_name} was added as a collaborator`, user, project, null, { collaborator_id: collaborator.id });
+        return this.createActivity(activity_entity_1.ActivityType.COLLABORATOR_ADDED, `${collaborator.display_name} joined as a collaborator in ${project.title}`, user, project, null, { collaborator_id: collaborator.id });
     }
     async getPhaseActivities(phaseId, limit = 10, offset = 0) {
         return this.activitiesRepository
@@ -137,11 +139,32 @@ let ActivitiesService = class ActivitiesService {
             .skip(offset)
             .getMany();
     }
+    async logJoinRequest(owner, project, requester) {
+        return this.createActivity(activity_entity_1.ActivityType.COLLABORATOR_ADDED, `${requester.display_name} requested to join your project`, owner, project, null, { requester_id: requester.id });
+    }
+    async getUserProjectActivities(userId, limit = 10, offset = 0) {
+        const projects = await this.projectsService.findAll();
+        const userProjectIds = projects
+            .filter((p) => p.owner_id === userId ||
+            (p.collaborators && p.collaborators.some((c) => c.id === userId)))
+            .map((p) => p.id);
+        if (userProjectIds.length === 0)
+            return [];
+        return this.activitiesRepository.find({
+            where: { project_id: (0, typeorm_2.In)(userProjectIds) },
+            relations: ["user", "project", "task"],
+            order: { created_at: "DESC" },
+            take: limit,
+            skip: offset,
+        });
+    }
 };
 exports.ActivitiesService = ActivitiesService;
 exports.ActivitiesService = ActivitiesService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(activity_entity_1.Activity)),
-    __metadata("design:paramtypes", [typeorm_2.Repository])
+    __param(1, (0, common_1.Inject)((0, common_1.forwardRef)(() => projects_service_1.ProjectsService))),
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        projects_service_1.ProjectsService])
 ], ActivitiesService);
 //# sourceMappingURL=activities.service.js.map

@@ -11,7 +11,6 @@ export interface DashboardStats {
     completed_phases: number;
     in_progress_phases: number;
     total_budget: number;
-    spent_budget: number;
   };
   monthly_growth: number;
   total_project_values: number;
@@ -42,7 +41,6 @@ export function calculateStatsFromProjects(
     completed_phases: 0,
     in_progress_phases: 0,
     total_budget: 0,
-    spent_budget: 0,
   };
 
   projects.forEach((project) => {
@@ -56,10 +54,6 @@ export function calculateStatsFromProjects(
     ).length;
     phaseStats.total_budget += projectPhases.reduce(
       (sum, phase) => sum + (phase.budget || 0),
-      0
-    );
-    phaseStats.spent_budget += projectPhases.reduce(
-      (sum, phase) => sum + (phase.spent || 0),
       0
     );
   });

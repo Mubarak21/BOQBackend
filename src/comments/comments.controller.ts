@@ -48,4 +48,6 @@ export class CommentsController {
   remove(@Param("id") id: string, @Request() req) {
     return this.commentsService.remove(id, req.user.id);
   }
+
+  // qodo: i want for people to be bale to answer each others comments
 }

@@ -4,9 +4,11 @@ import { User } from "../entities/user.entity";
 import { Project } from "../entities/project.entity";
 import { Task } from "../entities/task.entity";
 import { Phase } from "../entities/phase.entity";
+import { ProjectsService } from "../projects/projects.service";
 export declare class ActivitiesService {
     private activitiesRepository;
-    constructor(activitiesRepository: Repository<Activity>);
+    private readonly projectsService;
+    constructor(activitiesRepository: Repository<Activity>, projectsService: ProjectsService);
     createActivity(type: ActivityType, description: string, user: User, project: Project, phaseOrTask: Phase | Task | null, metadata?: any): Promise<Activity>;
     getProjectActivities(projectId: string, limit?: number, offset?: number): Promise<Activity[]>;
     getUserActivities(userId: string, limit?: number, offset?: number): Promise<Activity[]>;
@@ -23,4 +25,6 @@ export declare class ActivitiesService {
     logCommentAdded(user: User, project: Project, task: Task): Promise<Activity>;
     logCollaboratorAdded(user: User, project: Project, collaborator: User): Promise<Activity>;
     getPhaseActivities(phaseId: string, limit?: number, offset?: number): Promise<Activity[]>;
+    logJoinRequest(owner: User, project: Project, requester: User): Promise<Activity>;
+    getUserProjectActivities(userId: string, limit?: number, offset?: number): Promise<Activity[]>;
 }

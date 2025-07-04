@@ -22,22 +22,17 @@ const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const users_service_1 = require("../users/users.service");
 const create_phase_dto_1 = require("./dto/create-phase.dto");
 const update_phase_dto_1 = require("./dto/update-phase.dto");
-const collaboration_request_entity_1 = require("../entities/collaboration-request.entity");
-const typeorm_1 = require("@nestjs/typeorm");
-const typeorm_2 = require("typeorm");
 let ProjectsController = class ProjectsController {
-    constructor(projectsService, usersService, collaborationRequestRepository) {
+    constructor(projectsService, usersService) {
         this.projectsService = projectsService;
         this.usersService = usersService;
-        this.collaborationRequestRepository = collaborationRequestRepository;
     }
     create(createProjectDto, req) {
         return this.projectsService.create(createProjectDto, req.user);
     }
-    async findAll(req) {
-        const all = req.query.all === "true";
-        const projects = await this.projectsService.findAll(req.user.id, all);
-        return projects;
+    async findAll() {
+        const projects = await this.projectsService.findAll();
+        return Promise.all(projects.map((p) => this.projectsService.getProjectResponse(p)));
     }
     async findOne(id, req) {
         const project = await this.projectsService.findOne(id, req.user.id);
@@ -55,33 +50,6 @@ let ProjectsController = class ProjectsController {
     }
     removeCollaborator(id, userId, req) {
         return this.projectsService.removeCollaborator(id, userId, req.user.id);
-    }
-    async inviteCollaborator(id, userId, req) {
-        const project = await this.projectsService.findOne(id, req.user.id);
-        if (project.owner_id !== req.user.id) {
-            throw new common_1.ForbiddenException("Only the project owner can invite collaborators");
-        }
-        if (project.collaborators?.some((c) => c.id === userId)) {
-            throw new common_1.BadRequestException("User is already a collaborator");
-        }
-        const existing = await this.collaborationRequestRepository.findOne({
-            where: {
-                projectId: id,
-                userId,
-                status: collaboration_request_entity_1.CollaborationRequestStatus.PENDING,
-            },
-        });
-        if (existing) {
-            throw new common_1.BadRequestException("User already has a pending invite");
-        }
-        const invite = this.collaborationRequestRepository.create({
-            projectId: id,
-            userId,
-            inviterId: req.user.id,
-            status: collaboration_request_entity_1.CollaborationRequestStatus.PENDING,
-        });
-        await this.collaborationRequestRepository.save(invite);
-        return { message: "Invitation sent" };
     }
     async uploadBoq(id, file, req) {
         if (!file) {
@@ -119,6 +87,27 @@ let ProjectsController = class ProjectsController {
     findAllProjects() {
         return this.projectsService.findAllProjects();
     }
+    async createJoinRequest(projectId, req) {
+        return this.projectsService.createJoinRequest(projectId, req.user.id);
+    }
+    async listJoinRequestsForProject(projectId, req) {
+        return this.projectsService.listJoinRequestsForProject(projectId, req.user.id);
+    }
+    async approveJoinRequest(projectId, requestId, req) {
+        return this.projectsService.approveJoinRequest(projectId, requestId, req.user.id);
+    }
+    async denyJoinRequest(projectId, requestId, req) {
+        return this.projectsService.denyJoinRequest(projectId, requestId, req.user.id);
+    }
+    async listMyJoinRequests(req) {
+        return this.projectsService.listMyJoinRequests(req.user.id);
+    }
+    async listJoinRequestsForOwner(req) {
+        return this.projectsService.listJoinRequestsForOwner(req.user.id);
+    }
+    async getAvailablePhaseTasks(id, req) {
+        return this.projectsService.getAvailablePhaseTasks(id, req.user.id);
+    }
 };
 exports.ProjectsController = ProjectsController;
 __decorate([
@@ -131,9 +120,8 @@ __decorate([
 ], ProjectsController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
-    __param(0, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "findAll", null);
 __decorate([
@@ -179,15 +167,6 @@ __decorate([
     __metadata("design:paramtypes", [String, String, Object]),
     __metadata("design:returntype", void 0)
 ], ProjectsController.prototype, "removeCollaborator", null);
-__decorate([
-    (0, common_1.Post)(":id/collaborators/invite"),
-    __param(0, (0, common_1.Param)("id")),
-    __param(1, (0, common_1.Body)("userId")),
-    __param(2, (0, common_1.Request)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, Object]),
-    __metadata("design:returntype", Promise)
-], ProjectsController.prototype, "inviteCollaborator", null);
 __decorate([
     (0, common_1.Post)(":id/boq"),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)("file")),
@@ -255,12 +234,66 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], ProjectsController.prototype, "findAllProjects", null);
+__decorate([
+    (0, common_1.Post)(":projectId/join-request"),
+    __param(0, (0, common_1.Param)("projectId")),
+    __param(1, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "createJoinRequest", null);
+__decorate([
+    (0, common_1.Get)(":projectId/join-requests"),
+    __param(0, (0, common_1.Param)("projectId")),
+    __param(1, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "listJoinRequestsForProject", null);
+__decorate([
+    (0, common_1.Post)(":projectId/join-requests/:requestId/approve"),
+    __param(0, (0, common_1.Param)("projectId")),
+    __param(1, (0, common_1.Param)("requestId")),
+    __param(2, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "approveJoinRequest", null);
+__decorate([
+    (0, common_1.Post)(":projectId/join-requests/:requestId/deny"),
+    __param(0, (0, common_1.Param)("projectId")),
+    __param(1, (0, common_1.Param)("requestId")),
+    __param(2, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "denyJoinRequest", null);
+__decorate([
+    (0, common_1.Get)("/my/join-requests"),
+    __param(0, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "listMyJoinRequests", null);
+__decorate([
+    (0, common_1.Get)("/owner/join-requests"),
+    __param(0, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "listJoinRequestsForOwner", null);
+__decorate([
+    (0, common_1.Get)(":id/available-phase-tasks"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "getAvailablePhaseTasks", null);
 exports.ProjectsController = ProjectsController = __decorate([
     (0, common_1.Controller)("projects"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
-    __param(2, (0, typeorm_1.InjectRepository)(collaboration_request_entity_1.CollaborationRequest)),
     __metadata("design:paramtypes", [projects_service_1.ProjectsService,
-        users_service_1.UsersService,
-        typeorm_2.Repository])
+        users_service_1.UsersService])
 ], ProjectsController);
 //# sourceMappingURL=projects.controller.js.map

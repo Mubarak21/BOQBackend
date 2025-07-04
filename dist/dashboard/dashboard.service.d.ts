@@ -19,7 +19,6 @@ export declare class DashboardService {
             completedPhases: any;
             inProgressPhases: any;
             totalBudget: any;
-            spentBudget: any;
         };
         completion_rate: number;
         total_tasks: number;

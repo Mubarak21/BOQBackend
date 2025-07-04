@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { Project } from "../entities/project.entity";
 import { Task } from "../entities/task.entity";
@@ -12,17 +12,34 @@ import { TasksModule } from "../tasks/tasks.module";
 import { ProjectAccessService } from "./services/project-access.service";
 import { CollaborationRequest } from "../entities/collaboration-request.entity";
 import { CollaborationRequestsController } from "../collaboration-requests.controller";
+import { ProjectAccessRequest } from "../entities/project-access-request.entity";
+import { CommentsModule } from "../comments/comments.module";
+import { SubPhase } from "../entities/sub-phase.entity";
+import { SubPhasesController } from "./subphases.controller";
+import { SubPhasesService } from "./subphases.service";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Project, Task, Phase, CollaborationRequest]),
+    TypeOrmModule.forFeature([
+      Project,
+      Task,
+      Phase,
+      SubPhase,
+      CollaborationRequest,
+      ProjectAccessRequest,
+    ]),
     UsersModule,
     AuthModule,
-    ActivitiesModule,
+    forwardRef(() => ActivitiesModule),
     TasksModule,
+    forwardRef(() => CommentsModule),
   ],
-  providers: [ProjectsService, ProjectAccessService],
-  controllers: [ProjectsController, CollaborationRequestsController],
-  exports: [ProjectsService],
+  providers: [ProjectsService, ProjectAccessService, SubPhasesService],
+  controllers: [
+    ProjectsController,
+    CollaborationRequestsController,
+    SubPhasesController,
+  ],
+  exports: [ProjectsService, TypeOrmModule],
 })
 export class ProjectsModule {}

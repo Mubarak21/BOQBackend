@@ -27,6 +27,10 @@ export class CreateTaskDto {
   @IsOptional()
   phase_id?: string;
 
+  @IsUUID()
+  @IsOptional()
+  id?: string;
+
   @ValidateNested({ each: true })
   @Type(() => CreateTaskDto)
   @IsOptional()

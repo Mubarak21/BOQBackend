@@ -11,4 +11,6 @@ export declare class CommentsService {
     create(createCommentDto: CreateCommentDto, author: User): Promise<Comment>;
     update(id: string, updateCommentDto: UpdateCommentDto, userId: string): Promise<Comment>;
     remove(id: string, userId: string): Promise<void>;
+    listConsultantFeedbackByProject(projectId: string): Promise<any[]>;
+    createConsultantFeedback(projectId: string, content: string, author: User): Promise<any>;
 }

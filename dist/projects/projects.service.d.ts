@@ -1,5 +1,5 @@
 import { Repository } from "typeorm";
-import { Project } from "../entities/project.entity";
+import { Project, ProjectStatus, ProjectPriority } from "../entities/project.entity";
 import { User } from "../entities/user.entity";
 import { Task } from "../entities/task.entity";
 import { CreateProjectDto } from "./dto/create-project.dto";
@@ -10,8 +10,7 @@ import { CreatePhaseDto } from "./dto/create-phase.dto";
 import { UpdatePhaseDto } from "./dto/update-phase.dto";
 import { Phase } from "../entities/phase.entity";
 import { TasksService } from "../tasks/tasks.service";
-import { ProjectResponseDto, PublicProjectResponseDto } from "./dto/project-response.dto";
-import { ProjectAccessService } from "./services/project-access.service";
+import { ProjectAccessRequest } from "../entities/project-access-request.entity";
 export interface ProcessBoqResult {
     message: string;
     totalAmount: number;
@@ -21,12 +20,12 @@ export declare class ProjectsService {
     private readonly projectsRepository;
     private readonly tasksRepository;
     private readonly phasesRepository;
+    private readonly accessRequestRepository;
     private readonly usersService;
     private readonly activitiesService;
     private readonly tasksService;
-    private readonly projectAccessService;
-    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService, projectAccessService: ProjectAccessService);
-    findAll(userId: string, all?: boolean): Promise<ProjectResponseDto[]>;
+    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, accessRequestRepository: Repository<ProjectAccessRequest>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService);
+    findAll(): Promise<Project[]>;
     findOne(id: string, userId?: string): Promise<Project>;
     create(createProjectDto: CreateProjectDto, owner: User): Promise<Project>;
     update(id: string, updateProjectDto: UpdateProjectDto, userId: string): Promise<Project>;
@@ -39,15 +38,42 @@ export declare class ProjectsService {
     deletePhase(projectId: string, phaseId: string, userId: string): Promise<void>;
     getProjectPhases(projectId: string, userId: string): Promise<Phase[]>;
     getAvailableAssignees(projectId: string): Promise<User[]>;
-    getProjectResponse(project: Project, userId?: string): Promise<ProjectResponseDto | PublicProjectResponseDto>;
+    getProjectResponse(project: Project): Promise<any>;
     findAllProjects(): Promise<Project[]>;
     joinProject(projectId: string, user: User): Promise<Project>;
+    createJoinRequest(projectId: string, requesterId: string): Promise<ProjectAccessRequest>;
+    listJoinRequestsForProject(projectId: string, ownerId: string): Promise<ProjectAccessRequest[]>;
+    approveJoinRequest(projectId: string, requestId: string, ownerId: string): Promise<ProjectAccessRequest>;
+    denyJoinRequest(projectId: string, requestId: string, ownerId: string): Promise<ProjectAccessRequest>;
+    listMyJoinRequests(userId: string): Promise<ProjectAccessRequest[]>;
+    listJoinRequestsForOwner(ownerId: string): Promise<ProjectAccessRequest[]>;
+    getAvailablePhaseTasks(projectId: string, userId: string): Promise<Task[]>;
     private hasProjectAccess;
     private getValidatedCollaborators;
-    private validateAssignee;
     private parseAmount;
     private parseBoqFile;
     private getColumnMappings;
     private createTasksFromBoqData;
     private createTasksRecursive;
+    getConsultantProjectSummary(project: Project): {
+        id: string;
+        title: string;
+        description: string;
+        status: ProjectStatus;
+        priority: ProjectPriority;
+        start_date: Date;
+        end_date: Date;
+        total_amount: number;
+        tags: string[];
+        created_at: Date;
+        updated_at: Date;
+        department: {
+            id: string;
+            name: string;
+        };
+    };
+    getAllConsultantProjects(): Promise<any[]>;
+    getConsultantProjectDetails(id: string): Promise<any>;
+    getConsultantProjectPhases(projectId: string): Promise<any[]>;
+    getConsultantProjectTasks(projectId: string): Promise<any[]>;
 }

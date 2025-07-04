@@ -9,11 +9,19 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Phase = void 0;
+exports.Phase = exports.PhaseStatus = void 0;
 const typeorm_1 = require("typeorm");
 const project_entity_1 = require("./project.entity");
 const task_entity_1 = require("./task.entity");
 const user_entity_1 = require("./user.entity");
+const sub_phase_entity_1 = require("./sub-phase.entity");
+var PhaseStatus;
+(function (PhaseStatus) {
+    PhaseStatus["NOT_STARTED"] = "not_started";
+    PhaseStatus["IN_PROGRESS"] = "in_progress";
+    PhaseStatus["COMPLETED"] = "completed";
+    PhaseStatus["DELAYED"] = "delayed";
+})(PhaseStatus || (exports.PhaseStatus = PhaseStatus = {}));
 let Phase = class Phase {
 };
 exports.Phase = Phase;
@@ -46,15 +54,15 @@ __decorate([
     __metadata("design:type", Number)
 ], Phase.prototype, "budget", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "decimal", precision: 10, scale: 2, nullable: true }),
-    __metadata("design:type", Number)
-], Phase.prototype, "spent", void 0);
-__decorate([
     (0, typeorm_1.Column)({ type: "decimal", precision: 5, scale: 2, nullable: true }),
     __metadata("design:type", Number)
 ], Phase.prototype, "progress", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({
+        type: "enum",
+        enum: PhaseStatus,
+        default: PhaseStatus.NOT_STARTED,
+    }),
     __metadata("design:type", String)
 ], Phase.prototype, "status", void 0);
 __decorate([
@@ -90,19 +98,6 @@ __decorate([
     __metadata("design:type", Date)
 ], Phase.prototype, "updated_at", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => Phase, (phase) => phase.sub_phases, { nullable: true }),
-    (0, typeorm_1.JoinColumn)({ name: "parent_phase_id" }),
-    __metadata("design:type", Phase)
-], Phase.prototype, "parent_phase", void 0);
-__decorate([
-    (0, typeorm_1.OneToMany)(() => Phase, (phase) => phase.parent_phase),
-    __metadata("design:type", Array)
-], Phase.prototype, "sub_phases", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", String)
-], Phase.prototype, "parent_phase_id", void 0);
-__decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
 ], Phase.prototype, "work_description", void 0);
@@ -134,6 +129,13 @@ __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
 ], Phase.prototype, "reference_task_id", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => sub_phase_entity_1.SubPhase, (subPhase) => subPhase.phase, {
+        cascade: true,
+        eager: true,
+    }),
+    __metadata("design:type", Array)
+], Phase.prototype, "subPhases", void 0);
 exports.Phase = Phase = __decorate([
     (0, typeorm_1.Entity)()
 ], Phase);

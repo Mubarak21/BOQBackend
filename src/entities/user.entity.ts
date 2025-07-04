@@ -6,14 +6,18 @@ import {
   UpdateDateColumn,
   OneToMany,
   ManyToMany,
+  ManyToOne,
+  JoinColumn,
 } from "typeorm";
 import { Project } from "./project.entity";
 import { Task } from "./task.entity";
 import { Comment } from "./comment.entity";
+import { Department } from "./department.entity";
 
 export enum UserRole {
   USER = "user",
   ADMIN = "admin",
+  CONSULTANT = "consultant",
 }
 
 @Entity("users")
@@ -67,4 +71,13 @@ export class User {
 
   @OneToMany(() => Comment, (comment) => comment.author)
   comments: Comment[];
+
+  @Column({ nullable: true })
+  department_id: string;
+
+  @ManyToOne(() => Department, (department) => department.users, {
+    nullable: true,
+  })
+  @JoinColumn({ name: "department_id" })
+  department: Department;
 }

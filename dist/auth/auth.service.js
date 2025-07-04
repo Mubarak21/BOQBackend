@@ -20,11 +20,13 @@ const jwt_1 = require("@nestjs/jwt");
 const user_entity_1 = require("../entities/user.entity");
 const bcrypt = require("bcrypt");
 const config_1 = require("@nestjs/config");
+const department_entity_1 = require("../entities/department.entity");
 let AuthService = class AuthService {
-    constructor(userRepository, jwtService, configService) {
+    constructor(userRepository, jwtService, configService, departmentRepository) {
         this.userRepository = userRepository;
         this.jwtService = jwtService;
         this.configService = configService;
+        this.departmentRepository = departmentRepository;
         this.tokenBlacklist = new Set();
     }
     async register(createUserDto) {
@@ -35,9 +37,39 @@ let AuthService = class AuthService {
             throw new common_1.UnauthorizedException("Email already exists");
         }
         const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+        let departmentId = undefined;
+        if (createUserDto.departmentId) {
+            departmentId = createUserDto.departmentId;
+        }
+        else if (createUserDto.department) {
+            let department = await this.departmentRepository.findOne({
+                where: { name: createUserDto.department },
+            });
+            if (!department) {
+                try {
+                    department = this.departmentRepository.create({
+                        name: createUserDto.department,
+                    });
+                    department = await this.departmentRepository.save(department);
+                }
+                catch (err) {
+                    department = await this.departmentRepository.findOne({
+                        where: { name: createUserDto.department },
+                    });
+                    if (!department)
+                        throw err;
+                }
+            }
+            departmentId = department.id;
+        }
         const user = this.userRepository.create({
-            ...createUserDto,
+            display_name: createUserDto.display_name,
+            email: createUserDto.email,
             password: hashedPassword,
+            bio: createUserDto.bio,
+            avatar_url: createUserDto.avatar_url,
+            notification_preferences: createUserDto.notification_preferences,
+            department_id: departmentId,
         });
         await this.userRepository.save(user);
         const { password, ...result } = user;
@@ -102,6 +134,7 @@ let AuthService = class AuthService {
             sub: user.id,
             email: user.email,
             type: "access",
+            role: user.role,
         };
         return this.jwtService.sign(payload, {
             secret: this.configService.get("JWT_SECRET"),
@@ -113,6 +146,7 @@ let AuthService = class AuthService {
             sub: user.id,
             email: user.email,
             type: "refresh",
+            role: user.role,
         };
         return this.jwtService.sign(payload, {
             secret: this.configService.get("JWT_REFRESH_SECRET"),
@@ -177,8 +211,10 @@ exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
+    __param(3, (0, typeorm_1.InjectRepository)(department_entity_1.Department)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         jwt_1.JwtService,
-        config_1.ConfigService])
+        config_1.ConfigService,
+        typeorm_2.Repository])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

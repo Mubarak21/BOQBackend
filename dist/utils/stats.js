@@ -20,7 +20,6 @@ function calculateStatsFromProjects(projects) {
         completed_phases: 0,
         in_progress_phases: 0,
         total_budget: 0,
-        spent_budget: 0,
     };
     projects.forEach((project) => {
         const projectPhases = project.phases || [];
@@ -28,7 +27,6 @@ function calculateStatsFromProjects(projects) {
         phaseStats.completed_phases += projectPhases.filter((phase) => phase.status === "completed").length;
         phaseStats.in_progress_phases += projectPhases.filter((phase) => phase.status === "in_progress").length;
         phaseStats.total_budget += projectPhases.reduce((sum, phase) => sum + (phase.budget || 0), 0);
-        phaseStats.spent_budget += projectPhases.reduce((sum, phase) => sum + (phase.spent || 0), 0);
     });
     const lastMonthProjects = projects.filter((project) => project.created_at >= lastMonth && project.created_at < thisMonth).length;
     const thisMonthProjects = projects.filter((project) => project.created_at >= thisMonth && project.created_at <= now).length;

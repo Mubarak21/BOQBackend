@@ -15,6 +15,7 @@ const user_entity_1 = require("./user.entity");
 const task_entity_1 = require("./task.entity");
 const comment_entity_1 = require("./comment.entity");
 const phase_entity_1 = require("./phase.entity");
+const department_entity_1 = require("./department.entity");
 var ProjectStatus;
 (function (ProjectStatus) {
     ProjectStatus["PLANNING"] = "planning";
@@ -127,6 +128,17 @@ __decorate([
     (0, typeorm_1.OneToMany)(() => comment_entity_1.Comment, (comment) => comment.project),
     __metadata("design:type", Array)
 ], Project.prototype, "comments", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], Project.prototype, "department_id", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => department_entity_1.Department, (department) => department.projects, {
+        nullable: true,
+    }),
+    (0, typeorm_1.JoinColumn)({ name: "department_id" }),
+    __metadata("design:type", department_entity_1.Department)
+], Project.prototype, "department", void 0);
 exports.Project = Project = __decorate([
     (0, typeorm_1.Entity)()
 ], Project);

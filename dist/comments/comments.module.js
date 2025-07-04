@@ -25,12 +25,12 @@ exports.CommentsModule = CommentsModule = __decorate([
             typeorm_1.TypeOrmModule.forFeature([comment_entity_1.Comment]),
             auth_module_1.AuthModule,
             users_module_1.UsersModule,
-            projects_module_1.ProjectsModule,
-            tasks_module_1.TasksModule,
+            (0, common_1.forwardRef)(() => projects_module_1.ProjectsModule),
+            (0, common_1.forwardRef)(() => tasks_module_1.TasksModule),
         ],
         providers: [comments_service_1.CommentsService],
         controllers: [comments_controller_1.CommentsController],
-        exports: [comments_service_1.CommentsService],
+        exports: [comments_service_1.CommentsService, typeorm_1.TypeOrmModule],
     })
 ], CommentsModule);
 //# sourceMappingURL=comments.module.js.map

@@ -6,23 +6,17 @@ import { RequestWithUser } from "../auth/interfaces/request-with-user.interface"
 import { CreatePhaseDto } from "./dto/create-phase.dto";
 import { UpdatePhaseDto } from "./dto/update-phase.dto";
 import { Phase } from "../entities/phase.entity";
-import { CollaborationRequest } from "../entities/collaboration-request.entity";
-import { Repository } from "typeorm";
 export declare class ProjectsController {
     private readonly projectsService;
     private readonly usersService;
-    private readonly collaborationRequestRepository;
-    constructor(projectsService: ProjectsService, usersService: UsersService, collaborationRequestRepository: Repository<CollaborationRequest>);
+    constructor(projectsService: ProjectsService, usersService: UsersService);
     create(createProjectDto: CreateProjectDto, req: any): Promise<import("../entities/project.entity").Project>;
-    findAll(req: any): Promise<import("./dto/project-response.dto").ProjectResponseDto[]>;
-    findOne(id: string, req: RequestWithUser): Promise<import("./dto/project-response.dto").ProjectResponseDto | import("./dto/project-response.dto").PublicProjectResponseDto>;
+    findAll(): Promise<any[]>;
+    findOne(id: string, req: RequestWithUser): Promise<any>;
     update(id: string, updateProjectDto: UpdateProjectDto, req: any): Promise<import("../entities/project.entity").Project>;
     remove(id: string, req: any): Promise<void>;
     addCollaborator(id: string, userId: string, req: any): Promise<import("../entities/project.entity").Project>;
     removeCollaborator(id: string, userId: string, req: any): Promise<import("../entities/project.entity").Project>;
-    inviteCollaborator(id: string, userId: string, req: any): Promise<{
-        message: string;
-    }>;
     uploadBoq(id: string, file: Express.Multer.File, req: RequestWithUser): Promise<ProcessBoqResult>;
     createPhase(id: string, createPhaseDto: CreatePhaseDto, req: RequestWithUser): Promise<Phase>;
     getProjectPhases(id: string, req: RequestWithUser): Promise<Phase[]>;
@@ -33,4 +27,11 @@ export declare class ProjectsController {
     }>;
     joinProject(id: string, req: any): Promise<import("../entities/project.entity").Project>;
     findAllProjects(): Promise<import("../entities/project.entity").Project[]>;
+    createJoinRequest(projectId: string, req: any): Promise<import("../entities/project-access-request.entity").ProjectAccessRequest>;
+    listJoinRequestsForProject(projectId: string, req: any): Promise<import("../entities/project-access-request.entity").ProjectAccessRequest[]>;
+    approveJoinRequest(projectId: string, requestId: string, req: any): Promise<import("../entities/project-access-request.entity").ProjectAccessRequest>;
+    denyJoinRequest(projectId: string, requestId: string, req: any): Promise<import("../entities/project-access-request.entity").ProjectAccessRequest>;
+    listMyJoinRequests(req: any): Promise<import("../entities/project-access-request.entity").ProjectAccessRequest[]>;
+    listJoinRequestsForOwner(req: any): Promise<import("../entities/project-access-request.entity").ProjectAccessRequest[]>;
+    getAvailablePhaseTasks(id: string, req: RequestWithUser): Promise<any[]>;
 }

@@ -12,10 +12,11 @@ const jwt_1 = require("@nestjs/jwt");
 const typeorm_1 = require("@nestjs/typeorm");
 const config_1 = require("@nestjs/config");
 const auth_service_1 = require("./auth.service");
-const auth_controller_1 = require("./auth.controller");
 const jwt_auth_guard_1 = require("./guards/jwt-auth.guard");
 const rate_limit_guard_1 = require("./guards/rate-limit.guard");
 const user_entity_1 = require("../entities/user.entity");
+const auth_controller_1 = require("./auth.controller");
+const department_entity_1 = require("../entities/department.entity");
 let AuthModule = class AuthModule {
 };
 exports.AuthModule = AuthModule;
@@ -33,7 +34,7 @@ exports.AuthModule = AuthModule = __decorate([
                 }),
                 inject: [config_1.ConfigService],
             }),
-            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User]),
+            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, department_entity_1.Department]),
         ],
         controllers: [auth_controller_1.AuthController],
         providers: [

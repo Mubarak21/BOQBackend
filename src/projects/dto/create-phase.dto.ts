@@ -5,10 +5,13 @@ import {
   IsISO8601,
   Min,
   Max,
+  IsEnum,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ValidateNested } from "class-validator";
 import { CreateTaskDto } from "../../tasks/dto/create-task.dto";
+import { CreateSubPhaseDto } from "./create-sub-phase.dto";
+import { PhaseStatus } from "../../entities/phase.entity";
 
 export class CreatePhaseDto {
   @IsString()
@@ -18,10 +21,6 @@ export class CreatePhaseDto {
   @IsString()
   @IsOptional()
   description?: string;
-
-  @IsString()
-  @IsOptional()
-  workDescription?: string;
 
   @IsString()
   @IsOptional()
@@ -58,17 +57,7 @@ export class CreatePhaseDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
-  estimatedHours?: number;
-
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
   budget?: number;
-
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  spent?: number;
 
   @IsNumber()
   @Min(0)
@@ -76,13 +65,9 @@ export class CreatePhaseDto {
   @IsOptional()
   progress?: number;
 
-  @IsString()
+  @IsEnum(PhaseStatus)
   @IsOptional()
-  status?: string;
-
-  @IsString()
-  @IsOptional()
-  assigneeId?: string;
+  status?: PhaseStatus;
 
   @IsString()
   @IsOptional()
@@ -96,4 +81,9 @@ export class CreatePhaseDto {
   @Type(() => CreateTaskDto)
   @IsOptional()
   tasks?: CreateTaskDto[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => CreateSubPhaseDto)
+  subPhases?: CreateSubPhaseDto[];
 }

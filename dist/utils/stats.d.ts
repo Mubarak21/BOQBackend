@@ -9,7 +9,6 @@ export interface DashboardStats {
         completed_phases: number;
         in_progress_phases: number;
         total_budget: number;
-        spent_budget: number;
     };
     monthly_growth: number;
     total_project_values: number;

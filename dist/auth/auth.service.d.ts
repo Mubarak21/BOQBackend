@@ -3,12 +3,14 @@ import { JwtService } from "@nestjs/jwt";
 import { User } from "../entities/user.entity";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { ConfigService } from "@nestjs/config";
+import { Department } from "../entities/department.entity";
 export declare class AuthService {
     private userRepository;
     private jwtService;
     private configService;
+    private departmentRepository;
     private readonly tokenBlacklist;
-    constructor(userRepository: Repository<User>, jwtService: JwtService, configService: ConfigService);
+    constructor(userRepository: Repository<User>, jwtService: JwtService, configService: ConfigService, departmentRepository: Repository<Department>);
     register(createUserDto: CreateUserDto): Promise<{
         access_token: string;
         refresh_token: string;

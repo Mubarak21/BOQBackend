@@ -1,8 +1,9 @@
 import { CreateTaskDto } from "../../tasks/dto/create-task.dto";
+import { CreateSubPhaseDto } from "./create-sub-phase.dto";
+import { PhaseStatus } from "../../entities/phase.entity";
 export declare class CreatePhaseDto {
     title?: string;
     description?: string;
-    workDescription?: string;
     deliverables?: string;
     requirements?: string;
     risks?: string;
@@ -11,13 +12,11 @@ export declare class CreatePhaseDto {
     startDate?: string;
     endDate?: string;
     dueDate?: string;
-    estimatedHours?: number;
     budget?: number;
-    spent?: number;
     progress?: number;
-    status?: string;
-    assigneeId?: string;
+    status?: PhaseStatus;
     parentPhaseId?: string;
     referenceTaskId?: string;
     tasks?: CreateTaskDto[];
+    subPhases?: CreateSubPhaseDto[];
 }

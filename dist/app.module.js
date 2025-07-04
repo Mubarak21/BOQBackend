@@ -24,6 +24,11 @@ const tasks_module_1 = require("./tasks/tasks.module");
 const comments_module_1 = require("./comments/comments.module");
 const dashboard_module_1 = require("./dashboard/dashboard.module");
 const activities_module_1 = require("./activities/activities.module");
+const departments_module_1 = require("./departments/departments.module");
+const department_entity_1 = require("./entities/department.entity");
+const seed_command_1 = require("./commands/seed.command");
+const consultant_module_1 = require("./consultant/consultant.module");
+const sub_phase_entity_1 = require("./entities/sub-phase.entity");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -38,9 +43,19 @@ exports.AppModule = AppModule = __decorate([
                 username: process.env.DB_USERNAME || "postgres",
                 password: process.env.DB_PASSWORD || "postgres",
                 database: process.env.DB_DATABASE || "project_tracker_db",
-                entities: [user_entity_1.User, project_entity_1.Project, task_entity_1.Task, comment_entity_1.Comment, activity_entity_1.Activity, phase_entity_1.Phase],
+                entities: [
+                    user_entity_1.User,
+                    project_entity_1.Project,
+                    task_entity_1.Task,
+                    comment_entity_1.Comment,
+                    activity_entity_1.Activity,
+                    phase_entity_1.Phase,
+                    department_entity_1.Department,
+                    sub_phase_entity_1.SubPhase,
+                ],
                 synchronize: process.env.NODE_ENV !== "production",
             }),
+            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, department_entity_1.Department]),
             auth_module_1.AuthModule,
             users_module_1.UsersModule,
             projects_module_1.ProjectsModule,
@@ -48,8 +63,11 @@ exports.AppModule = AppModule = __decorate([
             comments_module_1.CommentsModule,
             dashboard_module_1.DashboardModule,
             activities_module_1.ActivitiesModule,
+            departments_module_1.DepartmentsModule,
             nestjs_command_1.CommandModule,
+            consultant_module_1.ConsultantModule,
         ],
+        providers: [seed_command_1.SeedService, seed_command_1.SeedCommand],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map
