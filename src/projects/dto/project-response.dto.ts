@@ -8,6 +8,7 @@ export class ProjectResponseDto {
   completedPhases?: number;
   totalPhases: number;
   totalAmount?: number;
+  totalPhasesAmount?: number;
   startDate?: Date;
   estimatedCompletion?: Date;
   owner: string;

@@ -1,0 +1,16 @@
+2025-07-08 12:47:33.243 EAT [31923] LOG:  starting PostgreSQL 14.16 (Homebrew) on x86_64-apple-darwin21.6.0, compiled by Apple clang version 14.0.0 (clang-1400.0.29.202), 64-bit
+2025-07-08 12:47:33.246 EAT [31923] LOG:  listening on IPv6 address "::1", port 5432
+2025-07-08 12:47:33.246 EAT [31923] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-07-08 12:47:33.247 EAT [31923] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-07-08 12:47:33.255 EAT [31924] LOG:  database system was shut down at 2025-07-08 12:47:21 EAT
+2025-07-08 12:47:33.273 EAT [31923] LOG:  database system is ready to accept connections
+2025-07-08 12:47:58.498 EAT [32887] FATAL:  role "postgres" does not exist
+2025-07-08 12:48:18.939 EAT [33772] FATAL:  role "postgres" does not exist
+2025-07-08 12:49:19.704 EAT [35455] FATAL:  role "postgres" does not exist
+2025-07-08 12:50:19.326 EAT [36959] FATAL:  role "postgres" does not exist
+2025-07-08 12:50:22.348 EAT [37061] FATAL:  role "postgres" does not exist
+2025-07-08 12:50:25.355 EAT [37079] FATAL:  role "postgres" does not exist
+2025-07-08 12:50:28.362 EAT [37172] FATAL:  role "postgres" does not exist
+2025-07-08 12:50:31.385 EAT [37213] FATAL:  role "postgres" does not exist
+2025-07-08 12:50:34.403 EAT [37220] FATAL:  role "postgres" does not exist
+2025-07-08 15:02:42.890 EAT [52390] FATAL:  role "postgres" does not exist

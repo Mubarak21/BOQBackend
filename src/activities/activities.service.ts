@@ -115,7 +115,6 @@ export class ActivitiesService {
         phase_number: phaseNumber,
         total_phases: totalPhases,
         budget: phase.budget,
-        estimated_hours: phase.estimated_hours,
       }
     );
   }
@@ -232,7 +231,6 @@ export class ActivitiesService {
         phase_number: phaseNumber,
         total_phases: totalPhases,
         budget: phase.budget,
-        estimated_hours: phase.estimated_hours,
       }
     );
   }

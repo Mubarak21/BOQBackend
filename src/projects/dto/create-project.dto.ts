@@ -41,18 +41,6 @@ export class CreateProjectDto {
   @IsOptional()
   collaborator_ids?: string[];
 
-  @IsString()
-  @IsOptional()
-  boq_file?: string; // Base64 encoded BOQ file
-
-  @IsString()
-  @IsOptional()
-  boq_filename?: string;
-
-  @IsString()
-  @IsOptional()
-  boq_mimetype?: string;
-
   @IsOptional()
   totalAmount?: number;
 }

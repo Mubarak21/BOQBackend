@@ -177,11 +177,11 @@ export class DashboardService {
   private async getTotalProjectValues(userId: string): Promise<number> {
     const projects = await this.projectsRepository.find({
       where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-      select: ["total_amount"],
+      select: ["totalAmount"],
     });
 
     return projects.reduce(
-      (sum, project) => sum + (project.total_amount || 0),
+      (sum, project) => sum + (project.totalAmount || 0),
       0
     );
   }

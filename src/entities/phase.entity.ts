@@ -38,9 +38,6 @@ export class Phase {
   end_date: Date;
 
   @Column({ type: "decimal", precision: 10, scale: 2, nullable: true })
-  estimated_hours: number;
-
-  @Column({ type: "decimal", precision: 10, scale: 2, nullable: true })
   budget: number;
 
   @Column({ type: "decimal", precision: 5, scale: 2, nullable: true })
@@ -52,13 +49,6 @@ export class Phase {
     default: PhaseStatus.NOT_STARTED,
   })
   status: PhaseStatus;
-
-  @Column({ nullable: true })
-  assignee_id: string;
-
-  @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: "assignee_id" })
-  assignee: User;
 
   @ManyToOne(() => Project, (project) => project.phases, {
     onDelete: "CASCADE",
@@ -79,9 +69,6 @@ export class Phase {
   updated_at: Date;
 
   @Column({ nullable: true })
-  work_description: string;
-
-  @Column({ nullable: true })
   deliverables: string;
 
   @Column({ nullable: true })
@@ -89,9 +76,6 @@ export class Phase {
 
   @Column({ nullable: true })
   risks: string;
-
-  @Column({ nullable: true })
-  dependencies: string;
 
   @Column({ nullable: true })
   priority: string;

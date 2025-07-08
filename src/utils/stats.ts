@@ -84,7 +84,7 @@ export function calculateStatsFromProjects(
 
   // Calculate total project values
   const totalProjectValues = projects.reduce(
-    (sum, project) => sum + (project.total_amount || 0),
+    (sum, project) => sum + (project.totalAmount || 0),
     0
   );
 

@@ -62,17 +62,16 @@ export class Project {
   @Column({ type: "timestamp", nullable: true })
   end_date: Date;
 
+  @Column({
+    type: "decimal",
+    precision: 20,
+    scale: 2,
+    default: 0,
+  })
+  totalAmount: string;
+
   @Column({ type: "decimal", precision: 10, scale: 2, default: 0 })
-  total_amount: number;
-
-  @Column({ type: "bytea", nullable: true })
-  boq_file: Buffer;
-
-  @Column({ nullable: true })
-  boq_filename: string;
-
-  @Column({ nullable: true })
-  boq_mimetype: string;
+  total_phases: number;
 
   @Column()
   owner_id: string;

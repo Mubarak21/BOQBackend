@@ -36,10 +36,6 @@ export class CreatePhaseDto {
 
   @IsString()
   @IsOptional()
-  dependencies?: string;
-
-  @IsString()
-  @IsOptional()
   priority?: string;
 
   @IsString()

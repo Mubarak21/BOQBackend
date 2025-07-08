@@ -134,7 +134,7 @@ export class ProjectsService {
         : null,
       tags: createProjectDto.tags,
       owner_id: owner.id,
-      total_amount: createProjectDto.totalAmount ?? 0,
+      totalAmount: createProjectDto.totalAmount ?? 0,
     });
 
     // Handle collaborators if provided
@@ -282,7 +282,7 @@ export class ProjectsService {
       const tasks = await this.createTasksFromBoqData(data, projectId);
 
       // Update project with total amount
-      project.total_amount = totalAmount;
+      project.totalAmount = totalAmount;
       await this.projectsRepository.save(project);
 
       // Log activities
@@ -352,7 +352,6 @@ export class ProjectsService {
       deliverables: createPhaseDto.deliverables,
       requirements: createPhaseDto.requirements,
       risks: createPhaseDto.risks,
-      dependencies: createPhaseDto.dependencies,
       priority: createPhaseDto.priority,
       start_date: createPhaseDto.startDate,
       end_date: createPhaseDto.endDate,
@@ -377,17 +376,6 @@ export class ProjectsService {
       savedPhase,
       { phaseId: savedPhase.id }
     );
-    // After creating the phase, update the project's total_amount to sum of all phase budgets
-    const phases = await this.phasesRepository.find({
-      where: { project_id: projectId },
-    });
-    const totalAmount = phases.reduce(
-      (sum, phase) => sum + (Number(phase.budget) || 0),
-      0
-    );
-    await this.projectsRepository.update(projectId, {
-      total_amount: totalAmount,
-    });
     // Create tasks if provided
     if (createPhaseDto.tasks?.length) {
       for (const taskDto of createPhaseDto.tasks) {
@@ -406,6 +394,17 @@ export class ProjectsService {
         }
       }
     }
+    // After creating the phase, update the project's total_phases to sum of all phase budgets
+    const allPhasesForTotal = await this.phasesRepository.find({
+      where: { project_id: projectId },
+    });
+    const totalPhasesAmount = allPhasesForTotal.reduce(
+      (sum, phase) => sum + (Number(phase.budget) || 0),
+      0
+    );
+    await this.projectsRepository.update(projectId, {
+      total_phases: totalPhasesAmount,
+    });
     return savedPhase;
   }
 
@@ -437,7 +436,6 @@ export class ProjectsService {
       deliverables: updatePhaseDto.deliverables,
       requirements: updatePhaseDto.requirements,
       risks: updatePhaseDto.risks,
-      dependencies: updatePhaseDto.dependencies,
       priority: updatePhaseDto.priority,
       start_date: updatePhaseDto.startDate,
       end_date: updatePhaseDto.endDate,
@@ -460,17 +458,6 @@ export class ProjectsService {
       updatedPhase,
       { phaseId: updatedPhase.id }
     );
-    // After updating the phase, update the project's total_amount to sum of all phase budgets
-    const phases = await this.phasesRepository.find({
-      where: { project_id: projectId },
-    });
-    const totalAmount = phases.reduce(
-      (sum, phase) => sum + (Number(phase.budget) || 0),
-      0
-    );
-    await this.projectsRepository.update(projectId, {
-      total_amount: totalAmount,
-    });
     // Log phase completion and overdue
     if (updatePhaseDto.status === "completed" && phase.status !== "completed") {
       const project = await this.projectsRepository.findOne({
@@ -509,6 +496,17 @@ export class ProjectsService {
         );
       }
     }
+    // After updating the phase, update the project's total_phases to sum of all phase budgets
+    const allPhasesForTotal = await this.phasesRepository.find({
+      where: { project_id: projectId },
+    });
+    const totalPhasesAmount = allPhasesForTotal.reduce(
+      (sum, phase) => sum + (Number(phase.budget) || 0),
+      0
+    );
+    await this.projectsRepository.update(projectId, {
+      total_phases: totalPhasesAmount,
+    });
     return updatedPhase;
   }
 
@@ -543,16 +541,16 @@ export class ProjectsService {
       phase,
       { phaseId: phase.id }
     );
-    // After deleting the phase, update the project's total_amount to sum of all phase budgets
-    const phases = await this.phasesRepository.find({
+    // After deleting the phase, update the project's total_phases to sum of all phase budgets
+    const allPhasesForTotal = await this.phasesRepository.find({
       where: { project_id: projectId },
     });
-    const totalAmount = phases.reduce(
+    const totalPhasesAmount = allPhasesForTotal.reduce(
       (sum, phase) => sum + (Number(phase.budget) || 0),
       0
     );
     await this.projectsRepository.update(projectId, {
-      total_amount: totalAmount,
+      total_phases: totalPhasesAmount,
     });
   }
 
@@ -606,7 +604,8 @@ export class ProjectsService {
       progress,
       completedPhases,
       totalPhases,
-      totalAmount: project.total_amount,
+      totalAmount: project.totalAmount,
+      totalPhasesAmount: project.total_phases,
       startDate: project.start_date,
       estimatedCompletion: project.end_date,
       owner: project.owner?.display_name || project.owner_id,
@@ -975,7 +974,7 @@ export class ProjectsService {
       priority: project.priority,
       start_date: project.start_date,
       end_date: project.end_date,
-      total_amount: project.total_amount,
+      totalAmount: project.totalAmount,
       tags: project.tags,
       created_at: project.created_at,
       updated_at: project.updated_at,

@@ -28,10 +28,6 @@ export class UpdatePhaseDto {
   @IsOptional()
   risks?: string;
 
-  @IsString()
-  @IsOptional()
-  dependencies?: string;
-
   @IsISO8601()
   @IsOptional()
   startDate?: string;
