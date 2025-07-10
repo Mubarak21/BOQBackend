@@ -19,14 +19,16 @@ const typeorm_2 = require("typeorm");
 const project_entity_1 = require("../entities/project.entity");
 const user_entity_1 = require("../entities/user.entity");
 const task_entity_1 = require("../entities/task.entity");
+const stats_entity_1 = require("../entities/stats.entity");
 let DashboardService = class DashboardService {
-    constructor(projectsRepository, usersRepository, tasksRepository) {
+    constructor(projectsRepository, usersRepository, tasksRepository, statsRepository) {
         this.projectsRepository = projectsRepository;
         this.usersRepository = usersRepository;
         this.tasksRepository = tasksRepository;
+        this.statsRepository = statsRepository;
     }
     async getStats(userId) {
-        const [totalProjects, activeProjects, completedProjects, totalTeamMembers, phaseStats, monthlyGrowth, totalProjectValues, taskStats, phasePriorityBreakdown, averagePhaseProgress,] = await Promise.all([
+        const [totalProjects, activeProjects, completedProjects, totalTeamMembers, phaseStats, monthlyGrowth, totalProjectValues, taskStats, averagePhaseProgress,] = await Promise.all([
             this.getTotalProjects(userId),
             this.getActiveProjects(userId),
             this.getCompletedProjects(userId),
@@ -35,7 +37,6 @@ let DashboardService = class DashboardService {
             this.getMonthlyGrowth(userId),
             this.getTotalProjectValues(userId),
             this.getTaskStats(userId),
-            this.getPhasePriorityBreakdown(userId),
             this.getAveragePhaseProgress(userId),
         ]);
         return {
@@ -55,8 +56,55 @@ let DashboardService = class DashboardService {
             total_tasks: taskStats.total_tasks,
             tasks_per_phase: taskStats.tasks_per_phase,
             average_phase_progress: averagePhaseProgress,
-            phase_priority_breakdown: phasePriorityBreakdown,
         };
+    }
+    async updateStats() {
+        console.log("updateStats called");
+        const allProjects = await this.projectsRepository.find();
+        console.log("All projects in DB:", allProjects.map((p) => ({ id: p.id, title: p.title })));
+        const totalProjects = allProjects.length;
+        console.log("Total projects found:", totalProjects);
+        const projects = await this.projectsRepository.find({
+            relations: ["collaborators", "owner", "phases"],
+        });
+        const totalValue = projects
+            .reduce((sum, project) => sum + Number(project.totalAmount ?? 0), 0)
+            .toFixed(2);
+        console.log("Total value:", totalValue);
+        const uniqueTeamMembers = new Set();
+        projects.forEach((project) => {
+            project.collaborators?.forEach((collaborator) => uniqueTeamMembers.add(collaborator.id));
+            if (project.owner_id)
+                uniqueTeamMembers.add(project.owner_id);
+        });
+        const teamMembers = uniqueTeamMembers.size;
+        console.log("Team members:", teamMembers);
+        let stats = await this.statsRepository.findOneBy({});
+        if (!stats) {
+            stats = this.statsRepository.create();
+            console.log("Creating new stats row");
+        }
+        else {
+            console.log("Updating existing stats row");
+        }
+        stats.total_projects = totalProjects;
+        stats.total_value = totalValue;
+        stats.team_members = teamMembers;
+        await this.statsRepository.save(stats);
+        console.log("Stats saved:", stats);
+        return stats;
+    }
+    async getStatsFromTable() {
+        let stats = await this.statsRepository.findOneBy({});
+        if (!stats) {
+            return {
+                total_projects: 0,
+                total_value: "0.00",
+                team_members: 0,
+                updated_at: null,
+            };
+        }
+        return stats;
     }
     async getTotalProjects(userId) {
         return this.projectsRepository.count({
@@ -152,9 +200,9 @@ let DashboardService = class DashboardService {
     async getTotalProjectValues(userId) {
         const projects = await this.projectsRepository.find({
             where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-            select: ["total_amount"],
+            select: ["totalAmount"],
         });
-        return projects.reduce((sum, project) => sum + (project.total_amount || 0), 0);
+        return projects.reduce((sum, project) => sum + (project.totalAmount || 0), 0);
     }
     async getProjectProgress(project) {
         const projectPhases = project.phases || [];
@@ -194,23 +242,6 @@ let DashboardService = class DashboardService {
             tasks_per_phase: totalPhases > 0 ? totalTasks / totalPhases : 0,
         };
     }
-    async getPhasePriorityBreakdown(userId) {
-        const projects = await this.projectsRepository.find({
-            where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-            relations: ["phases"],
-        });
-        const breakdown = { low: 0, medium: 0, high: 0, urgent: 0, none: 0 };
-        projects.forEach((project) => {
-            (project.phases || []).forEach((phase) => {
-                const p = (phase.priority || "none").toLowerCase();
-                if (breakdown[p] !== undefined)
-                    breakdown[p]++;
-                else
-                    breakdown.none++;
-            });
-        });
-        return breakdown;
-    }
     async getAveragePhaseProgress(userId) {
         const projects = await this.projectsRepository.find({
             where: [{ owner_id: userId }, { collaborators: { id: userId } }],
@@ -235,7 +266,9 @@ exports.DashboardService = DashboardService = __decorate([
     __param(0, (0, typeorm_1.InjectRepository)(project_entity_1.Project)),
     __param(1, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
     __param(2, (0, typeorm_1.InjectRepository)(task_entity_1.Task)),
+    __param(3, (0, typeorm_1.InjectRepository)(stats_entity_1.Stats)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository])
 ], DashboardService);

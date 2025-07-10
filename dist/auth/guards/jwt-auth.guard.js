@@ -49,7 +49,12 @@ let JwtAuthGuard = JwtAuthGuard_1 = class JwtAuthGuard extends (0, passport_1.Au
                 throw new common_1.UnauthorizedException("Invalid token or user not found");
             }
             request.user = user;
-            request.isConsultant = user.role === "consultant";
+            if (user && "role" in user && user.role === "consultant") {
+                request.isConsultant = true;
+            }
+            else {
+                request.isConsultant = false;
+            }
             return true;
         }
         catch (error) {

@@ -3,8 +3,6 @@ export declare class UpdatePhaseDto {
     description?: string;
     deliverables?: string;
     requirements?: string;
-    risks?: string;
-    dependencies?: string;
     startDate?: string;
     endDate?: string;
     dueDate?: string;
@@ -12,6 +10,5 @@ export declare class UpdatePhaseDto {
     progress?: number;
     status?: string;
     parentPhaseId?: string;
-    priority?: string;
     referenceTaskId?: string;
 }

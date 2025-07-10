@@ -7,8 +7,5 @@ import { DashboardService } from "./dashboard.service";
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
-  @Get("stats")
-  async getStats(@Request() req) {
-    return this.dashboardService.getStats(req.user.id);
-  }
+  // Remove the getStats endpoint and related logic
 }

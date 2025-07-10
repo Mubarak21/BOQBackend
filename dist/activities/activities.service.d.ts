@@ -13,6 +13,7 @@ export declare class ActivitiesService {
     getProjectActivities(projectId: string, limit?: number, offset?: number): Promise<Activity[]>;
     getUserActivities(userId: string, limit?: number, offset?: number): Promise<Activity[]>;
     getRecentActivities(limit?: number, offset?: number): Promise<Activity[]>;
+    countAll(): Promise<number>;
     logBoqUploaded(user: User, project: Project, filename: string, totalPhases: number, totalAmount: number): Promise<Activity>;
     logPhaseCreated(user: User, project: Project, phase: Phase, phaseNumber: number, totalPhases: number): Promise<Activity>;
     logPhaseCompleted(user: User, project: Project, phase: Phase, phaseNumber: number, totalPhases: number): Promise<Activity>;
@@ -27,4 +28,49 @@ export declare class ActivitiesService {
     getPhaseActivities(phaseId: string, limit?: number, offset?: number): Promise<Activity[]>;
     logJoinRequest(owner: User, project: Project, requester: User): Promise<Activity>;
     getUserProjectActivities(userId: string, limit?: number, offset?: number): Promise<Activity[]>;
+    getTrends(period?: string, from?: string, to?: string): Promise<any[]>;
+    adminList({ userId, type, dateFrom, dateTo, projectId, search, page, limit, }: {
+        userId: any;
+        type: any;
+        dateFrom: any;
+        dateTo: any;
+        projectId: any;
+        search?: string;
+        page?: number;
+        limit?: number;
+    }): Promise<{
+        items: {
+            id: string;
+            type: ActivityType;
+            description: string;
+            user: {
+                id: string;
+                name: string;
+                email: string;
+            };
+            project: {
+                id: string;
+                name: string;
+            };
+            timestamp: Date;
+        }[];
+        total: number;
+        page: number;
+        limit: number;
+    }>;
+    adminGetDetails(id: string): Promise<{
+        id: string;
+        type: ActivityType;
+        description: string;
+        user: {
+            id: string;
+            name: string;
+            email: string;
+        };
+        project: {
+            id: string;
+            name: string;
+        };
+        timestamp: Date;
+    }>;
 }

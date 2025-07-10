@@ -1,6 +1,6 @@
 import { Injectable, Inject, forwardRef } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, In } from "typeorm";
+import { Repository, In, Between } from "typeorm";
 import { Activity, ActivityType } from "../entities/activity.entity";
 import { User } from "../entities/user.entity";
 import { Project } from "../entities/project.entity";
@@ -73,6 +73,10 @@ export class ActivitiesService {
       take: limit,
       skip: offset,
     });
+  }
+
+  async countAll(): Promise<number> {
+    return this.activitiesRepository.count();
   }
 
   // BOQ and Phase related activities
@@ -345,5 +349,115 @@ export class ActivitiesService {
       take: limit,
       skip: offset,
     });
+  }
+
+  async getTrends(period: string = "monthly", from?: string, to?: string) {
+    let startDate: Date | undefined = undefined;
+    let endDate: Date | undefined = undefined;
+    if (from) startDate = new Date(from);
+    if (to) endDate = new Date(to);
+    let groupFormat: string;
+    switch (period) {
+      case "daily":
+        groupFormat = "YYYY-MM-DD";
+        break;
+      case "weekly":
+        groupFormat = "IYYY-IW";
+        break;
+      case "monthly":
+      default:
+        groupFormat = "YYYY-MM";
+        break;
+    }
+    const qb = this.activitiesRepository
+      .createQueryBuilder("activity")
+      .select(`to_char(activity.created_at, '${groupFormat}')`, "period")
+      .addSelect("COUNT(*)", "count");
+    if (startDate)
+      qb.andWhere("activity.created_at >= :startDate", { startDate });
+    if (endDate) qb.andWhere("activity.created_at <= :endDate", { endDate });
+    qb.groupBy("period").orderBy("period", "ASC");
+    return qb.getRawMany();
+  }
+
+  async adminList({
+    userId,
+    type,
+    dateFrom,
+    dateTo,
+    projectId,
+    search = "",
+    page = 1,
+    limit = 20,
+  }) {
+    const qb = this.activitiesRepository
+      .createQueryBuilder("activity")
+      .leftJoinAndSelect("activity.user", "user")
+      .leftJoinAndSelect("activity.project", "project");
+    if (userId) {
+      qb.andWhere("activity.user_id = :userId", { userId });
+    }
+    if (type) {
+      qb.andWhere("activity.type = :type", { type });
+    }
+    if (dateFrom) {
+      qb.andWhere("activity.created_at >= :dateFrom", { dateFrom });
+    }
+    if (dateTo) {
+      qb.andWhere("activity.created_at <= :dateTo", { dateTo });
+    }
+    if (projectId) {
+      qb.andWhere("activity.project_id = :projectId", { projectId });
+    }
+    if (search) {
+      qb.andWhere("activity.description ILIKE :search", {
+        search: `%${search}%`,
+      });
+    }
+    qb.orderBy("activity.created_at", "DESC")
+      .skip((page - 1) * limit)
+      .take(limit);
+    const [items, total] = await qb.getManyAndCount();
+    return {
+      items: items.map((a) => ({
+        id: a.id,
+        type: a.type,
+        description: a.description,
+        user: a.user
+          ? { id: a.user.id, name: a.user.display_name, email: a.user.email }
+          : null,
+        project: a.project ? { id: a.project.id, name: a.project.title } : null,
+        timestamp: a.created_at,
+        // add more fields as needed
+      })),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async adminGetDetails(id: string) {
+    const activity = await this.activitiesRepository.findOne({
+      where: { id },
+      relations: ["user", "project"],
+    });
+    if (!activity) throw new Error("Activity not found");
+    return {
+      id: activity.id,
+      type: activity.type,
+      description: activity.description,
+      user: activity.user
+        ? {
+            id: activity.user.id,
+            name: activity.user.display_name,
+            email: activity.user.email,
+          }
+        : null,
+      project: activity.project
+        ? { id: activity.project.id, name: activity.project.title }
+        : null,
+      timestamp: activity.created_at,
+      // add more fields as needed
+    };
   }
 }

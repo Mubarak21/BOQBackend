@@ -20,6 +20,9 @@ import { Department } from "./entities/department.entity";
 import { SeedCommand, SeedService } from "./commands/seed.command";
 import { ConsultantModule } from "./consultant/consultant.module";
 import { SubPhase } from "./entities/sub-phase.entity";
+import { Stats } from "./entities/stats.entity";
+import { AdminDashboardModule } from "./admin-dashboard/admin-dashboard.module";
+import { Admin } from "./entities/admin.entity";
 
 @Module({
   imports: [
@@ -40,6 +43,8 @@ import { SubPhase } from "./entities/sub-phase.entity";
         Phase,
         Department,
         SubPhase,
+        Stats,
+        Admin,
       ],
       synchronize: process.env.NODE_ENV !== "production",
     }),
@@ -54,6 +59,7 @@ import { SubPhase } from "./entities/sub-phase.entity";
     DepartmentsModule,
     CommandModule,
     ConsultantModule,
+    AdminDashboardModule,
   ],
   providers: [SeedService, SeedCommand],
 })

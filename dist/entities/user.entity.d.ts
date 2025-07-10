@@ -19,6 +19,8 @@ export declare class User {
         project_updates: boolean;
         task_updates: boolean;
     };
+    status: string;
+    last_login: Date;
     created_at: Date;
     updated_at: Date;
     owned_projects: Project[];

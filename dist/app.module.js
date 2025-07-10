@@ -29,6 +29,9 @@ const department_entity_1 = require("./entities/department.entity");
 const seed_command_1 = require("./commands/seed.command");
 const consultant_module_1 = require("./consultant/consultant.module");
 const sub_phase_entity_1 = require("./entities/sub-phase.entity");
+const stats_entity_1 = require("./entities/stats.entity");
+const admin_dashboard_module_1 = require("./admin-dashboard/admin-dashboard.module");
+const admin_entity_1 = require("./entities/admin.entity");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -52,6 +55,8 @@ exports.AppModule = AppModule = __decorate([
                     phase_entity_1.Phase,
                     department_entity_1.Department,
                     sub_phase_entity_1.SubPhase,
+                    stats_entity_1.Stats,
+                    admin_entity_1.Admin,
                 ],
                 synchronize: process.env.NODE_ENV !== "production",
             }),
@@ -66,6 +71,7 @@ exports.AppModule = AppModule = __decorate([
             departments_module_1.DepartmentsModule,
             nestjs_command_1.CommandModule,
             consultant_module_1.ConsultantModule,
+            admin_dashboard_module_1.AdminDashboardModule,
         ],
         providers: [seed_command_1.SeedService, seed_command_1.SeedCommand],
     })

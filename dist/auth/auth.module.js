@@ -17,6 +17,9 @@ const rate_limit_guard_1 = require("./guards/rate-limit.guard");
 const user_entity_1 = require("../entities/user.entity");
 const auth_controller_1 = require("./auth.controller");
 const department_entity_1 = require("../entities/department.entity");
+const roles_guard_1 = require("./guards/roles.guard");
+const local_strategy_1 = require("./strategies/local.strategy");
+const admin_entity_1 = require("../entities/admin.entity");
 let AuthModule = class AuthModule {
 };
 exports.AuthModule = AuthModule;
@@ -34,20 +37,27 @@ exports.AuthModule = AuthModule = __decorate([
                 }),
                 inject: [config_1.ConfigService],
             }),
-            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, department_entity_1.Department]),
+            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, department_entity_1.Department, admin_entity_1.Admin]),
         ],
         controllers: [auth_controller_1.AuthController],
         providers: [
             auth_service_1.AuthService,
             jwt_auth_guard_1.JwtAuthGuard,
             rate_limit_guard_1.RateLimitGuard,
+            roles_guard_1.RolesGuard,
+            local_strategy_1.LocalStrategy,
             {
                 provide: "JWT_REFRESH_SECRET",
                 useFactory: (configService) => configService.get("JWT_REFRESH_SECRET"),
                 inject: [config_1.ConfigService],
             },
         ],
-        exports: [auth_service_1.AuthService, jwt_auth_guard_1.JwtAuthGuard, rate_limit_guard_1.RateLimitGuard],
+        exports: [
+            auth_service_1.AuthService,
+            jwt_auth_guard_1.JwtAuthGuard,
+            rate_limit_guard_1.RateLimitGuard,
+            jwt_1.JwtModule,
+        ],
     })
 ], AuthModule);
 //# sourceMappingURL=auth.module.js.map

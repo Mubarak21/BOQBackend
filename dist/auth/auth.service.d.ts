@@ -4,19 +4,21 @@ import { User } from "../entities/user.entity";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { ConfigService } from "@nestjs/config";
 import { Department } from "../entities/department.entity";
+import { Admin } from "../entities/admin.entity";
 export declare class AuthService {
     private userRepository;
     private jwtService;
     private configService;
     private departmentRepository;
+    private adminRepository;
     private readonly tokenBlacklist;
-    constructor(userRepository: Repository<User>, jwtService: JwtService, configService: ConfigService, departmentRepository: Repository<Department>);
+    constructor(userRepository: Repository<User>, jwtService: JwtService, configService: ConfigService, departmentRepository: Repository<Department>, adminRepository: Repository<Admin>);
     register(createUserDto: CreateUserDto): Promise<{
         access_token: string;
         refresh_token: string;
         user: Omit<User, "password">;
     }>;
-    validateToken(token: string): Promise<User>;
+    validateToken(token: string): Promise<User | Admin>;
     login(email: string, password: string): Promise<{
         access_token: string;
         refresh_token: string;
@@ -29,4 +31,6 @@ export declare class AuthService {
     }>;
     logout(token: string): Promise<void>;
     private cleanupBlacklist;
+    hashPassword(password: string): Promise<string>;
+    comparePassword(password: string, hash: string): Promise<boolean>;
 }

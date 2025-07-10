@@ -57,6 +57,12 @@ export class User {
     task_updates: boolean;
   };
 
+  @Column({ default: "active" })
+  status: string;
+
+  @Column({ nullable: true, type: "timestamp" })
+  last_login: Date;
+
   @CreateDateColumn()
   created_at: Date;
 

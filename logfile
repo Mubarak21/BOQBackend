@@ -14,3 +14,55 @@
 2025-07-08 12:50:31.385 EAT [37213] FATAL:  role "postgres" does not exist
 2025-07-08 12:50:34.403 EAT [37220] FATAL:  role "postgres" does not exist
 2025-07-08 15:02:42.890 EAT [52390] FATAL:  role "postgres" does not exist
+2025-07-08 16:21:19.712 EAT [55751] ERROR:  database "project_tracker_db" is being accessed by other users
+2025-07-08 16:21:19.712 EAT [55751] DETAIL:  There are 2 other sessions using the database.
+2025-07-08 16:21:19.712 EAT [55751] STATEMENT:  DROP DATABASE project_tracker_db;
+2025-07-09 12:29:24.737 EAT [61850] FATAL:  role "postgres" does not exist
+2025-07-09 12:32:11.535 EAT [62116] FATAL:  role "postgres" does not exist
+2025-07-09 12:34:20.893 EAT [62307] FATAL:  role "mubby" does not exist
+2025-07-09 13:13:10.498 EAT [64232] ERROR:  invalid input value for enum enum_payment_payment_method: "cash"
+2025-07-09 13:13:10.498 EAT [64232] STATEMENT:  ALTER TABLE "payment" ALTER COLUMN "payment_method" SET DATA TYPE "public"."enum_payment_payment_method" USING "payment_method"::"public"."enum_payment_payment_method";
+2025-07-09 13:13:21.587 EAT [64264] ERROR:  invalid input value for enum enum_payment_payment_method: "cash"
+2025-07-09 13:13:21.587 EAT [64264] STATEMENT:  ALTER TABLE "payment" ALTER COLUMN "payment_method" SET DATA TYPE "public"."enum_payment_payment_method" USING "payment_method"::"public"."enum_payment_payment_method";
+2025-07-09 13:13:31.716 EAT [64304] LOG:  could not receive data from client: Connection reset by peer
+2025-07-09 13:14:33.404 EAT [64480] ERROR:  invalid input value for enum enum_payment_payment_method: "cash"
+2025-07-09 13:14:33.404 EAT [64480] STATEMENT:  ALTER TABLE "payment" ALTER COLUMN "payment_method" SET DATA TYPE "public"."enum_payment_payment_method" USING "payment_method"::"public"."enum_payment_payment_method";
+2025-07-10 13:25:34.490 EAT [86785] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:25:34.490 EAT [86785] DETAIL:  Failing row contains (8eb051ad-e06d-4863-a923-202e4f5d4c38, abdulmuba701@gmail.com, $2b$10$/xR.bvKNx8.EgVJAe2SnJOBOV8EGFvWxypwNnDKI5pgPHBtYTJYQG, null, active, null, 2025-07-10 13:25:34.486948, 2025-07-10 13:25:34.486948).
+2025-07-10 13:25:34.490 EAT [86785] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:28:17.784 EAT [86851] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:28:17.784 EAT [86851] DETAIL:  Failing row contains (d0681939-7e53-4571-bf44-49dcd02db1b7, abdulmuba701@gmail.com, $2b$10$w4GqRQy7cCj9mJB.wHUmz.X2IwAim4Bi9APtPWwaAz66TJ/zmCOdi, null, active, null, 2025-07-10 13:28:17.759805, 2025-07-10 13:28:17.759805).
+2025-07-10 13:28:17.784 EAT [86851] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:30:50.544 EAT [86913] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:30:50.544 EAT [86913] DETAIL:  Failing row contains (f93dbca5-2d82-4def-84f3-e44d8edf6e88, abdulmuba701@gmail.com, $2b$10$G.upHNmRgQlGFkWHoKoV9eZLsOZW.iLmqU2VB1Op2.AqrdUcZMfYa, null, active, null, 2025-07-10 13:30:50.52376, 2025-07-10 13:30:50.52376).
+2025-07-10 13:30:50.544 EAT [86913] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:33:20.895 EAT [86982] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:33:20.895 EAT [86982] DETAIL:  Failing row contains (9e0d21b8-9613-435a-b1ae-f8b895746669, abdulmuba701@gmail.com, $2b$10$Qfn10mNbnIyaL00FQ1l6D.IogzCacVFzAxkvkRsWNaajZYkJMEqmC, null, active, null, 2025-07-10 13:33:20.885647, 2025-07-10 13:33:20.885647).
+2025-07-10 13:33:20.895 EAT [86982] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:35:43.452 EAT [87047] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:35:43.452 EAT [87047] DETAIL:  Failing row contains (93fc0ba7-4c57-4cff-a3a0-242aeecd084a, abdulmuba701@gmail.com, $2b$10$O809WIGgFiQ4uoKteRmG2O2keCOaiQhKr9zSfZafCHBlRA.flux5K, null, active, null, 2025-07-10 13:35:43.447009, 2025-07-10 13:35:43.447009).
+2025-07-10 13:35:43.452 EAT [87047] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:38:11.629 EAT [87095] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:38:11.629 EAT [87095] DETAIL:  Failing row contains (8135df5f-e038-4ef9-b0b2-ed3453d708d2, abdulmuba701@gmail.com, $2b$10$H/6lNUpBCtKNpmVqbJGeVew19Ugq4ysI6lCJm.H37hRcFuxE3rUxS, null, active, null, 2025-07-10 13:38:11.62062, 2025-07-10 13:38:11.62062).
+2025-07-10 13:38:11.629 EAT [87095] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:38:21.580 EAT [87095] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:38:21.580 EAT [87095] DETAIL:  Failing row contains (96f644d6-4bd5-432d-8add-4b9ead1c97f9, abdulmuba701@gmail.com, $2b$10$CHVvQVh4Ve4tBfJLJ2ZtPumfKLZxZYxVgb0lC5CXitZBiJZNmIJs., null, active, null, 2025-07-10 13:38:21.578187, 2025-07-10 13:38:21.578187).
+2025-07-10 13:38:21.580 EAT [87095] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:40:23.457 EAT [87180] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:40:23.457 EAT [87180] DETAIL:  Failing row contains (3c9f17ab-cd24-49f8-97d8-80d01bcee73b, abdulmuba701@gmail.com, $2b$10$44/UbLC8ajbrHpaS4UlulOFSG.Ekg3TTNnEBw7CTPz0tFWV9zbrTm, null, active, null, 2025-07-10 13:40:23.431155, 2025-07-10 13:40:23.431155).
+2025-07-10 13:40:23.457 EAT [87180] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:40:24.387 EAT [87180] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:40:24.387 EAT [87180] DETAIL:  Failing row contains (b135d4bb-06d4-4e4e-a4d6-c1be890c8aa8, abdulmuba701@gmail.com, $2b$10$nJLIR2k7rYV7mwzn0Sr4t.uT7tAecvuRMDG3ecSR0v9nmcwP9kUQK, null, active, null, 2025-07-10 13:40:24.386835, 2025-07-10 13:40:24.386835).
+2025-07-10 13:40:24.387 EAT [87180] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:40:32.158 EAT [87180] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:40:32.158 EAT [87180] DETAIL:  Failing row contains (a90a3da7-8035-4517-8d0a-99a459fe4c40, abdulmuba701@gmail.com, $2b$10$8v/9wsbSKNyANLDxJNkmV.WoEYmdTL6XygrKkETeJxCuTw2uX3AT2, null, active, null, 2025-07-10 13:40:32.15717, 2025-07-10 13:40:32.15717).
+2025-07-10 13:40:32.158 EAT [87180] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:41:09.253 EAT [87212] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:41:09.253 EAT [87212] DETAIL:  Failing row contains (95163ed2-d96f-4273-8697-968828d56d11, massawemubarak@gmail.com, $2b$10$Jl1Cjk/lGtm8wEM6daROduDCfqyLmact5IxnvsMJx4ARzFWwtw46C, null, active, null, 2025-07-10 13:41:09.24981, 2025-07-10 13:41:09.24981).
+2025-07-10 13:41:09.253 EAT [87212] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:41:20.783 EAT [87219] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:41:20.783 EAT [87219] DETAIL:  Failing row contains (65c6793e-a22e-4dc4-8322-57777fc6a179, massawemubarak@gmail.com, $2b$10$tmRmMSqj/B1uakgsVaUhmOhFkje9ddkZDb.sfO72C5kopjRSGtdH6, null, active, null, 2025-07-10 13:41:20.777979, 2025-07-10 13:41:20.777979).
+2025-07-10 13:41:20.783 EAT [87219] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 13:43:34.990 EAT [87303] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
+2025-07-10 13:43:34.990 EAT [87303] DETAIL:  Failing row contains (84965c50-1094-40f8-9628-cc47c30eb63c, massawemubarak@gmail.com, $2b$10$BmHlUSVHRvv3dJVaj6q.TueZXgkRVZMq2UA9Q/o1ZP3uFK78Ysa5G, null, active, null, 2025-07-10 13:43:34.960398, 2025-07-10 13:43:34.960398).
+2025-07-10 13:43:34.990 EAT [87303] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"

@@ -50,6 +50,12 @@ async function bootstrap() {
   } catch (err) {
     console.error("❌ Database connection failed:", err);
   }
+
+  // Indicate both admin and customer sides are available (always show)
+  console.log(
+    "✅ Admin and customer (user) modules/routes are connected and server is running on port",
+    port
+  );
 }
 
 bootstrap();

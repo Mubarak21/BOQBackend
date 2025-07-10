@@ -37,7 +37,7 @@ function calculateStatsFromProjects(projects) {
     const activeProjects = projects.filter((project) => project.status !== project_entity_1.ProjectStatus.COMPLETED &&
         project.status !== project_entity_1.ProjectStatus.CANCELLED).length;
     const completedProjects = projects.filter((project) => project.status === project_entity_1.ProjectStatus.COMPLETED).length;
-    const totalProjectValues = projects.reduce((sum, project) => sum + (project.total_amount || 0), 0);
+    const totalProjectValues = projects.reduce((sum, project) => sum + (project.totalAmount || 0), 0);
     const completionRate = totalProjects > 0 ? (completedProjects / totalProjects) * 100 : 0;
     return {
         total_projects: totalProjects,

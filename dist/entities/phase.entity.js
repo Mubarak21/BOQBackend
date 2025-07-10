@@ -13,7 +13,6 @@ exports.Phase = exports.PhaseStatus = void 0;
 const typeorm_1 = require("typeorm");
 const project_entity_1 = require("./project.entity");
 const task_entity_1 = require("./task.entity");
-const user_entity_1 = require("./user.entity");
 const sub_phase_entity_1 = require("./sub-phase.entity");
 var PhaseStatus;
 (function (PhaseStatus) {
@@ -48,10 +47,6 @@ __decorate([
 __decorate([
     (0, typeorm_1.Column)({ type: "decimal", precision: 10, scale: 2, nullable: true }),
     __metadata("design:type", Number)
-], Phase.prototype, "estimated_hours", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ type: "decimal", precision: 10, scale: 2, nullable: true }),
-    __metadata("design:type", Number)
 ], Phase.prototype, "budget", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: "decimal", precision: 5, scale: 2, nullable: true }),
@@ -65,15 +60,6 @@ __decorate([
     }),
     __metadata("design:type", String)
 ], Phase.prototype, "status", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", String)
-], Phase.prototype, "assignee_id", void 0);
-__decorate([
-    (0, typeorm_1.ManyToOne)(() => user_entity_1.User, { nullable: true }),
-    (0, typeorm_1.JoinColumn)({ name: "assignee_id" }),
-    __metadata("design:type", user_entity_1.User)
-], Phase.prototype, "assignee", void 0);
 __decorate([
     (0, typeorm_1.ManyToOne)(() => project_entity_1.Project, (project) => project.phases, {
         onDelete: "CASCADE",
@@ -100,27 +86,11 @@ __decorate([
 __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
-], Phase.prototype, "work_description", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", String)
 ], Phase.prototype, "deliverables", void 0);
 __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
 ], Phase.prototype, "requirements", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", String)
-], Phase.prototype, "risks", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", String)
-], Phase.prototype, "dependencies", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", String)
-], Phase.prototype, "priority", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: "timestamp", nullable: true }),
     __metadata("design:type", Date)

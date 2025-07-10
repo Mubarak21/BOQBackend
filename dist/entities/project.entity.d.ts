@@ -24,10 +24,7 @@ export declare class Project {
     priority: ProjectPriority;
     start_date: Date;
     end_date: Date;
-    total_amount: number;
-    boq_file: Buffer;
-    boq_filename: string;
-    boq_mimetype: string;
+    totalAmount: number;
     owner_id: string;
     owner: User;
     collaborators: User[];

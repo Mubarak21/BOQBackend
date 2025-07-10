@@ -7,7 +7,7 @@ import {
   forwardRef,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, In } from "typeorm";
+import { Repository, In, Between } from "typeorm";
 import {
   Project,
   ProjectStatus,
@@ -30,6 +30,7 @@ import {
 } from "../entities/project-access-request.entity";
 import { ActivityType } from "../entities/activity.entity";
 import { PhaseStatus } from "../entities/phase.entity";
+import { DashboardService } from "../dashboard/dashboard.service";
 
 interface BoqRow {
   Description?: string;
@@ -76,7 +77,9 @@ export class ProjectsService {
     private readonly usersService: UsersService,
     @Inject(forwardRef(() => ActivitiesService))
     private readonly activitiesService: ActivitiesService,
-    private readonly tasksService: TasksService
+    private readonly tasksService: TasksService,
+    @Inject(forwardRef(() => DashboardService))
+    private readonly dashboardService: DashboardService
   ) {}
 
   async findAll(): Promise<Project[]> {
@@ -152,7 +155,7 @@ export class ProjectsService {
     } catch (error) {
       console.warn("Failed to log project creation activity:", error);
     }
-
+    await this.dashboardService.updateStats();
     return this.findOne(savedProject.id);
   }
 
@@ -189,7 +192,9 @@ export class ProjectsService {
     };
 
     Object.assign(project, updateData);
-    return this.projectsRepository.save(project);
+    await this.projectsRepository.save(project);
+    await this.dashboardService.updateStats();
+    return project;
   }
 
   async remove(id: string, userId: string): Promise<void> {
@@ -202,6 +207,7 @@ export class ProjectsService {
     }
 
     await this.projectsRepository.remove(project);
+    await this.dashboardService.updateStats();
   }
 
   async addCollaborator(
@@ -351,8 +357,6 @@ export class ProjectsService {
       description: createPhaseDto.description,
       deliverables: createPhaseDto.deliverables,
       requirements: createPhaseDto.requirements,
-      risks: createPhaseDto.risks,
-      priority: createPhaseDto.priority,
       start_date: createPhaseDto.startDate,
       end_date: createPhaseDto.endDate,
       due_date: createPhaseDto.dueDate,
@@ -394,17 +398,6 @@ export class ProjectsService {
         }
       }
     }
-    // After creating the phase, update the project's total_phases to sum of all phase budgets
-    const allPhasesForTotal = await this.phasesRepository.find({
-      where: { project_id: projectId },
-    });
-    const totalPhasesAmount = allPhasesForTotal.reduce(
-      (sum, phase) => sum + (Number(phase.budget) || 0),
-      0
-    );
-    await this.projectsRepository.update(projectId, {
-      total_phases: totalPhasesAmount,
-    });
     return savedPhase;
   }
 
@@ -435,8 +428,6 @@ export class ProjectsService {
       description: updatePhaseDto.description,
       deliverables: updatePhaseDto.deliverables,
       requirements: updatePhaseDto.requirements,
-      risks: updatePhaseDto.risks,
-      priority: updatePhaseDto.priority,
       start_date: updatePhaseDto.startDate,
       end_date: updatePhaseDto.endDate,
       due_date: updatePhaseDto.dueDate,
@@ -496,17 +487,6 @@ export class ProjectsService {
         );
       }
     }
-    // After updating the phase, update the project's total_phases to sum of all phase budgets
-    const allPhasesForTotal = await this.phasesRepository.find({
-      where: { project_id: projectId },
-    });
-    const totalPhasesAmount = allPhasesForTotal.reduce(
-      (sum, phase) => sum + (Number(phase.budget) || 0),
-      0
-    );
-    await this.projectsRepository.update(projectId, {
-      total_phases: totalPhasesAmount,
-    });
     return updatedPhase;
   }
 
@@ -541,17 +521,6 @@ export class ProjectsService {
       phase,
       { phaseId: phase.id }
     );
-    // After deleting the phase, update the project's total_phases to sum of all phase budgets
-    const allPhasesForTotal = await this.phasesRepository.find({
-      where: { project_id: projectId },
-    });
-    const totalPhasesAmount = allPhasesForTotal.reduce(
-      (sum, phase) => sum + (Number(phase.budget) || 0),
-      0
-    );
-    await this.projectsRepository.update(projectId, {
-      total_phases: totalPhasesAmount,
-    });
   }
 
   async getProjectPhases(projectId: string, userId: string): Promise<Phase[]> {
@@ -579,33 +548,11 @@ export class ProjectsService {
   }
 
   async getProjectResponse(project: Project): Promise<any> {
-    // Calculate completed and total phases
-    const phases = project.phases || [];
-    const totalPhases = phases.length;
-    let progress = 0;
-    if (totalPhases > 0) {
-      // Sum all phase progresses (each phase progress is 0-100)
-      const totalProgress = phases.reduce(
-        (sum, phase) => sum + (phase.progress || 0),
-        0
-      );
-      // Project progress is the sum of all phase progresses divided by number of phases
-      progress = Math.round(totalProgress / totalPhases);
-      // Cap at 100
-      if (progress > 100) progress = 100;
-    }
-    const completedPhases = phases.filter(
-      (phase) => phase.status === "completed"
-    ).length;
     return {
       id: project.id,
       name: project.title,
       description: project.description,
-      progress,
-      completedPhases,
-      totalPhases,
       totalAmount: project.totalAmount,
-      totalPhasesAmount: project.total_phases,
       startDate: project.start_date,
       estimatedCompletion: project.end_date,
       owner: project.owner?.display_name || project.owner_id,
@@ -613,7 +560,7 @@ export class ProjectsService {
         (c) => c.display_name || c.id
       ),
       tags: project.tags,
-      phases: phases,
+      phases: project.phases || [],
     };
   }
 
@@ -753,6 +700,143 @@ export class ProjectsService {
 
     // Exclude tasks that are already assigned to a phase
     return allTasks.filter((task) => !task.phase_id);
+  }
+
+  async countAll(): Promise<number> {
+    return this.projectsRepository.count();
+  }
+
+  async getTrends(period: string = "monthly", from?: string, to?: string) {
+    let startDate: Date | undefined = undefined;
+    let endDate: Date | undefined = undefined;
+    if (from) startDate = new Date(from);
+    if (to) endDate = new Date(to);
+    let groupFormat: string;
+    switch (period) {
+      case "daily":
+        groupFormat = "YYYY-MM-DD";
+        break;
+      case "weekly":
+        groupFormat = "IYYY-IW";
+        break;
+      case "monthly":
+      default:
+        groupFormat = "YYYY-MM";
+        break;
+    }
+    const qb = this.projectsRepository
+      .createQueryBuilder("project")
+      .select(`to_char(project.created_at, '${groupFormat}')`, "period")
+      .addSelect("COUNT(*)", "count");
+    if (startDate)
+      qb.andWhere("project.created_at >= :startDate", { startDate });
+    if (endDate) qb.andWhere("project.created_at <= :endDate", { endDate });
+    qb.groupBy("period").orderBy("period", "ASC");
+    return qb.getRawMany();
+  }
+
+  async adminList({ search = "", status, page = 1, limit = 20 }) {
+    const qb = this.projectsRepository
+      .createQueryBuilder("project")
+      .leftJoinAndSelect("project.owner", "owner")
+      .leftJoinAndSelect("project.collaborators", "collaborators");
+    if (search) {
+      qb.andWhere(
+        "project.title ILIKE :search OR project.description ILIKE :search",
+        { search: `%${search}%` }
+      );
+    }
+    if (status) {
+      qb.andWhere("project.status = :status", { status });
+    }
+    qb.orderBy("project.created_at", "DESC")
+      .skip((page - 1) * limit)
+      .take(limit);
+    const [items, total] = await qb.getManyAndCount();
+    return {
+      items: items.map((p) => ({
+        id: p.id,
+        name: p.title,
+        description: p.description,
+        status: p.status,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        owner: p.owner
+          ? { id: p.owner.id, display_name: p.owner.display_name }
+          : null,
+        members: (p.collaborators || []).map((c) => ({
+          id: c.id,
+          display_name: c.display_name,
+        })),
+        tags: p.tags,
+        // add more fields as needed
+      })),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async adminGetDetails(id: string) {
+    const project = await this.projectsRepository.findOne({
+      where: { id },
+      relations: ["owner", "collaborators", "phases"],
+    });
+    if (!project) throw new Error("Project not found");
+    // Fetch activities if needed (assume ActivitiesService is available via DI)
+    // const activities = await this.activitiesService.getForProject(id);
+    return {
+      id: project.id,
+      name: project.title,
+      description: project.description,
+      status: project.status,
+      createdAt: project.created_at,
+      updatedAt: project.updated_at,
+      owner: project.owner
+        ? { id: project.owner.id, display_name: project.owner.display_name }
+        : null,
+      members: (project.collaborators || []).map((c) => ({
+        id: c.id,
+        display_name: c.display_name,
+      })),
+      tags: project.tags,
+      phases: project.phases,
+      // activities,
+      // add more fields as needed
+    };
+  }
+
+  async getTopActiveProjects(limit: number = 5) {
+    // Placeholder: sort by created_at desc, replace with real activity metric if available
+    const projects = await this.projectsRepository.find({
+      order: { created_at: "DESC" },
+      take: limit,
+      relations: ["owner", "collaborators"],
+    });
+    return projects.map((p) => ({
+      id: p.id,
+      name: p.title,
+      description: p.description,
+      status: p.status,
+      createdAt: p.created_at,
+      owner: p.owner
+        ? { id: p.owner.id, display_name: p.owner.display_name }
+        : null,
+      members: (p.collaborators || []).map((c) => ({
+        id: c.id,
+        display_name: c.display_name,
+      })),
+      // add more fields as needed
+    }));
+  }
+
+  async getGroupedByStatus() {
+    const qb = this.projectsRepository
+      .createQueryBuilder("project")
+      .select("project.status", "status")
+      .addSelect("COUNT(*)", "count")
+      .groupBy("project.status");
+    return qb.getRawMany();
   }
 
   // Private helper methods

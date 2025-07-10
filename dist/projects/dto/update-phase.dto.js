@@ -35,16 +35,6 @@ __decorate([
     __metadata("design:type", String)
 ], UpdatePhaseDto.prototype, "requirements", void 0);
 __decorate([
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", String)
-], UpdatePhaseDto.prototype, "risks", void 0);
-__decorate([
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", String)
-], UpdatePhaseDto.prototype, "dependencies", void 0);
-__decorate([
     (0, class_validator_1.IsISO8601)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
@@ -82,11 +72,6 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], UpdatePhaseDto.prototype, "parentPhaseId", void 0);
-__decorate([
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", String)
-], UpdatePhaseDto.prototype, "priority", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),

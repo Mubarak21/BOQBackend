@@ -21,12 +21,14 @@ const user_entity_1 = require("../entities/user.entity");
 const bcrypt = require("bcrypt");
 const config_1 = require("@nestjs/config");
 const department_entity_1 = require("../entities/department.entity");
+const admin_entity_1 = require("../entities/admin.entity");
 let AuthService = class AuthService {
-    constructor(userRepository, jwtService, configService, departmentRepository) {
+    constructor(userRepository, jwtService, configService, departmentRepository, adminRepository) {
         this.userRepository = userRepository;
         this.jwtService = jwtService;
         this.configService = configService;
         this.departmentRepository = departmentRepository;
+        this.adminRepository = adminRepository;
         this.tokenBlacklist = new Set();
     }
     async register(createUserDto) {
@@ -92,13 +94,17 @@ let AuthService = class AuthService {
             if (payload.exp && payload.exp * 1000 < Date.now()) {
                 throw new common_1.UnauthorizedException("Token has expired");
             }
-            const user = await this.userRepository.findOne({
+            let user = await this.userRepository.findOne({
                 where: { id: payload.sub },
             });
-            if (!user) {
-                throw new common_1.UnauthorizedException("User not found");
-            }
-            return user;
+            if (user)
+                return user;
+            const admin = await this.adminRepository.findOne({
+                where: { id: payload.sub },
+            });
+            if (admin)
+                return admin;
+            throw new common_1.UnauthorizedException("User or admin not found");
         }
         catch (error) {
             if (error instanceof common_1.UnauthorizedException) {
@@ -206,15 +212,23 @@ let AuthService = class AuthService {
             }
         }
     }
+    async hashPassword(password) {
+        return bcrypt.hash(password, 10);
+    }
+    async comparePassword(password, hash) {
+        return bcrypt.compare(password, hash);
+    }
 };
 exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
     __param(3, (0, typeorm_1.InjectRepository)(department_entity_1.Department)),
+    __param(4, (0, typeorm_1.InjectRepository)(admin_entity_1.Admin)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         jwt_1.JwtService,
         config_1.ConfigService,
+        typeorm_2.Repository,
         typeorm_2.Repository])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

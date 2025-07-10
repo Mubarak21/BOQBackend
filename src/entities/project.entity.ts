@@ -67,11 +67,12 @@ export class Project {
     precision: 20,
     scale: 2,
     default: 0,
+    transformer: {
+      to: (value: number) => value,
+      from: (value: string) => parseFloat(value),
+    },
   })
-  totalAmount: string;
-
-  @Column({ type: "decimal", precision: 10, scale: 2, default: 0 })
-  total_phases: number;
+  totalAmount: number;
 
   @Column()
   owner_id: string;

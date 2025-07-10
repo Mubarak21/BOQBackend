@@ -17,6 +17,7 @@ import { CommentsModule } from "../comments/comments.module";
 import { SubPhase } from "../entities/sub-phase.entity";
 import { SubPhasesController } from "./subphases.controller";
 import { SubPhasesService } from "./subphases.service";
+import { DashboardModule } from "../dashboard/dashboard.module";
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { SubPhasesService } from "./subphases.service";
     forwardRef(() => ActivitiesModule),
     TasksModule,
     forwardRef(() => CommentsModule),
+    forwardRef(() => DashboardModule),
   ],
   providers: [ProjectsService, ProjectAccessService, SubPhasesService],
   controllers: [

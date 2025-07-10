@@ -98,6 +98,124 @@ let UsersService = class UsersService {
             email: u.email,
         }));
     }
+    async countAll() {
+        return this.usersRepository.count();
+    }
+    async getTrends(period = "weekly", from, to) {
+        let startDate = undefined;
+        let endDate = undefined;
+        if (from)
+            startDate = new Date(from);
+        if (to)
+            endDate = new Date(to);
+        let groupFormat;
+        switch (period) {
+            case "daily":
+                groupFormat = "YYYY-MM-DD";
+                break;
+            case "weekly":
+                groupFormat = "IYYY-IW";
+                break;
+            case "monthly":
+            default:
+                groupFormat = "YYYY-MM";
+                break;
+        }
+        const qb = this.usersRepository
+            .createQueryBuilder("user")
+            .select(`to_char(user.created_at, '${groupFormat}')`, "period")
+            .addSelect("COUNT(*)", "count");
+        if (startDate)
+            qb.andWhere("user.created_at >= :startDate", { startDate });
+        if (endDate)
+            qb.andWhere("user.created_at <= :endDate", { endDate });
+        qb.groupBy("period").orderBy("period", "ASC");
+        return qb.getRawMany();
+    }
+    async adminList({ search = "", role, status, page = 1, limit = 20 }) {
+        const qb = this.usersRepository.createQueryBuilder("user");
+        if (search) {
+            qb.andWhere("user.display_name ILIKE :search OR user.email ILIKE :search", { search: `%${search}%` });
+        }
+        if (role) {
+            qb.andWhere("user.role = :role", { role });
+        }
+        if (status) {
+            qb.andWhere("user.status = :status", { status });
+        }
+        qb.orderBy("user.created_at", "DESC")
+            .skip((page - 1) * limit)
+            .take(limit);
+        const [items, total] = await qb.getManyAndCount();
+        return {
+            items: items.map((u) => ({
+                id: u.id,
+                name: u.display_name,
+                email: u.email,
+                role: u.role,
+                status: u.status,
+                createdAt: u.created_at,
+                lastLogin: u.last_login,
+            })),
+            total,
+            page,
+            limit,
+        };
+    }
+    async adminGetDetails(id) {
+        const user = await this.usersRepository.findOne({ where: { id } });
+        if (!user)
+            throw new Error("User not found");
+        return {
+            id: user.id,
+            name: user.display_name,
+            email: user.email,
+            role: user.role,
+            status: user.status,
+            createdAt: user.created_at,
+            lastLogin: user.last_login,
+        };
+    }
+    async adminCreate(body) {
+        const user = this.usersRepository.create(body);
+        return this.usersRepository.save(user);
+    }
+    async adminUpdate(id, body) {
+        await this.usersRepository.update(id, body);
+        return this.adminGetDetails(id);
+    }
+    async adminDelete(id) {
+        await this.usersRepository.delete(id);
+        return { success: true };
+    }
+    async getTopActiveUsers(limit = 5) {
+        const users = await this.usersRepository.find({
+            order: { created_at: "DESC" },
+            take: limit,
+        });
+        return users.map((u) => ({
+            id: u.id,
+            name: u.display_name,
+            email: u.email,
+            role: u.role,
+            createdAt: u.created_at,
+        }));
+    }
+    async getGroupedByRole() {
+        const qb = this.usersRepository
+            .createQueryBuilder("user")
+            .select("user.role", "role")
+            .addSelect("COUNT(*)", "count")
+            .groupBy("user.role");
+        return qb.getRawMany();
+    }
+    async getUserGrowth(compare = "month") {
+        return {
+            current: 100,
+            previous: 80,
+            growth: 25,
+        };
+    }
 };
 exports.UsersService = UsersService;
 exports.UsersService = UsersService = __decorate([

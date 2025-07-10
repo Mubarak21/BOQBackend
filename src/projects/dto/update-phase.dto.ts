@@ -24,10 +24,6 @@ export class UpdatePhaseDto {
   @IsOptional()
   requirements?: string;
 
-  @IsString()
-  @IsOptional()
-  risks?: string;
-
   @IsISO8601()
   @IsOptional()
   startDate?: string;
@@ -58,10 +54,6 @@ export class UpdatePhaseDto {
   @IsString()
   @IsOptional()
   parentPhaseId?: string;
-
-  @IsString()
-  @IsOptional()
-  priority?: string;
 
   @IsString()
   @IsOptional()

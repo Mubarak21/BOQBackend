@@ -26,6 +26,7 @@ const comments_module_1 = require("../comments/comments.module");
 const sub_phase_entity_1 = require("../entities/sub-phase.entity");
 const subphases_controller_1 = require("./subphases.controller");
 const subphases_service_1 = require("./subphases.service");
+const dashboard_module_1 = require("../dashboard/dashboard.module");
 let ProjectsModule = class ProjectsModule {
 };
 exports.ProjectsModule = ProjectsModule;
@@ -45,6 +46,7 @@ exports.ProjectsModule = ProjectsModule = __decorate([
             (0, common_1.forwardRef)(() => activities_module_1.ActivitiesModule),
             tasks_module_1.TasksModule,
             (0, common_1.forwardRef)(() => comments_module_1.CommentsModule),
+            (0, common_1.forwardRef)(() => dashboard_module_1.DashboardModule),
         ],
         providers: [projects_service_1.ProjectsService, project_access_service_1.ProjectAccessService, subphases_service_1.SubPhasesService],
         controllers: [

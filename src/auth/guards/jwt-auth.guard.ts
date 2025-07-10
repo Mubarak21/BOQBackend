@@ -54,7 +54,11 @@ export class JwtAuthGuard extends AuthGuard("jwt") {
       }
 
       request.user = user;
-      request.isConsultant = user.role === "consultant";
+      if (user && "role" in user && user.role === "consultant") {
+        request.isConsultant = true;
+      } else {
+        request.isConsultant = false;
+      }
       return true;
     } catch (error) {
       this.logger.error("Token validation failed", error);

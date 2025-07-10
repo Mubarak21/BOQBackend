@@ -8,6 +8,9 @@ import { RateLimitGuard } from "./guards/rate-limit.guard";
 import { User } from "../entities/user.entity";
 import { AuthController } from "./auth.controller";
 import { Department } from "../entities/department.entity";
+import { RolesGuard } from "./guards/roles.guard";
+import { LocalStrategy } from "./strategies/local.strategy";
+import { Admin } from "../entities/admin.entity";
 
 @Module({
   imports: [
@@ -22,13 +25,15 @@ import { Department } from "../entities/department.entity";
       }),
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([User, Department]),
+    TypeOrmModule.forFeature([User, Department, Admin]),
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
     JwtAuthGuard,
     RateLimitGuard,
+    RolesGuard,
+    LocalStrategy, // Register the local strategy
     {
       provide: "JWT_REFRESH_SECRET",
       useFactory: (configService: ConfigService) =>
@@ -36,6 +41,11 @@ import { Department } from "../entities/department.entity";
       inject: [ConfigService],
     },
   ],
-  exports: [AuthService, JwtAuthGuard, RateLimitGuard],
+  exports: [
+    AuthService,
+    JwtAuthGuard,
+    RateLimitGuard,
+    JwtModule, // Export JwtModule so JwtService is available to other modules
+  ],
 })
 export class AuthModule {}

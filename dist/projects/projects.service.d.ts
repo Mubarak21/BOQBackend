@@ -11,6 +11,7 @@ import { UpdatePhaseDto } from "./dto/update-phase.dto";
 import { Phase } from "../entities/phase.entity";
 import { TasksService } from "../tasks/tasks.service";
 import { ProjectAccessRequest } from "../entities/project-access-request.entity";
+import { DashboardService } from "../dashboard/dashboard.service";
 export interface ProcessBoqResult {
     message: string;
     totalAmount: number;
@@ -24,7 +25,8 @@ export declare class ProjectsService {
     private readonly usersService;
     private readonly activitiesService;
     private readonly tasksService;
-    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, accessRequestRepository: Repository<ProjectAccessRequest>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService);
+    private readonly dashboardService;
+    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, accessRequestRepository: Repository<ProjectAccessRequest>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService, dashboardService: DashboardService);
     findAll(): Promise<Project[]>;
     findOne(id: string, userId?: string): Promise<Project>;
     create(createProjectDto: CreateProjectDto, owner: User): Promise<Project>;
@@ -48,6 +50,69 @@ export declare class ProjectsService {
     listMyJoinRequests(userId: string): Promise<ProjectAccessRequest[]>;
     listJoinRequestsForOwner(ownerId: string): Promise<ProjectAccessRequest[]>;
     getAvailablePhaseTasks(projectId: string, userId: string): Promise<Task[]>;
+    countAll(): Promise<number>;
+    getTrends(period?: string, from?: string, to?: string): Promise<any[]>;
+    adminList({ search, status, page, limit }: {
+        search?: string;
+        status: any;
+        page?: number;
+        limit?: number;
+    }): Promise<{
+        items: {
+            id: string;
+            name: string;
+            description: string;
+            status: ProjectStatus;
+            createdAt: Date;
+            updatedAt: Date;
+            owner: {
+                id: string;
+                display_name: string;
+            };
+            members: {
+                id: string;
+                display_name: string;
+            }[];
+            tags: string[];
+        }[];
+        total: number;
+        page: number;
+        limit: number;
+    }>;
+    adminGetDetails(id: string): Promise<{
+        id: string;
+        name: string;
+        description: string;
+        status: ProjectStatus;
+        createdAt: Date;
+        updatedAt: Date;
+        owner: {
+            id: string;
+            display_name: string;
+        };
+        members: {
+            id: string;
+            display_name: string;
+        }[];
+        tags: string[];
+        phases: Phase[];
+    }>;
+    getTopActiveProjects(limit?: number): Promise<{
+        id: string;
+        name: string;
+        description: string;
+        status: ProjectStatus;
+        createdAt: Date;
+        owner: {
+            id: string;
+            display_name: string;
+        };
+        members: {
+            id: string;
+            display_name: string;
+        }[];
+    }[]>;
+    getGroupedByStatus(): Promise<any[]>;
     private hasProjectAccess;
     private getValidatedCollaborators;
     private parseAmount;
@@ -63,7 +128,7 @@ export declare class ProjectsService {
         priority: ProjectPriority;
         start_date: Date;
         end_date: Date;
-        total_amount: number;
+        totalAmount: number;
         tags: string[];
         created_at: Date;
         updated_at: Date;

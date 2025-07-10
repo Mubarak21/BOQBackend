@@ -3,10 +3,6 @@ export declare class ProjectResponseDto {
     id: string;
     name: string;
     description: string;
-    progress: number;
-    completedPhases?: number;
-    totalPhases: number;
-    totalAmount?: number;
     startDate?: Date;
     estimatedCompletion?: Date;
     owner: string;
@@ -20,8 +16,6 @@ export declare class PublicProjectResponseDto {
     id: string;
     name: string;
     description: string;
-    progress: number;
-    totalPhases: number;
     owner: string;
     tags?: string[];
     isOwner: boolean;

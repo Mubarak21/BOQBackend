@@ -4,11 +4,6 @@ export class ProjectResponseDto {
   id: string;
   name: string;
   description: string;
-  progress: number;
-  completedPhases?: number;
-  totalPhases: number;
-  totalAmount?: number;
-  totalPhasesAmount?: number;
   startDate?: Date;
   estimatedCompletion?: Date;
   owner: string;
@@ -23,8 +18,6 @@ export class PublicProjectResponseDto {
   id: string;
   name: string;
   description: string;
-  progress: number;
-  totalPhases: number;
   owner: string;
   tags?: string[];
   isOwner: boolean;

@@ -8,8 +8,5 @@ export declare class CreateProjectDto {
     end_date?: string;
     tags?: string[];
     collaborator_ids?: string[];
-    boq_file?: string;
-    boq_filename?: string;
-    boq_mimetype?: string;
     totalAmount?: number;
 }

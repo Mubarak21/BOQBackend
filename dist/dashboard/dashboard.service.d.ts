@@ -2,11 +2,13 @@ import { Repository } from "typeorm";
 import { Project } from "../entities/project.entity";
 import { User } from "../entities/user.entity";
 import { Task } from "../entities/task.entity";
+import { Stats } from "../entities/stats.entity";
 export declare class DashboardService {
     private projectsRepository;
     private usersRepository;
     private tasksRepository;
-    constructor(projectsRepository: Repository<Project>, usersRepository: Repository<User>, tasksRepository: Repository<Task>);
+    private readonly statsRepository;
+    constructor(projectsRepository: Repository<Project>, usersRepository: Repository<User>, tasksRepository: Repository<Task>, statsRepository: Repository<Stats>);
     getStats(userId: string): Promise<{
         totalProjects: number;
         activeProjects: number;
@@ -24,13 +26,13 @@ export declare class DashboardService {
         total_tasks: number;
         tasks_per_phase: number;
         average_phase_progress: number;
-        phase_priority_breakdown: {
-            low: number;
-            medium: number;
-            high: number;
-            urgent: number;
-            none: number;
-        };
+    }>;
+    updateStats(): Promise<Stats>;
+    getStatsFromTable(): Promise<Stats | {
+        total_projects: number;
+        total_value: string;
+        team_members: number;
+        updated_at: any;
     }>;
     private getTotalProjects;
     private getActiveProjects;
@@ -50,6 +52,5 @@ export declare class DashboardService {
         remaining: number;
     }>;
     private getTaskStats;
-    private getPhasePriorityBreakdown;
     private getAveragePhaseProgress;
 }

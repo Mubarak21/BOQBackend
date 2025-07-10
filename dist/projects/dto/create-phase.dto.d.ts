@@ -6,9 +6,6 @@ export declare class CreatePhaseDto {
     description?: string;
     deliverables?: string;
     requirements?: string;
-    risks?: string;
-    dependencies?: string;
-    priority?: string;
     startDate?: string;
     endDate?: string;
     dueDate?: string;

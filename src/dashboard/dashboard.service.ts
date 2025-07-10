@@ -5,6 +5,7 @@ import { Project, ProjectStatus } from "../entities/project.entity";
 import { User } from "../entities/user.entity";
 import { Task } from "../entities/task.entity";
 import { Phase } from "../entities/phase.entity";
+import { Stats } from "../entities/stats.entity";
 
 @Injectable()
 export class DashboardService {
@@ -14,7 +15,9 @@ export class DashboardService {
     @InjectRepository(User)
     private usersRepository: Repository<User>,
     @InjectRepository(Task)
-    private tasksRepository: Repository<Task>
+    private tasksRepository: Repository<Task>,
+    @InjectRepository(Stats)
+    private readonly statsRepository: Repository<Stats>
   ) {}
 
   async getStats(userId: string) {
@@ -27,7 +30,6 @@ export class DashboardService {
       monthlyGrowth,
       totalProjectValues,
       taskStats,
-      phasePriorityBreakdown,
       averagePhaseProgress,
     ] = await Promise.all([
       this.getTotalProjects(userId),
@@ -38,7 +40,6 @@ export class DashboardService {
       this.getMonthlyGrowth(userId),
       this.getTotalProjectValues(userId),
       this.getTaskStats(userId),
-      this.getPhasePriorityBreakdown(userId),
       this.getAveragePhaseProgress(userId),
     ]);
 
@@ -60,8 +61,65 @@ export class DashboardService {
       total_tasks: taskStats.total_tasks,
       tasks_per_phase: taskStats.tasks_per_phase,
       average_phase_progress: averagePhaseProgress,
-      phase_priority_breakdown: phasePriorityBreakdown,
     };
+  }
+
+  async updateStats() {
+    console.log("updateStats called");
+    // Log all projects in the database
+    const allProjects = await this.projectsRepository.find();
+    console.log(
+      "All projects in DB:",
+      allProjects.map((p) => ({ id: p.id, title: p.title }))
+    );
+    const totalProjects = allProjects.length;
+    console.log("Total projects found:", totalProjects);
+    const projects = await this.projectsRepository.find({
+      relations: ["collaborators", "owner", "phases"],
+    });
+    const totalValue = projects
+      .reduce(
+        (sum: number, project: any) => sum + Number(project.totalAmount ?? 0),
+        0
+      )
+      .toFixed(2);
+    console.log("Total value:", totalValue);
+    const uniqueTeamMembers = new Set<string>();
+    projects.forEach((project) => {
+      project.collaborators?.forEach((collaborator) =>
+        uniqueTeamMembers.add(collaborator.id)
+      );
+      if (project.owner_id) uniqueTeamMembers.add(project.owner_id);
+    });
+    const teamMembers = uniqueTeamMembers.size;
+    console.log("Team members:", teamMembers);
+    // Upsert the stats row (assume only one row)
+    let stats = await this.statsRepository.findOneBy({});
+    if (!stats) {
+      stats = this.statsRepository.create();
+      console.log("Creating new stats row");
+    } else {
+      console.log("Updating existing stats row");
+    }
+    stats.total_projects = totalProjects;
+    stats.total_value = totalValue;
+    stats.team_members = teamMembers;
+    await this.statsRepository.save(stats);
+    console.log("Stats saved:", stats);
+    return stats;
+  }
+
+  async getStatsFromTable() {
+    let stats = await this.statsRepository.findOneBy({});
+    if (!stats) {
+      return {
+        total_projects: 0,
+        total_value: "0.00",
+        team_members: 0,
+        updated_at: null,
+      };
+    }
+    return stats;
   }
 
   private async getTotalProjects(userId: string): Promise<number> {
@@ -241,22 +299,6 @@ export class DashboardService {
       total_tasks: totalTasks,
       tasks_per_phase: totalPhases > 0 ? totalTasks / totalPhases : 0,
     };
-  }
-
-  private async getPhasePriorityBreakdown(userId: string) {
-    const projects = await this.projectsRepository.find({
-      where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-      relations: ["phases"],
-    });
-    const breakdown = { low: 0, medium: 0, high: 0, urgent: 0, none: 0 };
-    projects.forEach((project) => {
-      (project.phases || []).forEach((phase) => {
-        const p = (phase.priority || "none").toLowerCase();
-        if (breakdown[p] !== undefined) breakdown[p]++;
-        else breakdown.none++;
-      });
-    });
-    return breakdown;
   }
 
   private async getAveragePhaseProgress(userId: string) {

@@ -74,12 +74,6 @@ export class Phase {
   @Column({ nullable: true })
   requirements: string;
 
-  @Column({ nullable: true })
-  risks: string;
-
-  @Column({ nullable: true })
-  priority: string;
-
   @Column({ type: "timestamp", nullable: true })
   due_date: Date;
 

@@ -32,14 +32,6 @@ export class CreatePhaseDto {
 
   @IsString()
   @IsOptional()
-  risks?: string;
-
-  @IsString()
-  @IsOptional()
-  priority?: string;
-
-  @IsString()
-  @IsOptional()
   startDate?: string;
 
   @IsString()

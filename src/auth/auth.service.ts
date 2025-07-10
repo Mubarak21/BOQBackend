@@ -12,6 +12,7 @@ import { CreateUserDto } from "./dto/create-user.dto";
 import * as bcrypt from "bcrypt";
 import { ConfigService } from "@nestjs/config";
 import { Department } from "../entities/department.entity";
+import { Admin } from "../entities/admin.entity";
 
 @Injectable()
 export class AuthService {
@@ -23,7 +24,9 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     @InjectRepository(Department)
-    private departmentRepository: Repository<Department>
+    private departmentRepository: Repository<Department>,
+    @InjectRepository(Admin)
+    private adminRepository: Repository<Admin>
   ) {}
 
   async register(createUserDto: CreateUserDto): Promise<{
@@ -89,7 +92,7 @@ export class AuthService {
     };
   }
 
-  async validateToken(token: string): Promise<User> {
+  async validateToken(token: string): Promise<User | Admin> {
     try {
       // Check if token is blacklisted
       if (this.tokenBlacklist.has(token)) {
@@ -103,15 +106,19 @@ export class AuthService {
         throw new UnauthorizedException("Token has expired");
       }
 
-      const user = await this.userRepository.findOne({
+      // Try to find a user
+      let user = await this.userRepository.findOne({
         where: { id: payload.sub },
       });
+      if (user) return user;
 
-      if (!user) {
-        throw new UnauthorizedException("User not found");
-      }
+      // Try to find an admin
+      const admin = await this.adminRepository.findOne({
+        where: { id: payload.sub },
+      });
+      if (admin) return admin;
 
-      return user;
+      throw new UnauthorizedException("User or admin not found");
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         throw error;
@@ -244,5 +251,13 @@ export class AuthService {
         this.tokenBlacklist.delete(token);
       }
     }
+  }
+
+  async hashPassword(password: string): Promise<string> {
+    return bcrypt.hash(password, 10);
+  }
+
+  async comparePassword(password: string, hash: string): Promise<boolean> {
+    return bcrypt.compare(password, hash);
   }
 }

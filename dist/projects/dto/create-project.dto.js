@@ -57,21 +57,6 @@ __decorate([
     __metadata("design:type", Array)
 ], CreateProjectDto.prototype, "collaborator_ids", void 0);
 __decorate([
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", String)
-], CreateProjectDto.prototype, "boq_file", void 0);
-__decorate([
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", String)
-], CreateProjectDto.prototype, "boq_filename", void 0);
-__decorate([
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", String)
-], CreateProjectDto.prototype, "boq_mimetype", void 0);
-__decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Number)
 ], CreateProjectDto.prototype, "totalAmount", void 0);

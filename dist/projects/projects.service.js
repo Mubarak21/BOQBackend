@@ -26,11 +26,12 @@ const tasks_service_1 = require("../tasks/tasks.service");
 const project_access_request_entity_1 = require("../entities/project-access-request.entity");
 const activity_entity_1 = require("../entities/activity.entity");
 const phase_entity_2 = require("../entities/phase.entity");
+const dashboard_service_1 = require("../dashboard/dashboard.service");
 function normalizeColumnName(name) {
     return name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
 }
 let ProjectsService = class ProjectsService {
-    constructor(projectsRepository, tasksRepository, phasesRepository, accessRequestRepository, usersService, activitiesService, tasksService) {
+    constructor(projectsRepository, tasksRepository, phasesRepository, accessRequestRepository, usersService, activitiesService, tasksService, dashboardService) {
         this.projectsRepository = projectsRepository;
         this.tasksRepository = tasksRepository;
         this.phasesRepository = phasesRepository;
@@ -38,6 +39,7 @@ let ProjectsService = class ProjectsService {
         this.usersService = usersService;
         this.activitiesService = activitiesService;
         this.tasksService = tasksService;
+        this.dashboardService = dashboardService;
     }
     async findAll() {
         return this.projectsRepository.find({
@@ -80,7 +82,7 @@ let ProjectsService = class ProjectsService {
                 : null,
             tags: createProjectDto.tags,
             owner_id: owner.id,
-            total_amount: createProjectDto.totalAmount ?? 0,
+            totalAmount: createProjectDto.totalAmount ?? 0,
         });
         if (createProjectDto.collaborator_ids?.length) {
             const collaborators = await this.getValidatedCollaborators(createProjectDto.collaborator_ids);
@@ -93,6 +95,7 @@ let ProjectsService = class ProjectsService {
         catch (error) {
             console.warn("Failed to log project creation activity:", error);
         }
+        await this.dashboardService.updateStats();
         return this.findOne(savedProject.id);
     }
     async update(id, updateProjectDto, userId) {
@@ -114,7 +117,9 @@ let ProjectsService = class ProjectsService {
                 : project.end_date,
         };
         Object.assign(project, updateData);
-        return this.projectsRepository.save(project);
+        await this.projectsRepository.save(project);
+        await this.dashboardService.updateStats();
+        return project;
     }
     async remove(id, userId) {
         const project = await this.findOne(id);
@@ -122,6 +127,7 @@ let ProjectsService = class ProjectsService {
             throw new common_1.ForbiddenException("Only the project owner can delete the project");
         }
         await this.projectsRepository.remove(project);
+        await this.dashboardService.updateStats();
     }
     async addCollaborator(projectId, collaborator, userId) {
         const project = await this.findOne(projectId);
@@ -166,7 +172,7 @@ let ProjectsService = class ProjectsService {
         try {
             const { data, totalAmount } = await this.parseBoqFile(file);
             const tasks = await this.createTasksFromBoqData(data, projectId);
-            project.total_amount = totalAmount;
+            project.totalAmount = totalAmount;
             await this.projectsRepository.save(project);
             try {
                 await this.activitiesService.logBoqUploaded(project.owner, project, file.originalname, tasks.length, totalAmount);
@@ -210,9 +216,6 @@ let ProjectsService = class ProjectsService {
             description: createPhaseDto.description,
             deliverables: createPhaseDto.deliverables,
             requirements: createPhaseDto.requirements,
-            risks: createPhaseDto.risks,
-            dependencies: createPhaseDto.dependencies,
-            priority: createPhaseDto.priority,
             start_date: createPhaseDto.startDate,
             end_date: createPhaseDto.endDate,
             due_date: createPhaseDto.dueDate,
@@ -228,13 +231,6 @@ let ProjectsService = class ProjectsService {
         const savedPhase = await this.phasesRepository.save(phase);
         const user = await this.usersService.findOne(userId);
         await this.activitiesService.createActivity(activity_entity_1.ActivityType.TASK_CREATED, `Phase "${savedPhase.title}" was created`, user, project, savedPhase, { phaseId: savedPhase.id });
-        const phases = await this.phasesRepository.find({
-            where: { project_id: projectId },
-        });
-        const totalAmount = phases.reduce((sum, phase) => sum + (Number(phase.budget) || 0), 0);
-        await this.projectsRepository.update(projectId, {
-            total_amount: totalAmount,
-        });
         if (createPhaseDto.tasks?.length) {
             for (const taskDto of createPhaseDto.tasks) {
                 if (taskDto.id) {
@@ -274,9 +270,6 @@ let ProjectsService = class ProjectsService {
             description: updatePhaseDto.description,
             deliverables: updatePhaseDto.deliverables,
             requirements: updatePhaseDto.requirements,
-            risks: updatePhaseDto.risks,
-            dependencies: updatePhaseDto.dependencies,
-            priority: updatePhaseDto.priority,
             start_date: updatePhaseDto.startDate,
             end_date: updatePhaseDto.endDate,
             due_date: updatePhaseDto.dueDate,
@@ -290,13 +283,6 @@ let ProjectsService = class ProjectsService {
         const updatedPhase = await this.phasesRepository.save(phase);
         const user = await this.usersService.findOne(userId);
         await this.activitiesService.createActivity(activity_entity_1.ActivityType.TASK_UPDATED, `Phase "${updatedPhase.title}" was updated`, user, project, updatedPhase, { phaseId: updatedPhase.id });
-        const phases = await this.phasesRepository.find({
-            where: { project_id: projectId },
-        });
-        const totalAmount = phases.reduce((sum, phase) => sum + (Number(phase.budget) || 0), 0);
-        await this.projectsRepository.update(projectId, {
-            total_amount: totalAmount,
-        });
         if (updatePhaseDto.status === "completed" && phase.status !== "completed") {
             const project = await this.projectsRepository.findOne({
                 where: { id: projectId },
@@ -335,13 +321,6 @@ let ProjectsService = class ProjectsService {
         await this.phasesRepository.remove(phase);
         const user = await this.usersService.findOne(userId);
         await this.activitiesService.createActivity(activity_entity_1.ActivityType.TASK_DELETED, `Phase "${phase.title}" was deleted`, user, project, phase, { phaseId: phase.id });
-        const phases = await this.phasesRepository.find({
-            where: { project_id: projectId },
-        });
-        const totalAmount = phases.reduce((sum, phase) => sum + (Number(phase.budget) || 0), 0);
-        await this.projectsRepository.update(projectId, {
-            total_amount: totalAmount,
-        });
     }
     async getProjectPhases(projectId, userId) {
         await this.findOne(projectId, userId);
@@ -361,30 +340,17 @@ let ProjectsService = class ProjectsService {
         return [project.owner, ...(project.collaborators || [])];
     }
     async getProjectResponse(project) {
-        const phases = project.phases || [];
-        const totalPhases = phases.length;
-        let progress = 0;
-        if (totalPhases > 0) {
-            const totalProgress = phases.reduce((sum, phase) => sum + (phase.progress || 0), 0);
-            progress = Math.round(totalProgress / totalPhases);
-            if (progress > 100)
-                progress = 100;
-        }
-        const completedPhases = phases.filter((phase) => phase.status === "completed").length;
         return {
             id: project.id,
             name: project.title,
             description: project.description,
-            progress,
-            completedPhases,
-            totalPhases,
-            totalAmount: project.total_amount,
+            totalAmount: project.totalAmount,
             startDate: project.start_date,
             estimatedCompletion: project.end_date,
             owner: project.owner?.display_name || project.owner_id,
             collaborators: (project.collaborators || []).map((c) => c.display_name || c.id),
             tags: project.tags,
-            phases: phases,
+            phases: project.phases || [],
         };
     }
     async findAllProjects() {
@@ -506,6 +472,131 @@ let ProjectsService = class ProjectsService {
             where: { project_id: projectId },
         });
         return allTasks.filter((task) => !task.phase_id);
+    }
+    async countAll() {
+        return this.projectsRepository.count();
+    }
+    async getTrends(period = "monthly", from, to) {
+        let startDate = undefined;
+        let endDate = undefined;
+        if (from)
+            startDate = new Date(from);
+        if (to)
+            endDate = new Date(to);
+        let groupFormat;
+        switch (period) {
+            case "daily":
+                groupFormat = "YYYY-MM-DD";
+                break;
+            case "weekly":
+                groupFormat = "IYYY-IW";
+                break;
+            case "monthly":
+            default:
+                groupFormat = "YYYY-MM";
+                break;
+        }
+        const qb = this.projectsRepository
+            .createQueryBuilder("project")
+            .select(`to_char(project.created_at, '${groupFormat}')`, "period")
+            .addSelect("COUNT(*)", "count");
+        if (startDate)
+            qb.andWhere("project.created_at >= :startDate", { startDate });
+        if (endDate)
+            qb.andWhere("project.created_at <= :endDate", { endDate });
+        qb.groupBy("period").orderBy("period", "ASC");
+        return qb.getRawMany();
+    }
+    async adminList({ search = "", status, page = 1, limit = 20 }) {
+        const qb = this.projectsRepository
+            .createQueryBuilder("project")
+            .leftJoinAndSelect("project.owner", "owner")
+            .leftJoinAndSelect("project.collaborators", "collaborators");
+        if (search) {
+            qb.andWhere("project.title ILIKE :search OR project.description ILIKE :search", { search: `%${search}%` });
+        }
+        if (status) {
+            qb.andWhere("project.status = :status", { status });
+        }
+        qb.orderBy("project.created_at", "DESC")
+            .skip((page - 1) * limit)
+            .take(limit);
+        const [items, total] = await qb.getManyAndCount();
+        return {
+            items: items.map((p) => ({
+                id: p.id,
+                name: p.title,
+                description: p.description,
+                status: p.status,
+                createdAt: p.created_at,
+                updatedAt: p.updated_at,
+                owner: p.owner
+                    ? { id: p.owner.id, display_name: p.owner.display_name }
+                    : null,
+                members: (p.collaborators || []).map((c) => ({
+                    id: c.id,
+                    display_name: c.display_name,
+                })),
+                tags: p.tags,
+            })),
+            total,
+            page,
+            limit,
+        };
+    }
+    async adminGetDetails(id) {
+        const project = await this.projectsRepository.findOne({
+            where: { id },
+            relations: ["owner", "collaborators", "phases"],
+        });
+        if (!project)
+            throw new Error("Project not found");
+        return {
+            id: project.id,
+            name: project.title,
+            description: project.description,
+            status: project.status,
+            createdAt: project.created_at,
+            updatedAt: project.updated_at,
+            owner: project.owner
+                ? { id: project.owner.id, display_name: project.owner.display_name }
+                : null,
+            members: (project.collaborators || []).map((c) => ({
+                id: c.id,
+                display_name: c.display_name,
+            })),
+            tags: project.tags,
+            phases: project.phases,
+        };
+    }
+    async getTopActiveProjects(limit = 5) {
+        const projects = await this.projectsRepository.find({
+            order: { created_at: "DESC" },
+            take: limit,
+            relations: ["owner", "collaborators"],
+        });
+        return projects.map((p) => ({
+            id: p.id,
+            name: p.title,
+            description: p.description,
+            status: p.status,
+            createdAt: p.created_at,
+            owner: p.owner
+                ? { id: p.owner.id, display_name: p.owner.display_name }
+                : null,
+            members: (p.collaborators || []).map((c) => ({
+                id: c.id,
+                display_name: c.display_name,
+            })),
+        }));
+    }
+    async getGroupedByStatus() {
+        const qb = this.projectsRepository
+            .createQueryBuilder("project")
+            .select("project.status", "status")
+            .addSelect("COUNT(*)", "count")
+            .groupBy("project.status");
+        return qb.getRawMany();
     }
     hasProjectAccess(project, userId) {
         return (project.owner_id === userId ||
@@ -661,7 +752,7 @@ let ProjectsService = class ProjectsService {
             priority: project.priority,
             start_date: project.start_date,
             end_date: project.end_date,
-            total_amount: project.total_amount,
+            totalAmount: project.totalAmount,
             tags: project.tags,
             created_at: project.created_at,
             updated_at: project.updated_at,
@@ -766,12 +857,14 @@ exports.ProjectsService = ProjectsService = __decorate([
     __param(2, (0, typeorm_1.InjectRepository)(phase_entity_1.Phase)),
     __param(3, (0, typeorm_1.InjectRepository)(project_access_request_entity_1.ProjectAccessRequest)),
     __param(5, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
+    __param(7, (0, common_1.Inject)((0, common_1.forwardRef)(() => dashboard_service_1.DashboardService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         users_service_1.UsersService,
         activities_service_1.ActivitiesService,
-        tasks_service_1.TasksService])
+        tasks_service_1.TasksService,
+        dashboard_service_1.DashboardService])
 ], ProjectsService);
 //# sourceMappingURL=projects.service.js.map

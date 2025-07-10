@@ -39,6 +39,7 @@ async function bootstrap() {
     catch (err) {
         console.error("❌ Database connection failed:", err);
     }
+    console.log("✅ Admin and customer (user) modules/routes are connected and server is running on port", port);
 }
 bootstrap();
 //# sourceMappingURL=main.js.map

@@ -71,21 +71,18 @@ __decorate([
     __metadata("design:type", Date)
 ], Project.prototype, "end_date", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "decimal", precision: 10, scale: 2, default: 0 }),
+    (0, typeorm_1.Column)({
+        type: "decimal",
+        precision: 20,
+        scale: 2,
+        default: 0,
+        transformer: {
+            to: (value) => value,
+            from: (value) => parseFloat(value),
+        },
+    }),
     __metadata("design:type", Number)
-], Project.prototype, "total_amount", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ type: "bytea", nullable: true }),
-    __metadata("design:type", Buffer)
-], Project.prototype, "boq_file", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", String)
-], Project.prototype, "boq_filename", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", String)
-], Project.prototype, "boq_mimetype", void 0);
+], Project.prototype, "totalAmount", void 0);
 __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", String)
