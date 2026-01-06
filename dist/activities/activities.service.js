@@ -190,7 +190,9 @@ let ActivitiesService = class ActivitiesService {
         qb.groupBy("period").orderBy("period", "ASC");
         return qb.getRawMany();
     }
-    async adminList({ userId, type, dateFrom, dateTo, projectId, search = "", page = 1, limit = 20, }) {
+    async adminList({ userId, type, dateFrom, dateTo, projectId, search = "", page = 1, limit = 10, }) {
+        const pageNum = Number(page) || 1;
+        const limitNum = Number(limit) || 10;
         const qb = this.activitiesRepository
             .createQueryBuilder("activity")
             .leftJoinAndSelect("activity.user", "user")
@@ -216,8 +218,8 @@ let ActivitiesService = class ActivitiesService {
             });
         }
         qb.orderBy("activity.created_at", "DESC")
-            .skip((page - 1) * limit)
-            .take(limit);
+            .skip((pageNum - 1) * limitNum)
+            .take(limitNum);
         const [items, total] = await qb.getManyAndCount();
         return {
             items: items.map((a) => ({
@@ -231,8 +233,8 @@ let ActivitiesService = class ActivitiesService {
                 timestamp: a.created_at,
             })),
             total,
-            page,
-            limit,
+            page: pageNum,
+            limit: limitNum,
         };
     }
     async adminGetDetails(id) {

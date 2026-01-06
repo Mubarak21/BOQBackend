@@ -16,12 +16,17 @@ const dashboard_service_1 = require("./dashboard.service");
 const dashboard_controller_1 = require("./dashboard.controller");
 const auth_module_1 = require("../auth/auth.module");
 const stats_entity_1 = require("../entities/stats.entity");
+const projects_module_1 = require("../projects/projects.module");
 let DashboardModule = class DashboardModule {
 };
 exports.DashboardModule = DashboardModule;
 exports.DashboardModule = DashboardModule = __decorate([
     (0, common_1.Module)({
-        imports: [typeorm_1.TypeOrmModule.forFeature([project_entity_1.Project, user_entity_1.User, task_entity_1.Task, stats_entity_1.Stats]), auth_module_1.AuthModule],
+        imports: [
+            typeorm_1.TypeOrmModule.forFeature([project_entity_1.Project, user_entity_1.User, task_entity_1.Task, stats_entity_1.Stats]),
+            auth_module_1.AuthModule,
+            (0, common_1.forwardRef)(() => projects_module_1.ProjectsModule),
+        ],
         providers: [dashboard_service_1.DashboardService],
         controllers: [dashboard_controller_1.DashboardController],
         exports: [dashboard_service_1.DashboardService],

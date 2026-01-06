@@ -12,6 +12,7 @@ import { Project } from "../entities/project.entity";
 import { CreateTaskDto } from "./dto/create-task.dto";
 import { UpdateTaskDto } from "./dto/update-task.dto";
 import { ProjectsService } from "../projects/projects.service";
+import { UsersService } from "../users/users.service";
 
 @Injectable()
 export class TasksService {
@@ -22,7 +23,8 @@ export class TasksService {
     private projectsRepository: Repository<Project>,
 
     @Inject(forwardRef(() => ProjectsService))
-    private readonly projectsService: ProjectsService
+    private readonly projectsService: ProjectsService,
+    private readonly usersService: UsersService
   ) {}
 
   async findAllByProject(projectId: string, userId: string): Promise<Task[]> {
@@ -90,8 +92,11 @@ export class TasksService {
     const project = await this.projectsRepository.findOne({
       where: { id: task.project_id },
     });
+    const user = await this.usersService.findOne(userId);
+    const isAdmin = user?.role === "admin";
+    const isConsultant = user?.role === "consultant";
 
-    if (project.owner_id !== userId) {
+    if (project.owner_id !== userId && !isAdmin && !isConsultant) {
       throw new ForbiddenException(
         "You don't have permission to update this task"
       );
@@ -106,9 +111,12 @@ export class TasksService {
     const project = await this.projectsRepository.findOne({
       where: { id: task.project_id },
     });
+    const user = await this.usersService.findOne(userId);
+    const isAdmin = user?.role === "admin";
+    const isConsultant = user?.role === "consultant";
 
-    if (project.owner_id !== userId) {
-      throw new ForbiddenException("Only the project owner can delete tasks");
+    if (project.owner_id !== userId && !isAdmin && !isConsultant) {
+      throw new ForbiddenException("Only the project owner, admin, or consultant can delete tasks");
     }
 
     await this.tasksRepository.remove(task);
@@ -121,9 +129,12 @@ export class TasksService {
   ): Promise<Task> {
     const task = await this.findOne(taskId, userId);
     const project = await this.projectsService.findOne(task.project_id, userId);
+    const user = await this.usersService.findOne(userId);
+    const isAdmin = user?.role === "admin";
+    const isConsultant = user?.role === "consultant";
 
-    if (project.owner_id !== userId) {
-      throw new ForbiddenException("Only the project owner can assign tasks");
+    if (project.owner_id !== userId && !isAdmin && !isConsultant) {
+      throw new ForbiddenException("Only the project owner, admin, or consultant can assign tasks");
     }
 
     // Task entity no longer supports assignee_id; assignment removed

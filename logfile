@@ -66,3 +66,5 @@
 2025-07-10 13:43:34.990 EAT [87303] ERROR:  null value in column "display_name" of relation "admins" violates not-null constraint
 2025-07-10 13:43:34.990 EAT [87303] DETAIL:  Failing row contains (84965c50-1094-40f8-9628-cc47c30eb63c, massawemubarak@gmail.com, $2b$10$BmHlUSVHRvv3dJVaj6q.TueZXgkRVZMq2UA9Q/o1ZP3uFK78Ysa5G, null, active, null, 2025-07-10 13:43:34.960398, 2025-07-10 13:43:34.960398).
 2025-07-10 13:43:34.990 EAT [87303] STATEMENT:  INSERT INTO "admins"("id", "email", "password", "display_name", "status", "last_login", "created_at", "updated_at") VALUES (DEFAULT, $1, $2, DEFAULT, $3, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "created_at", "updated_at"
+2025-07-10 16:17:30.227 EAT [92475] LOG:  could not receive data from client: Connection reset by peer
+2025-07-10 16:17:30.230 EAT [92475] LOG:  unexpected EOF on client connection with an open transaction

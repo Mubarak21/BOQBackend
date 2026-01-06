@@ -28,17 +28,32 @@ let ConsultantController = class ConsultantController {
     async getProjectDetails(id, req) {
         return this.projectsService.getConsultantProjectDetails(id);
     }
-    async getProjectPhases(id, req) {
-        return this.projectsService.getConsultantProjectPhases(id);
+    async getProjectPhases(id, page = 1, limit = 10, req) {
+        return this.projectsService.getConsultantProjectPhasesPaginated(id, {
+            page,
+            limit,
+        });
     }
     async getProjectTasks(projectId, req) {
+        if (!projectId) {
+            throw new common_1.BadRequestException("projectId query parameter is required");
+        }
         return this.projectsService.getConsultantProjectTasks(projectId);
     }
     async getProjectFeedback(projectId, req) {
+        if (!projectId) {
+            throw new common_1.BadRequestException("projectId query parameter is required");
+        }
         return this.commentsService.listConsultantFeedbackByProject(projectId);
     }
     async createFeedback(body, req) {
-        return this.commentsService.createConsultantFeedback(body.projectId, body.content, req.user);
+        if (!body.projectId) {
+            throw new common_1.BadRequestException("projectId is required");
+        }
+        if (!body.content || body.content.trim().length === 0) {
+            throw new common_1.BadRequestException("content is required and cannot be empty");
+        }
+        return this.commentsService.createConsultantFeedback(body.projectId, body.content.trim(), req.user);
     }
 };
 exports.ConsultantController = ConsultantController;
@@ -60,9 +75,11 @@ __decorate([
 __decorate([
     (0, common_1.Get)("projects/:id/phases"),
     __param(0, (0, common_1.Param)("id")),
-    __param(1, (0, common_1.Request)()),
+    __param(1, (0, common_1.Query)("page")),
+    __param(2, (0, common_1.Query)("limit")),
+    __param(3, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:paramtypes", [String, Number, Number, Object]),
     __metadata("design:returntype", Promise)
 ], ConsultantController.prototype, "getProjectPhases", null);
 __decorate([

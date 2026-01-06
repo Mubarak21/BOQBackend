@@ -74,6 +74,58 @@ export class Project {
   })
   totalAmount: number;
 
+  // Financial fields
+  @Column({
+    type: "decimal",
+    precision: 15,
+    scale: 2,
+    default: 0.0,
+    name: "total_budget",
+  })
+  totalBudget: number;
+
+  @Column({
+    type: "decimal",
+    precision: 15,
+    scale: 2,
+    default: 0.0,
+    name: "allocated_budget",
+  })
+  allocatedBudget: number;
+
+  @Column({
+    type: "decimal",
+    precision: 15,
+    scale: 2,
+    default: 0.0,
+    name: "spent_amount",
+  })
+  spentAmount: number;
+
+  @Column({
+    type: "decimal",
+    precision: 15,
+    scale: 2,
+    default: 0.0,
+    name: "estimated_savings",
+  })
+  estimatedSavings: number;
+
+  @Column({
+    type: "timestamp",
+    nullable: true,
+    name: "budget_last_updated",
+  })
+  budgetLastUpdated: Date;
+
+  @Column({
+    type: "enum",
+    enum: ["on_track", "warning", "over_budget", "excellent"],
+    default: "on_track",
+    name: "financial_status",
+  })
+  financialStatus: "on_track" | "warning" | "over_budget" | "excellent";
+
   @Column()
   owner_id: string;
 

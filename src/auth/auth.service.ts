@@ -100,6 +100,7 @@ export class AuthService {
       }
 
       const payload = this.jwtService.verify(token);
+      console.log("JWT payload:", payload);
 
       // Check if token is expired
       if (payload.exp && payload.exp * 1000 < Date.now()) {
@@ -116,7 +117,12 @@ export class AuthService {
       const admin = await this.adminRepository.findOne({
         where: { id: payload.sub },
       });
-      if (admin) return admin;
+      if (admin) {
+        // Add role from JWT payload to admin object for RolesGuard compatibility
+        (admin as any).role = payload.role;
+        console.log("Admin object with role:", admin);
+        return admin;
+      }
 
       throw new UnauthorizedException("User or admin not found");
     } catch (error) {

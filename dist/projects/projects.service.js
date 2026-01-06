@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const project_entity_1 = require("../entities/project.entity");
+const user_entity_1 = require("../entities/user.entity");
 const task_entity_1 = require("../entities/task.entity");
 const XLSX = require("xlsx");
 const activities_service_1 = require("../activities/activities.service");
@@ -27,24 +28,94 @@ const project_access_request_entity_1 = require("../entities/project-access-requ
 const activity_entity_1 = require("../entities/activity.entity");
 const phase_entity_2 = require("../entities/phase.entity");
 const dashboard_service_1 = require("../dashboard/dashboard.service");
+const boq_parser_service_1 = require("./boq-parser.service");
+const inventory_entity_1 = require("../entities/inventory.entity");
+const path = require("path");
+const fs = require("fs");
 function normalizeColumnName(name) {
     return name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
 }
 let ProjectsService = class ProjectsService {
-    constructor(projectsRepository, tasksRepository, phasesRepository, accessRequestRepository, usersService, activitiesService, tasksService, dashboardService) {
+    constructor(projectsRepository, tasksRepository, phasesRepository, accessRequestRepository, inventoryRepository, usersService, activitiesService, tasksService, dashboardService, boqParserService) {
         this.projectsRepository = projectsRepository;
         this.tasksRepository = tasksRepository;
         this.phasesRepository = phasesRepository;
         this.accessRequestRepository = accessRequestRepository;
+        this.inventoryRepository = inventoryRepository;
         this.usersService = usersService;
         this.activitiesService = activitiesService;
         this.tasksService = tasksService;
         this.dashboardService = dashboardService;
+        this.boqParserService = boqParserService;
     }
     async findAll() {
         return this.projectsRepository.find({
             relations: ["owner", "collaborators", "phases"],
         });
+    }
+    async findAllPaginated({ page = 1, limit = 10, search, status, }) {
+        const pageNum = Number(page) || 1;
+        const limitNum = Number(limit) || 10;
+        const qb = this.projectsRepository
+            .createQueryBuilder("project")
+            .leftJoinAndSelect("project.owner", "owner")
+            .leftJoinAndSelect("project.collaborators", "collaborators")
+            .leftJoinAndSelect("project.phases", "phases")
+            .leftJoinAndSelect("phases.subPhases", "subPhases");
+        if (search) {
+            qb.andWhere("(project.title ILIKE :search OR project.description ILIKE :search)", { search: `%${search}%` });
+        }
+        if (status) {
+            qb.andWhere("project.status = :status", { status });
+        }
+        qb.orderBy("project.created_at", "DESC")
+            .skip((pageNum - 1) * limitNum)
+            .take(limitNum);
+        const [items, total] = await qb.getManyAndCount();
+        return {
+            items,
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum),
+        };
+    }
+    async findUserProjects(userId) {
+        return this.projectsRepository.find({
+            where: [{ owner_id: userId }, { collaborators: { id: userId } }],
+            relations: ["owner", "collaborators", "phases"],
+            order: { updated_at: "DESC" },
+        });
+    }
+    async findUserProjectsPaginated(userId, { page = 1, limit = 10, search, status, }) {
+        const pageNum = Number(page) || 1;
+        const limitNum = Number(limit) || 10;
+        const qb = this.projectsRepository
+            .createQueryBuilder("project")
+            .leftJoinAndSelect("project.owner", "owner")
+            .leftJoinAndSelect("project.collaborators", "collaborators")
+            .leftJoinAndSelect("project.phases", "phases")
+            .leftJoinAndSelect("phases.subPhases", "subPhases")
+            .leftJoin("project.collaborators", "collab")
+            .where("project.owner_id = :userId", { userId })
+            .orWhere("collab.id = :userId", { userId });
+        if (search) {
+            qb.andWhere("(project.title ILIKE :search OR project.description ILIKE :search)", { search: `%${search}%` });
+        }
+        if (status) {
+            qb.andWhere("project.status = :status", { status });
+        }
+        qb.orderBy("project.created_at", "DESC")
+            .skip((pageNum - 1) * limitNum)
+            .take(limitNum);
+        const [items, total] = await qb.getManyAndCount();
+        return {
+            items,
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum),
+        };
     }
     async findOne(id, userId) {
         if (!id) {
@@ -52,13 +123,24 @@ let ProjectsService = class ProjectsService {
         }
         const project = await this.projectsRepository.findOne({
             where: { id },
-            relations: ["owner", "collaborators", "phases"],
+            relations: ["owner", "collaborators", "phases", "phases.subPhases"],
         });
         if (!project) {
             throw new common_1.NotFoundException(`Project with ID ${id} not found`);
         }
-        if (userId && !this.hasProjectAccess(project, userId)) {
-            throw new common_1.ForbiddenException("You don't have access to this project");
+        if (userId) {
+            const user = await this.usersService.findOne(userId);
+            const isContractor = user?.role === "contractor";
+            const isSubContractor = user?.role === "sub_contractor";
+            const isAdmin = user?.role === "admin";
+            const isConsultant = user?.role === "consultant";
+            if (!isContractor &&
+                !isSubContractor &&
+                !isAdmin &&
+                !isConsultant &&
+                !this.hasProjectAccess(project, userId)) {
+                throw new common_1.ForbiddenException("You don't have access to this project");
+            }
         }
         if (project.phases?.length > 0) {
             project.phases.sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
@@ -100,8 +182,11 @@ let ProjectsService = class ProjectsService {
     }
     async update(id, updateProjectDto, userId) {
         const project = await this.findOne(id);
-        if (project.owner_id !== userId) {
-            throw new common_1.ForbiddenException("Only the project owner can update the project");
+        const user = await this.usersService.findOne(userId);
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        if (project.owner_id !== userId && !isAdmin && !isConsultant) {
+            throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can update the project");
         }
         if (updateProjectDto.collaborator_ids) {
             const collaborators = await this.getValidatedCollaborators(updateProjectDto.collaborator_ids);
@@ -123,16 +208,22 @@ let ProjectsService = class ProjectsService {
     }
     async remove(id, userId) {
         const project = await this.findOne(id);
-        if (project.owner_id !== userId) {
-            throw new common_1.ForbiddenException("Only the project owner can delete the project");
+        const user = await this.usersService.findOne(userId);
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        if (project.owner_id !== userId && !isAdmin && !isConsultant) {
+            throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can delete the project");
         }
         await this.projectsRepository.remove(project);
         await this.dashboardService.updateStats();
     }
     async addCollaborator(projectId, collaborator, userId) {
         const project = await this.findOne(projectId);
-        if (project.owner_id !== userId) {
-            throw new common_1.ForbiddenException("Only the project owner can add collaborators");
+        const user = await this.usersService.findOne(userId);
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        if (project.owner_id !== userId && !isAdmin && !isConsultant) {
+            throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can add collaborators");
         }
         if (!project.collaborators) {
             project.collaborators = [];
@@ -148,8 +239,11 @@ let ProjectsService = class ProjectsService {
     }
     async removeCollaborator(projectId, collaboratorId, userId) {
         const project = await this.findOne(projectId);
-        if (project.owner_id !== userId) {
-            throw new common_1.ForbiddenException("Only the project owner can remove collaborators");
+        const user = await this.usersService.findOne(userId);
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        if (project.owner_id !== userId && !isAdmin && !isConsultant) {
+            throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can remove collaborators");
         }
         const initialLength = project.collaborators?.length || 0;
         project.collaborators =
@@ -170,31 +264,129 @@ let ProjectsService = class ProjectsService {
             throw new common_1.BadRequestException("No file uploaded or file buffer missing");
         }
         try {
-            const { data, totalAmount } = await this.parseBoqFile(file);
-            const tasks = await this.createTasksFromBoqData(data, projectId);
-            project.totalAmount = totalAmount;
-            await this.projectsRepository.save(project);
+            const parseResult = await this.boqParserService.parseBoqFile(file);
+            console.log(`[BOQ Processing] Parser results:`, {
+                itemsFound: parseResult.items.length,
+                totalAmount: parseResult.totalAmount,
+                sections: parseResult.sections,
+                skipped: parseResult.metadata.skippedRows,
+                fileType: parseResult.metadata.fileType,
+            });
+            return this.processBoqFileFromParsedData(projectId, parseResult.items, parseResult.totalAmount, userId, file.originalname);
+        }
+        catch (error) {
+            console.error("\n=== BOQ Processing Error ===");
+            console.error("Error processing BOQ file:", error);
+            const existingPhases = await this.phasesRepository.find({
+                where: { project_id: projectId },
+            });
+            if (existingPhases.length > 0) {
+                console.warn(`Warning: Error occurred but ${existingPhases.length} phases were already created`);
+                return {
+                    message: `BOQ file processed with warnings. Created ${existingPhases.length} phases.`,
+                    totalAmount: (await this.findOne(projectId, userId)).totalAmount || 0,
+                    tasks: [],
+                };
+            }
+            throw new common_1.BadRequestException(`Failed to process BOQ file: ${error.message}`);
+        }
+    }
+    async processBoqFileFromParsedData(projectId, data, totalAmount, userId, fileName) {
+        if (!projectId || projectId.trim() === '') {
+            console.error('[ERROR] projectId is missing or empty in processBoqFileFromParsedData');
+            throw new common_1.BadRequestException('Project ID is required to process BOQ file');
+        }
+        console.log(`[DEBUG] Processing BOQ - projectId: ${projectId}, userId: ${userId}`);
+        const project = await this.findOne(projectId, userId);
+        if (!project || !project.id) {
+            console.error('[ERROR] Project not found or invalid:', { projectId, project });
+            throw new common_1.NotFoundException(`Project with ID ${projectId} not found`);
+        }
+        console.log(`\nProcessing BOQ for Project: ${project.title} (ID: ${project.id})`);
+        try {
+            const dataWithUnits = data.filter((row) => {
+                if (row.unit && row.quantity) {
+                    const unit = (row.unit || "").toString().trim();
+                    const quantity = row.quantity;
+                    const hasUnit = unit && unit !== "" && unit !== "No";
+                    const hasQuantity = quantity && quantity > 0;
+                    return hasUnit && hasQuantity;
+                }
+                const rowKeys = Object.keys(row);
+                const unitCol = rowKeys.find((key) => {
+                    const normalized = normalizeColumnName(key);
+                    return normalized.includes('unit') || normalized.includes('unt');
+                });
+                const quantityCol = rowKeys.find((key) => {
+                    const normalized = normalizeColumnName(key);
+                    return normalized.includes('quantity') || normalized.includes('qty');
+                });
+                if (unitCol && quantityCol) {
+                    const unit = (row[unitCol] || "").toString().trim();
+                    const quantityStr = (row[quantityCol] || "").toString().trim();
+                    const hasUnit = unit && unit !== "";
+                    const hasQuantity = quantityStr && quantityStr !== "" && parseFloat(quantityStr) > 0;
+                    return hasUnit && hasQuantity;
+                }
+                return false;
+            });
+            console.log(`Filtered ${data.length} rows to ${dataWithUnits.length} rows with BOTH Unit and Quantity filled`);
+            console.log(`[DEBUG processBoqFileFromParsedData] About to create phases - projectId: ${projectId}, project.id: ${project.id}`);
+            if (!projectId || projectId !== project.id) {
+                console.error(`[ERROR] projectId mismatch! projectId: ${projectId}, project.id: ${project.id}`);
+                throw new common_1.BadRequestException('Project ID mismatch when creating phases');
+            }
+            const createdPhases = await this.createPhasesFromBoqData(dataWithUnits, projectId, userId);
+            console.log(`[DEBUG] Created ${createdPhases.length} phases. Verifying all have project_id...`);
+            for (const phase of createdPhases) {
+                if (!phase.project_id || phase.project_id !== projectId) {
+                    console.error(`[ERROR] Phase ${phase.id} has invalid project_id: ${phase.project_id}, expected: ${projectId}`);
+                    throw new Error(`Phase ${phase.id} was created without valid project_id`);
+                }
+            }
+            console.log(`[DEBUG] Reloading project ${project.id} without relations before saving...`);
+            const projectToUpdate = await this.projectsRepository.findOne({
+                where: { id: project.id },
+            });
+            if (!projectToUpdate) {
+                throw new common_1.NotFoundException(`Project with ID ${project.id} not found`);
+            }
+            projectToUpdate.totalAmount = totalAmount;
+            console.log(`[DEBUG] Saving project ${projectToUpdate.id} with totalAmount: ${totalAmount}`);
+            await this.projectsRepository.save(projectToUpdate);
+            console.log(`[DEBUG] Project saved successfully`);
             try {
-                await this.activitiesService.logBoqUploaded(project.owner, project, file.originalname, tasks.length, totalAmount);
+                await this.activitiesService.logBoqUploaded(project.owner, project, fileName || "BOQ File", createdPhases.length, totalAmount);
             }
             catch (error) {
                 console.warn("Failed to log BOQ upload activity:", error);
             }
             console.log("\n=== BOQ Processing Complete ===");
+            console.log(`BOQ data parsed: ${data.length} rows, Total Amount: ${totalAmount}`);
+            console.log(`Created ${createdPhases.length} phases from rows with Unit column filled`);
             return {
-                message: `Successfully processed BOQ file and created ${tasks.length} tasks`,
+                message: `Successfully processed BOQ file and created ${createdPhases.length} phases from rows with Unit column filled.`,
                 totalAmount,
-                tasks,
+                tasks: [],
             };
         }
         catch (error) {
             console.error("\n=== BOQ Processing Error ===");
-            console.error("Error processing BOQ file:", error);
-            throw new common_1.BadRequestException(`Failed to process BOQ file: ${error.message}`);
+            console.error("Error processing BOQ data:", error);
+            throw new common_1.BadRequestException(`Failed to process BOQ data: ${error.message}`);
         }
     }
     async createPhase(projectId, createPhaseDto, userId) {
+        if (!projectId || projectId.trim() === '') {
+            console.error('[ERROR] projectId is missing or empty in createPhase');
+            throw new common_1.BadRequestException('Project ID is required when creating a phase');
+        }
+        console.log(`[DEBUG] Creating phase - projectId: ${projectId}, userId: ${userId}`);
         const project = await this.findOne(projectId, userId);
+        if (!project || !project.id) {
+            console.error('[ERROR] Project not found or invalid:', { projectId, project });
+            throw new common_1.NotFoundException(`Project with ID ${projectId} not found`);
+        }
         const existingPhase = await this.phasesRepository.findOne({
             where: { project_id: projectId, title: createPhaseDto.title },
         });
@@ -210,6 +402,9 @@ let ProjectsService = class ProjectsService {
                 startDate <= today) {
                 status = phase_entity_2.PhaseStatus.IN_PROGRESS;
             }
+        }
+        if (!projectId || projectId.trim() === '') {
+            throw new common_1.BadRequestException('Project ID is required when creating a phase');
         }
         const phaseData = {
             title: createPhaseDto.title,
@@ -227,7 +422,19 @@ let ProjectsService = class ProjectsService {
             project_id: projectId,
             subPhases: createPhaseDto.subPhases ?? [],
         };
-        const phase = this.phasesRepository.create(phaseData);
+        console.log('[DEBUG] Phase data before save:', {
+            projectId: phaseData.project_id,
+            title: phaseData.title,
+            hasProjectId: !!phaseData.project_id,
+        });
+        const phase = this.phasesRepository.create({
+            ...phaseData,
+            project: project,
+        });
+        if (!phase.project_id) {
+            console.error('[ERROR] Phase created without project_id:', phase);
+            throw new common_1.BadRequestException('Phase must have a valid project_id');
+        }
         const savedPhase = await this.phasesRepository.save(phase);
         const user = await this.usersService.findOne(userId);
         await this.activitiesService.createActivity(activity_entity_1.ActivityType.TASK_CREATED, `Phase "${savedPhase.title}" was created`, user, project, savedPhase, { phaseId: savedPhase.id });
@@ -251,13 +458,24 @@ let ProjectsService = class ProjectsService {
         return savedPhase;
     }
     async updatePhase(projectId, phaseId, updatePhaseDto, userId) {
+        if (!projectId || projectId.trim() === '') {
+            console.error('[ERROR] projectId is missing or empty in updatePhase');
+            throw new common_1.BadRequestException('Project ID is required when updating a phase');
+        }
+        console.log(`[DEBUG] Updating phase - projectId: ${projectId}, phaseId: ${phaseId}, userId: ${userId}`);
         const project = await this.projectsRepository.findOne({
             where: { id: projectId },
         });
         if (!project)
             throw new common_1.NotFoundException("Project not found");
-        if (project.owner_id !== userId) {
-            throw new common_1.ForbiddenException("Only the project owner can update a phase");
+        const user = await this.usersService.findOne(userId);
+        const isContractor = user?.role === "contractor";
+        const isSubContractor = user?.role === "sub_contractor";
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        const isOwner = project.owner_id === userId;
+        if (!isOwner && !isContractor && !isSubContractor && !isAdmin && !isConsultant) {
+            throw new common_1.ForbiddenException("Only the project owner, contractor, sub_contractor, admin, or consultant can update a phase");
         }
         const phase = await this.phasesRepository.findOne({
             where: { id: phaseId, project_id: projectId },
@@ -279,9 +497,16 @@ let ProjectsService = class ProjectsService {
             parent_phase_id: updatePhaseDto.parentPhaseId || null,
             reference_task_id: updatePhaseDto.referenceTaskId || null,
         };
+        if (!phase.project_id) {
+            console.error('[ERROR] Phase missing project_id during update:', phase);
+            phase.project_id = projectId;
+        }
+        console.log(`[DEBUG] Updating phase with project_id: ${phase.project_id}`);
         Object.assign(phase, updateData);
+        if (!phase.project_id || phase.project_id.trim() === '') {
+            throw new common_1.BadRequestException('Phase must have a valid project_id');
+        }
         const updatedPhase = await this.phasesRepository.save(phase);
-        const user = await this.usersService.findOne(userId);
         await this.activitiesService.createActivity(activity_entity_1.ActivityType.TASK_UPDATED, `Phase "${updatedPhase.title}" was updated`, user, project, updatedPhase, { phaseId: updatedPhase.id });
         if (updatePhaseDto.status === "completed" && phase.status !== "completed") {
             const project = await this.projectsRepository.findOne({
@@ -309,8 +534,14 @@ let ProjectsService = class ProjectsService {
         });
         if (!project)
             throw new common_1.NotFoundException("Project not found");
-        if (project.owner_id !== userId) {
-            throw new common_1.ForbiddenException("Only the project owner can delete a phase");
+        const user = await this.usersService.findOne(userId);
+        const isContractor = user?.role === "contractor";
+        const isSubContractor = user?.role === "sub_contractor";
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        const isOwner = project.owner_id === userId;
+        if (!isOwner && !isContractor && !isSubContractor && !isAdmin && !isConsultant) {
+            throw new common_1.ForbiddenException("Only the project owner, contractor, sub_contractor, admin, or consultant can delete a phase");
         }
         const phase = await this.phasesRepository.findOne({
             where: { id: phaseId, project_id: projectId },
@@ -319,15 +550,60 @@ let ProjectsService = class ProjectsService {
             throw new common_1.NotFoundException("Phase not found");
         }
         await this.phasesRepository.remove(phase);
-        const user = await this.usersService.findOne(userId);
         await this.activitiesService.createActivity(activity_entity_1.ActivityType.TASK_DELETED, `Phase "${phase.title}" was deleted`, user, project, phase, { phaseId: phase.id });
     }
     async getProjectPhases(projectId, userId) {
-        await this.findOne(projectId, userId);
+        const user = await this.usersService.findOne(userId);
+        const isContractor = user?.role === "contractor";
+        const isSubContractor = user?.role === "sub_contractor";
+        if (!isContractor && !isSubContractor) {
+            await this.findOne(projectId, userId);
+        }
+        else {
+            const project = await this.projectsRepository.findOne({
+                where: { id: projectId },
+            });
+            if (!project) {
+                throw new common_1.NotFoundException(`Project with ID ${projectId} not found`);
+            }
+        }
         return this.phasesRepository.find({
-            where: { project_id: projectId },
+            where: { project_id: projectId, is_active: true },
+            relations: ["subPhases", "subPhases.subPhases"],
             order: { created_at: "ASC" },
         });
+    }
+    async getProjectPhasesPaginated(projectId, userId, { page = 1, limit = 10 }) {
+        const user = await this.usersService.findOne(userId);
+        const isContractor = user?.role === "contractor";
+        const isSubContractor = user?.role === "sub_contractor";
+        if (!isContractor && !isSubContractor) {
+            await this.findOne(projectId, userId);
+        }
+        else {
+            const project = await this.projectsRepository.findOne({
+                where: { id: projectId },
+            });
+            if (!project) {
+                throw new common_1.NotFoundException(`Project with ID ${projectId} not found`);
+            }
+        }
+        const pageNum = Number(page) || 1;
+        const limitNum = Number(limit) || 10;
+        const [items, total] = await this.phasesRepository.findAndCount({
+            where: { project_id: projectId, is_active: true },
+            relations: ["subPhases", "subPhases.subPhases"],
+            order: { created_at: "ASC" },
+            skip: (pageNum - 1) * limitNum,
+            take: limitNum,
+        });
+        return {
+            items,
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum),
+        };
     }
     async getAvailableAssignees(projectId) {
         const project = await this.projectsRepository.findOne({
@@ -340,17 +616,50 @@ let ProjectsService = class ProjectsService {
         return [project.owner, ...(project.collaborators || [])];
     }
     async getProjectResponse(project) {
+        const calculatePhaseCompletion = (phase) => {
+            if (!phase.subPhases || phase.subPhases.length === 0) {
+                return phase.progress || 0;
+            }
+            const completed = phase.subPhases.filter((sp) => sp.isCompleted).length;
+            return Math.round((completed / phase.subPhases.length) * 100);
+        };
+        const phases = project.phases || [];
+        const projectProgress = phases.length > 0
+            ? Math.round(phases.reduce((sum, p) => sum + calculatePhaseCompletion(p), 0) /
+                phases.length)
+            : 0;
+        const completedPhases = phases.filter((p) => p.status === "completed").length;
+        const totalPhases = phases.length;
         return {
             id: project.id,
             name: project.title,
             description: project.description,
+            progress: projectProgress,
+            completedPhases,
+            totalPhases,
             totalAmount: project.totalAmount,
             startDate: project.start_date,
             estimatedCompletion: project.end_date,
             owner: project.owner?.display_name || project.owner_id,
             collaborators: (project.collaborators || []).map((c) => c.display_name || c.id),
             tags: project.tags,
-            phases: project.phases || [],
+            phases: phases.map((phase) => ({
+                id: phase.id,
+                name: phase.title,
+                title: phase.title,
+                status: phase.status,
+                progress: calculatePhaseCompletion(phase),
+                startDate: phase.start_date,
+                start_date: phase.start_date,
+                endDate: phase.end_date,
+                end_date: phase.end_date,
+                subPhases: (phase.subPhases || []).map((sub) => ({
+                    id: sub.id,
+                    title: sub.title,
+                    description: sub.description,
+                    isCompleted: sub.isCompleted,
+                })),
+            })),
         };
     }
     async findAllProjects() {
@@ -397,8 +706,11 @@ let ProjectsService = class ProjectsService {
         });
         if (!project)
             throw new common_1.NotFoundException("Project not found");
-        if (project.owner_id !== ownerId)
-            throw new common_1.ForbiddenException("Only the owner can view join requests");
+        const user = await this.usersService.findOne(ownerId);
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        if (project.owner_id !== ownerId && !isAdmin && !isConsultant)
+            throw new common_1.ForbiddenException("Only the owner, admin, or consultant can view join requests");
         return this.accessRequestRepository.find({
             where: { project_id: projectId },
             order: { created_at: "DESC" },
@@ -411,8 +723,11 @@ let ProjectsService = class ProjectsService {
         });
         if (!project)
             throw new common_1.NotFoundException("Project not found");
-        if (project.owner_id !== ownerId)
-            throw new common_1.ForbiddenException("Only the owner can approve join requests");
+        const user = await this.usersService.findOne(ownerId);
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        if (project.owner_id !== ownerId && !isAdmin && !isConsultant)
+            throw new common_1.ForbiddenException("Only the owner, admin, or consultant can approve join requests");
         const request = await this.accessRequestRepository.findOne({
             where: { id: requestId, project_id: projectId },
         });
@@ -420,9 +735,9 @@ let ProjectsService = class ProjectsService {
             throw new common_1.NotFoundException("Join request not found");
         if (request.status !== "pending")
             throw new common_1.BadRequestException("Request is not pending");
-        const user = await this.usersService.findOne(request.requester_id);
-        if (!project.collaborators.some((c) => c.id === user.id)) {
-            project.collaborators.push(user);
+        const requesterUser = await this.usersService.findOne(request.requester_id);
+        if (!project.collaborators.some((c) => c.id === requesterUser.id)) {
+            project.collaborators.push(requesterUser);
             await this.projectsRepository.save(project);
         }
         request.status = "approved";
@@ -435,8 +750,11 @@ let ProjectsService = class ProjectsService {
         });
         if (!project)
             throw new common_1.NotFoundException("Project not found");
-        if (project.owner_id !== ownerId)
-            throw new common_1.ForbiddenException("Only the owner can deny join requests");
+        const user = await this.usersService.findOne(ownerId);
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        if (project.owner_id !== ownerId && !isAdmin && !isConsultant)
+            throw new common_1.ForbiddenException("Only the owner, admin, or consultant can deny join requests");
         const request = await this.accessRequestRepository.findOne({
             where: { id: requestId, project_id: projectId },
         });
@@ -507,11 +825,14 @@ let ProjectsService = class ProjectsService {
         qb.groupBy("period").orderBy("period", "ASC");
         return qb.getRawMany();
     }
-    async adminList({ search = "", status, page = 1, limit = 20 }) {
+    async adminList({ search = "", status, page = 1, limit = 10 }) {
+        const pageNum = Number(page) || 1;
+        const limitNum = Number(limit) || 10;
         const qb = this.projectsRepository
             .createQueryBuilder("project")
             .leftJoinAndSelect("project.owner", "owner")
-            .leftJoinAndSelect("project.collaborators", "collaborators");
+            .leftJoinAndSelect("project.collaborators", "collaborators")
+            .leftJoinAndSelect("project.phases", "phases");
         if (search) {
             qb.andWhere("project.title ILIKE :search OR project.description ILIKE :search", { search: `%${search}%` });
         }
@@ -519,55 +840,62 @@ let ProjectsService = class ProjectsService {
             qb.andWhere("project.status = :status", { status });
         }
         qb.orderBy("project.created_at", "DESC")
-            .skip((page - 1) * limit)
-            .take(limit);
+            .skip((pageNum - 1) * limitNum)
+            .take(limitNum);
         const [items, total] = await qb.getManyAndCount();
+        const totalPages = Math.ceil(total / limitNum);
         return {
-            items: items.map((p) => ({
-                id: p.id,
-                name: p.title,
-                description: p.description,
-                status: p.status,
-                createdAt: p.created_at,
-                updatedAt: p.updated_at,
-                owner: p.owner
-                    ? { id: p.owner.id, display_name: p.owner.display_name }
-                    : null,
-                members: (p.collaborators || []).map((c) => ({
-                    id: c.id,
-                    display_name: c.display_name,
-                })),
-                tags: p.tags,
-            })),
+            items: items.map((p) => {
+                const phases = p.phases || [];
+                const completedPhases = phases.filter((phase) => phase.status === "completed").length;
+                const totalPhases = phases.length;
+                const progress = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0;
+                const totalBudget = phases.reduce((sum, phase) => sum + (phase.budget || 0), 0);
+                return {
+                    id: p.id,
+                    name: p.title,
+                    description: p.description,
+                    status: p.status,
+                    createdAt: p.created_at,
+                    updatedAt: p.updated_at,
+                    owner: p.owner
+                        ? { id: p.owner.id, display_name: p.owner.display_name }
+                        : null,
+                    members: (p.collaborators || []).map((c) => ({
+                        id: c.id,
+                        display_name: c.display_name,
+                    })),
+                    tags: p.tags,
+                    progress,
+                    completedPhases,
+                    totalPhases,
+                    totalAmount: p.totalAmount || 0,
+                    totalBudget: totalBudget || p.totalBudget || 0,
+                    startDate: p.start_date || p.created_at,
+                    estimatedCompletion: p.end_date || p.updated_at,
+                };
+            }),
             total,
-            page,
-            limit,
+            page: pageNum,
+            limit: limitNum,
+            totalPages,
         };
+    }
+    async findAllForAdmin() {
+        return this.projectsRepository.find({
+            relations: ["owner", "collaborators", "phases"],
+            order: { created_at: "DESC" },
+        });
     }
     async adminGetDetails(id) {
         const project = await this.projectsRepository.findOne({
             where: { id },
-            relations: ["owner", "collaborators", "phases"],
+            relations: ["owner", "collaborators", "phases", "phases.subPhases"],
         });
-        if (!project)
-            throw new Error("Project not found");
-        return {
-            id: project.id,
-            name: project.title,
-            description: project.description,
-            status: project.status,
-            createdAt: project.created_at,
-            updatedAt: project.updated_at,
-            owner: project.owner
-                ? { id: project.owner.id, display_name: project.owner.display_name }
-                : null,
-            members: (project.collaborators || []).map((c) => ({
-                id: c.id,
-                display_name: c.display_name,
-            })),
-            tags: project.tags,
-            phases: project.phases,
-        };
+        if (!project) {
+            throw new common_1.NotFoundException(`Project with ID ${id} not found`);
+        }
+        return await this.getProjectResponse(project);
     }
     async getTopActiveProjects(limit = 5) {
         const projects = await this.projectsRepository.find({
@@ -591,12 +919,18 @@ let ProjectsService = class ProjectsService {
         }));
     }
     async getGroupedByStatus() {
-        const qb = this.projectsRepository
+        const results = await this.projectsRepository
             .createQueryBuilder("project")
             .select("project.status", "status")
             .addSelect("COUNT(*)", "count")
-            .groupBy("project.status");
-        return qb.getRawMany();
+            .groupBy("project.status")
+            .getRawMany();
+        const total = results.reduce((sum, result) => sum + parseInt(result.count), 0);
+        return results.map((result) => ({
+            status: result.status,
+            count: parseInt(result.count),
+            percentage: total > 0 ? (parseInt(result.count) / total) * 100 : 0,
+        }));
     }
     hasProjectAccess(project, userId) {
         return (project.owner_id === userId ||
@@ -619,43 +953,330 @@ let ProjectsService = class ProjectsService {
             return value;
         if (!value)
             return 0;
-        const numStr = value.toString().replace(/[^0-9.-]+/g, "");
+        const str = value.toString().trim();
+        if (str === "" ||
+            str === "-" ||
+            str === " - " ||
+            str.toLowerCase() === "n/a") {
+            return 0;
+        }
+        const numStr = str.replace(/[^0-9.-]+/g, "");
         const parsed = Number(numStr);
         return isNaN(parsed) ? 0 : parsed;
     }
     async parseBoqFile(file) {
-        console.log("[DEBUG] Reading Excel file buffer...");
-        const workbook = XLSX.read(file.buffer, { type: "buffer" });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        if (!worksheet) {
-            throw new common_1.BadRequestException("No worksheet found in uploaded file");
+        console.log("[DEBUG] Reading CSV file buffer...");
+        const csvContent = file.buffer.toString("utf-8");
+        const allLines = csvContent.split(/\r?\n/);
+        if (allLines.length === 0) {
+            throw new common_1.BadRequestException("CSV file is empty");
         }
-        const data = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-        console.log(`[DEBUG] Parsed ${data.length} rows from Excel file`);
-        const columnMappings = this.getColumnMappings(worksheet);
-        const { descriptionCol, quantityCol, priceCol } = columnMappings;
-        const totalRow = data.find((row) => row[descriptionCol]?.toLowerCase().includes("total") ||
-            row[descriptionCol]?.toLowerCase().includes("sum"));
+        console.log(`[DEBUG] Total lines in CSV: ${allLines.length}`);
+        const lines = allLines.filter((line) => line.trim().length > 0 || line.includes(','));
+        console.log(`[DEBUG] Non-empty lines: ${lines.length}`);
+        const headerLine = lines[0];
+        const rawHeaders = this.parseCsvLine(headerLine).map((h) => h.trim());
+        const headers = [];
+        const chineseTranslationColumns = {};
+        rawHeaders.forEach((header, index) => {
+            const hasChinese = /[\u4e00-\u9fff]/.test(header);
+            const hasEnglish = /[a-zA-Z]/.test(header);
+            if (hasChinese && hasEnglish) {
+                const englishPart = header.replace(/[\u4e00-\u9fff]/g, '').trim();
+                const chinesePart = header.replace(/[a-zA-Z0-9\s]/g, '').trim();
+                if (englishPart) {
+                    headers.push(englishPart);
+                    if (chinesePart) {
+                        chineseTranslationColumns[index] = chinesePart;
+                    }
+                }
+                else {
+                    headers.push(header);
+                }
+            }
+            else {
+                headers.push(header);
+            }
+        });
+        const rawData = lines.slice(1).map((line, lineIndex) => {
+            try {
+                const values = this.parseCsvLine(line);
+                const row = { _originalLineIndex: lineIndex + 2 };
+                headers.forEach((header, index) => {
+                    const value = values[index]?.trim() || "";
+                    if (chineseTranslationColumns[index]) {
+                        row[`${header}_chinese`] = value;
+                    }
+                    row[header] = value;
+                });
+                return row;
+            }
+            catch (error) {
+                console.warn(`[DEBUG] Error parsing line ${lineIndex + 2}: ${error.message}`);
+                return { _parseError: true, _originalLineIndex: lineIndex + 2 };
+            }
+        }).filter((row) => !row._parseError);
+        console.log(`[DEBUG] Successfully parsed ${rawData.length} rows from ${lines.length - 1} data lines`);
+        const columnMappings = this.getColumnMappingsFromHeaders(headers);
+        const descriptionCol = columnMappings.descriptionCol;
+        const quantityCol = columnMappings.quantityCol;
+        const priceCol = columnMappings.priceCol;
+        const filteredData = rawData.filter((row, index) => {
+            const hasAnyContent = Object.entries(row).some(([key, val]) => {
+                if (key.startsWith('_'))
+                    return false;
+                const str = val?.toString().trim() || "";
+                return str.length > 0 && str !== "-" && str !== "—" && str !== "N/A";
+            });
+            if (!hasAnyContent) {
+                console.log(`[DEBUG] Filtered out empty row at line ${row._originalLineIndex}`);
+                return false;
+            }
+            if (descriptionCol && row[descriptionCol]) {
+                const desc = (row[descriptionCol] || "").toString().toLowerCase().trim();
+                const isClearlyInvalid = (desc === "total" || desc === "sum" || desc === "subtotal" || desc === "grand total") ||
+                    (desc.startsWith("note:") || desc.startsWith("注意:")) ||
+                    (desc.startsWith("instruction") || desc.startsWith("说明")) ||
+                    (desc.includes("合计") && desc.length < 10) ||
+                    (desc.includes("总计") && desc.length < 10);
+                if (isClearlyInvalid) {
+                    console.log(`[DEBUG] Filtered out invalid row: "${desc}" at line ${row._originalLineIndex}`);
+                    return false;
+                }
+            }
+            if (!descriptionCol || !row[descriptionCol] || row[descriptionCol].trim() === "") {
+                const hasQuantity = quantityCol && row[quantityCol] && row[quantityCol].toString().trim() !== "";
+                const hasPrice = priceCol && row[priceCol] && row[priceCol].toString().trim() !== "";
+                if (hasQuantity || hasPrice) {
+                    console.log(`[DEBUG] Keeping row without description but with quantity/price at line ${row._originalLineIndex}`);
+                    return true;
+                }
+            }
+            return true;
+        });
+        console.log(`[DEBUG] After filtering: ${filteredData.length} rows (from ${rawData.length} parsed rows)`);
+        const processedData = this.detectHierarchicalStructure(filteredData, headers);
+        const standardizedData = processedData.map((row) => {
+            const standardizedRow = { ...row };
+            let totalPriceCol;
+            for (const col of headers) {
+                const normalized = normalizeColumnName(col);
+                if (normalized.includes("total") &&
+                    (normalized.includes("price") || normalized.includes("amount"))) {
+                    totalPriceCol = col;
+                    break;
+                }
+            }
+            if (quantityCol && row[quantityCol]) {
+                standardizedRow[quantityCol] = this.standardizeNumber(row[quantityCol]);
+            }
+            if (priceCol && row[priceCol]) {
+                standardizedRow[priceCol] = this.standardizeNumber(row[priceCol]);
+            }
+            if (totalPriceCol && row[totalPriceCol]) {
+                standardizedRow[totalPriceCol] = this.standardizeNumber(row[totalPriceCol]);
+            }
+            return standardizedRow;
+        });
+        console.log(`[DEBUG] Parsed ${standardizedData.length} rows from CSV file (filtered from ${rawData.length} raw rows)`);
+        console.log(`[DEBUG] Row processing summary:`);
+        console.log(`  - Total lines in file: ${allLines.length}`);
+        console.log(`  - Non-empty lines: ${lines.length}`);
+        console.log(`  - Header row: 1`);
+        console.log(`  - Data rows parsed: ${rawData.length}`);
+        console.log(`  - Rows after filtering: ${filteredData.length}`);
+        console.log(`  - Rows after hierarchical detection: ${processedData.length}`);
+        console.log(`  - Rows after standardization: ${standardizedData.length}`);
+        let totalPriceCol;
+        for (const col of headers) {
+            if (typeof col === "string") {
+                const normalized = normalizeColumnName(col);
+                if (normalized.includes("total") &&
+                    (normalized.includes("price") || normalized.includes("amount"))) {
+                    totalPriceCol = col;
+                    break;
+                }
+            }
+        }
+        const validData = standardizedData.filter((row) => {
+            if (row.isMainSection) {
+                console.log(`[DEBUG] Excluding main section from phases: "${row[descriptionCol]}"`);
+                return false;
+            }
+            const desc = row[descriptionCol];
+            const hasDescription = desc && typeof desc === "string" && desc.trim() !== "";
+            const hasQuantity = quantityCol && row[quantityCol] && this.parseAmount(row[quantityCol]) > 0;
+            const hasPrice = priceCol && row[priceCol] && this.parseAmount(row[priceCol]) > 0;
+            if (hasDescription || hasQuantity || hasPrice) {
+                return true;
+            }
+            console.log(`[DEBUG] Excluding row without description or quantity/price at line ${row._originalLineIndex || 'unknown'}`);
+            return false;
+        });
+        console.log(`[DEBUG] Valid data rows for phase creation: ${validData.length} (from ${standardizedData.length} standardized rows)`);
         let totalAmount = 0;
-        if (totalRow) {
-            totalAmount =
-                this.parseAmount(totalRow[quantityCol]) ||
-                    this.parseAmount(totalRow[priceCol]);
-            console.log(`Found total row with amount: ${totalAmount}`);
-        }
-        else {
-            totalAmount = data.reduce((sum, row) => {
-                const amount = this.parseAmount(row[quantityCol]) || this.parseAmount(row[priceCol]);
+        if (totalPriceCol) {
+            totalAmount = validData.reduce((sum, row) => {
+                const amount = this.parseAmount(row[totalPriceCol]) || 0;
                 return sum + amount;
             }, 0);
-            console.log(`Calculated total amount: ${totalAmount}`);
+            console.log(`Calculated total amount from TOTAL PRICE column: ${totalAmount}`);
         }
-        const validData = data.filter((row) => row[descriptionCol] &&
-            typeof row[descriptionCol] === "string" &&
-            !row[descriptionCol].toLowerCase().includes("total") &&
-            !row[descriptionCol].toLowerCase().includes("sum") &&
-            row[descriptionCol].trim() !== "");
+        else {
+            totalAmount = validData.reduce((sum, row) => {
+                let amount = 0;
+                if (totalPriceCol && row[totalPriceCol]) {
+                    amount = this.parseAmount(row[totalPriceCol]) || 0;
+                }
+                else {
+                    const qty = this.parseAmount(row[quantityCol]) || 0;
+                    const price = this.parseAmount(row[priceCol]) || 0;
+                    amount = qty * price;
+                }
+                return sum + amount;
+            }, 0);
+            console.log(`Calculated total amount from individual rows: ${totalAmount}`);
+        }
         return { data: validData, totalAmount };
+    }
+    parseCsvLine(line) {
+        const result = [];
+        let current = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+                if (inQuotes && line[i + 1] === '"') {
+                    current += '"';
+                    i++;
+                }
+                else {
+                    inQuotes = !inQuotes;
+                }
+            }
+            else if (char === ',' && !inQuotes) {
+                result.push(current);
+                current = "";
+            }
+            else {
+                current += char;
+            }
+        }
+        result.push(current);
+        return result;
+    }
+    detectHierarchicalStructure(data, headers) {
+        const columnMappings = this.getColumnMappingsFromHeaders(headers);
+        const descriptionCol = columnMappings.descriptionCol;
+        const quantityCol = columnMappings.quantityCol;
+        const priceCol = columnMappings.priceCol;
+        if (!descriptionCol)
+            return data;
+        let currentMainSection = null;
+        let currentSubSection = null;
+        return data.map((row, index) => {
+            const description = (row[descriptionCol] || "").toString().trim();
+            const hasQuantity = quantityCol && row[quantityCol] && this.parseAmount(row[quantityCol]) > 0;
+            const hasPrice = priceCol && row[priceCol] && this.parseAmount(row[priceCol]) > 0;
+            if (hasQuantity || hasPrice) {
+                row.isMainSection = false;
+                row.mainSection = currentMainSection;
+            }
+            else {
+                const isAllCaps = description === description.toUpperCase() && description.length < 30;
+                const startsWithNumber = /^\d+[\.\)]\s*[A-Z]/.test(description);
+                const isVeryShort = description.length < 30;
+                if ((isAllCaps || startsWithNumber) && isVeryShort && description.length > 0) {
+                    currentMainSection = description;
+                    currentSubSection = null;
+                    row.isMainSection = true;
+                    row.mainSection = description;
+                    console.log(`[DEBUG] Detected main section: "${description}"`);
+                }
+                else {
+                    row.isMainSection = false;
+                    row.mainSection = currentMainSection;
+                }
+            }
+            if (!row.isMainSection) {
+                const hasSubNumbering = /^\d+\.\d+/.test(description);
+                const startsWithLowercase = /^[a-z]/.test(description.trim());
+                const hasNoQuantity = !quantityCol || !row[quantityCol] || row[quantityCol] === "";
+                const hasNoPrice = !priceCol || !row[priceCol] || row[priceCol] === "";
+                if (currentMainSection && (hasSubNumbering || startsWithLowercase)) {
+                    if (hasNoQuantity && hasNoPrice) {
+                        currentSubSection = description;
+                        row.isSubSection = true;
+                        row.subSection = description;
+                    }
+                    else {
+                        row.isSubSection = false;
+                        row.subSection = currentSubSection;
+                    }
+                }
+                else {
+                    row.isSubSection = false;
+                    row.subSection = currentSubSection;
+                }
+            }
+            else {
+                row.isSubSection = false;
+                row.subSection = null;
+            }
+            return row;
+        });
+    }
+    standardizeNumber(value) {
+        if (value === null || value === undefined || value === "")
+            return 0;
+        const str = String(value).trim();
+        if (str === "" || str === "-" || str === "—" || str === "N/A")
+            return 0;
+        const cleaned = str
+            .replace(/[^\d.-]/g, '')
+            .replace(/,/g, '');
+        const num = parseFloat(cleaned);
+        return isNaN(num) ? 0 : num;
+    }
+    getColumnMappingsFromHeaders(headers) {
+        const normalizedMap = {};
+        for (const col of headers) {
+            if (typeof col === "string") {
+                normalizedMap[normalizeColumnName(col)] = col;
+            }
+        }
+        const columnSynonyms = {
+            description: [
+                "description",
+                "desc",
+                "itemdescription",
+                "workdescription",
+            ],
+            unit: ["unit", "units", "uom"],
+            quantity: ["quantity", "qty", "quantities"],
+            price: [
+                "price",
+                "unitprice",
+                "rate",
+                "amount",
+                "totalprice",
+                "totalamount",
+            ],
+        };
+        const findColumn = (field) => {
+            for (const synonym of columnSynonyms[field]) {
+                const norm = normalizeColumnName(synonym);
+                if (normalizedMap[norm])
+                    return normalizedMap[norm];
+            }
+            return undefined;
+        };
+        return {
+            descriptionCol: findColumn("description"),
+            unitCol: findColumn("unit"),
+            quantityCol: findColumn("quantity"),
+            priceCol: findColumn("price"),
+        };
     }
     getColumnMappings(worksheet) {
         const headerRow = XLSX.utils.sheet_to_json(worksheet, {
@@ -702,9 +1323,540 @@ let ProjectsService = class ProjectsService {
             priceCol: findColumn("price"),
         };
     }
+    async createPhasesFromBoqData(data, projectId, userId) {
+        if (!projectId || projectId.trim() === '') {
+            const error = '❌ CRITICAL: Project ID is required when creating phases from BOQ data';
+            console.error(`[Phase Creation] ${error}`);
+            throw new Error(error);
+        }
+        console.log(`[Phase Creation] Starting - projectId: ${projectId}, BOQ items: ${data.length}`);
+        if (!data || data.length === 0) {
+            console.log("[Phase Creation] No BOQ data to create phases from");
+            return [];
+        }
+        const project = await this.findOne(projectId, userId);
+        if (!project) {
+            throw new Error(`Project with ID ${projectId} not found`);
+        }
+        const projectStartDate = project.start_date ? new Date(project.start_date) : new Date();
+        const projectEndDate = project.end_date ? new Date(project.end_date) : new Date();
+        const totalDays = Math.max(1, Math.ceil((projectEndDate.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24)));
+        const phases = [];
+        const daysPerPhase = totalDays / Math.max(data.length, 1);
+        console.log(`[Phase Creation] Creating ${data.length} phases from BOQ items`);
+        for (let i = 0; i < data.length; i++) {
+            const item = data[i];
+            const phaseStartDate = new Date(projectStartDate);
+            phaseStartDate.setDate(phaseStartDate.getDate() + i * daysPerPhase);
+            const phaseEndDate = new Date(phaseStartDate);
+            phaseEndDate.setDate(phaseEndDate.getDate() + daysPerPhase);
+            const phaseDescription = [
+                item.section ? `Section: ${item.section}` : null,
+                `Unit: ${item.unit}`,
+                `Quantity: ${item.quantity}`,
+                item.rate > 0 ? `Rate: ${item.rate}` : null,
+            ].filter(Boolean).join(' | ');
+            const phaseData = {
+                title: item.description,
+                description: phaseDescription,
+                budget: item.amount || 0,
+                start_date: phaseStartDate,
+                end_date: phaseEndDate,
+                due_date: phaseEndDate,
+                progress: 0,
+                status: phase_entity_2.PhaseStatus.NOT_STARTED,
+                project_id: projectId,
+                is_active: false,
+                from_boq: true,
+            };
+            if (!phaseData.project_id || phaseData.project_id.trim() === '') {
+                const error = `❌ CRITICAL: Phase "${item.description}" has no projectId`;
+                console.error(`[Phase Creation] ${error}`);
+                throw new Error(error);
+            }
+            console.log(`[Phase Creation] Creating phase ${i + 1}/${data.length}: "${item.description.substring(0, 50)}..."`);
+            const insertQuery = `
+        INSERT INTO phase (
+          title, description, budget, start_date, end_date, due_date, 
+          progress, status, project_id, is_active, from_boq, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        ) RETURNING *
+      `;
+            try {
+                const result = await this.phasesRepository.query(insertQuery, [
+                    phaseData.title,
+                    phaseData.description,
+                    phaseData.budget,
+                    phaseData.start_date,
+                    phaseData.end_date,
+                    phaseData.due_date,
+                    phaseData.progress,
+                    phaseData.status,
+                    phaseData.project_id,
+                    phaseData.is_active,
+                    phaseData.from_boq,
+                ]);
+                if (!result || result.length === 0) {
+                    throw new Error(`Failed to create phase: ${item.description}`);
+                }
+                const savedPhase = await this.phasesRepository.findOne({
+                    where: { id: result[0].id },
+                    relations: ['project'],
+                });
+                if (!savedPhase) {
+                    throw new Error(`Failed to retrieve created phase: ${item.description}`);
+                }
+                if (savedPhase.project_id !== projectId) {
+                    const error = `❌ CRITICAL: Phase "${savedPhase.title}" has incorrect project_id: ${savedPhase.project_id}, expected: ${projectId}`;
+                    console.error(`[Phase Creation] ${error}`);
+                    throw new Error(error);
+                }
+                phases.push(savedPhase);
+                console.log(`[Phase Creation] ✅ Created phase ${i + 1}: "${item.description.substring(0, 40)}" | Budget: ${item.amount} | Qty: ${item.quantity} ${item.unit}`);
+            }
+            catch (error) {
+                console.error(`[Phase Creation] ❌ Failed to create phase "${item.description}":`, error);
+                throw error;
+            }
+        }
+        console.log(`[Phase Creation] Verifying all ${phases.length} phases...`);
+        for (const phase of phases) {
+            if (!phase.project_id || phase.project_id !== projectId) {
+                const error = `❌ CRITICAL: Phase "${phase.title}" (${phase.id}) has incorrect project_id: ${phase.project_id}, expected: ${projectId}`;
+                console.error(`[Phase Creation] ${error}`);
+                throw new Error(error);
+            }
+        }
+        console.log(`[Phase Creation] ✅ Successfully created ${phases.length} phases for project ${projectId}`);
+        return phases;
+    }
+    async createPhasesFromBoqData_OLD(data, projectId, userId) {
+        const rowKeys = data.length > 0 ? Object.keys(data[0]) : [];
+        const columnMappings = this.getColumnMappingsFromHeaders(rowKeys);
+        let { descriptionCol, unitCol, quantityCol, priceCol } = columnMappings;
+        console.log(`[DEBUG createPhasesFromBoqData] Column mappings:`, {
+            descriptionCol,
+            unitCol,
+            quantityCol,
+            priceCol,
+            availableKeys: rowKeys,
+            sampleRow: data.length > 0 ? Object.keys(data[0]).reduce((acc, key) => {
+                acc[key] = String(data[0][key]).substring(0, 50);
+                return acc;
+            }, {}) : null
+        });
+        if (!descriptionCol && data.length > 0) {
+            const firstFewRows = data.slice(0, Math.min(5, data.length));
+            const columnLengths = {};
+            rowKeys.forEach(key => {
+                let totalLength = 0;
+                firstFewRows.forEach(row => {
+                    const value = String(row[key] || "").trim();
+                    totalLength += value.length;
+                });
+                columnLengths[key] = totalLength;
+            });
+            const longestCol = Object.entries(columnLengths)
+                .sort((a, b) => b[1] - a[1])
+                .find(([key]) => {
+                const keyLower = key.toLowerCase();
+                return !keyLower.includes('qty') &&
+                    !keyLower.includes('quantity') &&
+                    !keyLower.includes('unit') &&
+                    !keyLower.includes('price') &&
+                    !keyLower.includes('amount') &&
+                    !keyLower.includes('total');
+            });
+            if (longestCol && longestCol[1] > 10) {
+                descriptionCol = longestCol[0];
+                console.log(`[DEBUG] Auto-detected description column: ${descriptionCol} (avg length: ${longestCol[1] / firstFewRows.length})`);
+            }
+        }
+        let totalPriceCol;
+        if (data.length > 0) {
+            totalPriceCol = rowKeys.find((key) => {
+                const normalized = normalizeColumnName(key);
+                return (normalized.includes("total") &&
+                    (normalized.includes("price") || normalized.includes("amount")));
+            });
+        }
+        const phases = [];
+        console.log(`Creating phases from ${data.length} BOQ data rows`);
+        const project = await this.findOne(projectId, userId);
+        if (!projectId) {
+            throw new Error("Project ID is required to create phases");
+        }
+        const projectStartDate = project.start_date
+            ? new Date(project.start_date)
+            : new Date();
+        const projectEndDate = project.end_date
+            ? new Date(project.end_date)
+            : new Date();
+        const totalDays = Math.max(1, Math.ceil((projectEndDate.getTime() - projectStartDate.getTime()) /
+            (1000 * 60 * 60 * 24)));
+        const groupedRows = [];
+        let currentGroup = [];
+        for (let i = 0; i < data.length; i++) {
+            const row = data[i];
+            const description = (row[descriptionCol] || "").toString().trim();
+            const unit = unitCol ? (row[unitCol] || "").toString().trim() : "";
+            const quantity = this.parseAmount(quantityCol ? row[quantityCol] : undefined) || 0;
+            const price = this.parseAmount(priceCol ? row[priceCol] : undefined) || 0;
+            const totalPrice = totalPriceCol ? this.parseAmount(row[totalPriceCol]) || 0 : 0;
+            if (!unit || unit.trim() === "") {
+                if (currentGroup.length > 0) {
+                    groupedRows.push([...currentGroup]);
+                    currentGroup = [];
+                }
+                continue;
+            }
+            const hasQuantityAndUnit = quantity > 0 && unit && unit.trim() !== "";
+            const hasUnitOnly = !hasQuantityAndUnit && unit && unit.trim() !== "" && description && description.trim() !== "";
+            const isSectionHeader = !hasQuantityAndUnit && !hasUnitOnly && !price && !totalPrice && description && description.trim() !== "";
+            if (isSectionHeader) {
+                if (currentGroup.length > 0) {
+                    groupedRows.push([...currentGroup]);
+                    currentGroup = [];
+                }
+                continue;
+            }
+            if (hasQuantityAndUnit || hasUnitOnly) {
+                if (currentGroup.length > 0) {
+                    const lastRow = currentGroup[currentGroup.length - 1];
+                    const lastUnit = unitCol ? (lastRow[unitCol] || "").toString().trim() : "";
+                    const lastHasQuantity = this.parseAmount(quantityCol ? lastRow[quantityCol] : undefined) || 0;
+                    if ((lastUnit && unit && lastUnit !== unit) ||
+                        (lastHasQuantity > 0 && quantity === 0 && unit)) {
+                        groupedRows.push([...currentGroup]);
+                        currentGroup = [row];
+                    }
+                    else {
+                        currentGroup.push(row);
+                    }
+                }
+                else {
+                    currentGroup.push(row);
+                }
+            }
+            else {
+                if (currentGroup.length > 0) {
+                    groupedRows.push([...currentGroup]);
+                    currentGroup = [];
+                }
+            }
+        }
+        if (currentGroup.length > 0) {
+            groupedRows.push(currentGroup);
+        }
+        console.log(`Grouped ${data.length} rows into ${groupedRows.length} phases`);
+        console.log(`Column mappings: descriptionCol=${descriptionCol}, unitCol=${unitCol}, quantityCol=${quantityCol}, priceCol=${priceCol}`);
+        if (groupedRows.length > 0) {
+            console.log(`Sample first group (${groupedRows[0].length} rows):`, groupedRows[0].map((r, idx) => ({
+                idx,
+                desc: r[descriptionCol] || 'NO DESC',
+                unit: r[unitCol] || 'NO UNIT',
+                qty: r[quantityCol] || 'NO QTY'
+            })));
+        }
+        const daysPerPhase = totalDays / Math.max(groupedRows.length, 1);
+        for (let groupIndex = 0; groupIndex < groupedRows.length; groupIndex++) {
+            const group = groupedRows[groupIndex];
+            let combinedDescription = "";
+            let combinedUnit = "";
+            let totalQuantity = 0;
+            let totalAmount = 0;
+            const descriptions = [];
+            const units = new Set();
+            for (const row of group) {
+                let description = "";
+                if (row._extractedDescription && row._extractedDescription.trim() !== "") {
+                    description = row._extractedDescription.toString().trim();
+                    console.log(`[DEBUG] Using extracted description: "${description.substring(0, 50)}"`);
+                }
+                else if (descriptionCol && row[descriptionCol]) {
+                    description = (row[descriptionCol] || "").toString().trim();
+                    if (description) {
+                        console.log(`[DEBUG] Using mapped description column "${descriptionCol}": "${description.substring(0, 50)}"`);
+                    }
+                }
+                if (!description || description === "") {
+                    const possibleDescCols = Object.keys(row).filter(key => !key.startsWith('_') &&
+                        (key.toLowerCase().includes('desc') ||
+                            key.toLowerCase().includes('description') ||
+                            key.toLowerCase().includes('item') ||
+                            key.toLowerCase().includes('work')));
+                    if (possibleDescCols.length > 0) {
+                        description = (row[possibleDescCols[0]] || "").toString().trim();
+                        if (description) {
+                            console.log(`[DEBUG] Using fallback description column "${possibleDescCols[0]}": "${description.substring(0, 50)}"`);
+                        }
+                    }
+                }
+                if (!description || description === "") {
+                    const allKeys = Object.keys(row).filter(key => !key.startsWith('_'));
+                    let longestText = "";
+                    let longestLength = 0;
+                    for (const key of allKeys) {
+                        const value = String(row[key] || "").trim();
+                        if (value.length > longestLength &&
+                            !value.match(/^\d+$/) &&
+                            !value.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i) &&
+                            value.length > 5) {
+                            longestText = value;
+                            longestLength = value.length;
+                        }
+                    }
+                    if (longestText) {
+                        description = longestText;
+                        console.log(`[FIX] Found description by longest text method from column: "${description.substring(0, 50)}"`);
+                    }
+                    else {
+                        console.warn(`[WARN] No description found for row. Available keys:`, Object.keys(row));
+                        console.warn(`[WARN] Row values:`, Object.entries(row).map(([k, v]) => `${k}: ${String(v).substring(0, 30)}`));
+                    }
+                }
+                const unit = row._extractedUnit || (unitCol ? (row[unitCol] || "").toString().trim() : "") || "";
+                const quantity = row._extractedQuantity !== undefined
+                    ? row._extractedQuantity
+                    : (this.parseAmount(quantityCol ? row[quantityCol] : undefined) || 0);
+                const price = this.parseAmount(priceCol ? row[priceCol] : undefined) || 0;
+                let rowTotalPrice = 0;
+                if (totalPriceCol && row[totalPriceCol]) {
+                    rowTotalPrice = this.parseAmount(row[totalPriceCol]) || 0;
+                }
+                if (!rowTotalPrice && quantity > 0 && price > 0) {
+                    rowTotalPrice = quantity * price;
+                }
+                if (!description || description === "") {
+                    console.log(`[WARN] Row in group ${groupIndex} has no description. Row keys:`, Object.keys(row));
+                }
+                if (description && description.trim() !== "") {
+                    descriptions.push(description.trim());
+                }
+                if (unit && unit.trim() !== "") {
+                    units.add(unit.trim());
+                }
+                totalQuantity += quantity;
+                totalAmount += rowTotalPrice;
+            }
+            if (descriptions.length > 0) {
+                if (descriptions.length === 1) {
+                    combinedDescription = descriptions[0];
+                }
+                else {
+                    combinedDescription = descriptions[0];
+                }
+            }
+            if (units.size > 0) {
+                combinedUnit = Array.from(units)[0];
+            }
+            if (!combinedDescription && totalQuantity === 0 && totalAmount === 0 && group.length === 0) {
+                continue;
+            }
+            let phaseTitle = "";
+            if (combinedDescription && combinedDescription.trim() !== "") {
+                phaseTitle = combinedDescription.trim();
+                console.log(`[DEBUG] Phase ${groupIndex + 1} title from combinedDescription: "${phaseTitle.substring(0, 50)}"`);
+            }
+            else if (group.length > 0) {
+                const firstRow = group[0];
+                let firstDesc = "";
+                if (firstRow._extractedDescription && firstRow._extractedDescription.trim() !== "") {
+                    firstDesc = firstRow._extractedDescription.toString().trim();
+                    console.log(`[DEBUG] Phase ${groupIndex + 1} using _extractedDescription: "${firstDesc.substring(0, 50)}"`);
+                }
+                else if (descriptionCol && firstRow[descriptionCol]) {
+                    firstDesc = (firstRow[descriptionCol] || "").toString().trim();
+                    if (firstDesc) {
+                        console.log(`[DEBUG] Phase ${groupIndex + 1} using mapped column "${descriptionCol}": "${firstDesc.substring(0, 50)}"`);
+                    }
+                }
+                if (!firstDesc || firstDesc === "") {
+                    const rowKeys = Object.keys(firstRow).filter(key => !key.startsWith('_'));
+                    const descKey = rowKeys.find(key => {
+                        const keyLower = key.toLowerCase();
+                        const value = String(firstRow[key] || "").trim();
+                        return (keyLower.includes('desc') ||
+                            keyLower.includes('description') ||
+                            keyLower.includes('item') ||
+                            keyLower.includes('work')) &&
+                            value.length > 5 &&
+                            !value.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i);
+                    });
+                    if (descKey) {
+                        firstDesc = firstRow[descKey].toString().trim();
+                        console.log(`[DEBUG] Phase ${groupIndex + 1} using found column "${descKey}": "${firstDesc.substring(0, 50)}"`);
+                    }
+                }
+                if (!firstDesc || firstDesc === "") {
+                    const allKeys = Object.keys(firstRow).filter(key => !key.startsWith('_'));
+                    let longestText = "";
+                    let longestLength = 0;
+                    for (const key of allKeys) {
+                        const value = String(firstRow[key] || "").trim();
+                        if (value.length > longestLength &&
+                            !value.match(/^\d+$/) &&
+                            !value.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i) &&
+                            value.length > 5) {
+                            longestText = value;
+                            longestLength = value.length;
+                        }
+                    }
+                    if (longestText) {
+                        firstDesc = longestText;
+                        console.log(`[FIX] Phase ${groupIndex + 1} using longest text: "${firstDesc.substring(0, 50)}"`);
+                    }
+                }
+                if (firstDesc && firstDesc.trim() !== "") {
+                    phaseTitle = firstDesc.trim();
+                }
+                else {
+                    console.error(`[ERROR] Phase ${groupIndex + 1} has no description. Row keys:`, Object.keys(firstRow));
+                    console.error(`[ERROR] Row values:`, Object.entries(firstRow).map(([k, v]) => `${k}: ${String(v).substring(0, 50)}`));
+                    phaseTitle = `Phase ${groupIndex + 1}`;
+                }
+            }
+            else {
+                phaseTitle = `Phase ${groupIndex + 1}`;
+            }
+            if (phaseTitle === `${combinedUnit} ${totalQuantity}`.trim() ||
+                phaseTitle.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i)) {
+                console.error(`[ERROR] Phase title is unit/qty only: "${phaseTitle}". Descriptions found:`, descriptions);
+                console.error(`[ERROR] Row data sample:`, group[0]);
+                console.error(`[ERROR] Available columns:`, Object.keys(group[0]));
+                if (group.length > 0) {
+                    const firstRow = group[0];
+                    const allKeys = Object.keys(firstRow);
+                    const descCandidate = allKeys.find(key => {
+                        const value = String(firstRow[key] || "").trim();
+                        return value.length > 10 &&
+                            !value.match(/^\d+$/) &&
+                            !value.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i) &&
+                            value.length > (combinedUnit?.length || 0) + 5;
+                    });
+                    if (descCandidate && firstRow[descCandidate]) {
+                        const foundDesc = String(firstRow[descCandidate]).trim();
+                        if (foundDesc) {
+                            console.log(`[FIX] Found description in column "${descCandidate}": "${foundDesc}"`);
+                            phaseTitle = foundDesc;
+                            combinedDescription = foundDesc;
+                        }
+                    }
+                }
+            }
+            const phaseStartDate = new Date(projectStartDate);
+            phaseStartDate.setDate(phaseStartDate.getDate() + groupIndex * daysPerPhase);
+            const phaseEndDate = new Date(phaseStartDate);
+            phaseEndDate.setDate(phaseEndDate.getDate() + daysPerPhase);
+            const descParts = [];
+            if (combinedUnit)
+                descParts.push(`Unit: ${combinedUnit}`);
+            if (totalQuantity > 0)
+                descParts.push(`Quantity: ${totalQuantity}`);
+            if (group.length > 1)
+                descParts.push(`Grouped Items: ${group.length}`);
+            const phaseDescription = descriptions.length > 1
+                ? descriptions.join("; ") + (descParts.length > 0 ? ` | ${descParts.join(" | ")}` : "")
+                : (descParts.length > 0 ? descParts.join(" | ") : "");
+            console.log(`[DEBUG] Creating phase ${groupIndex + 1} - projectId: ${projectId}, phaseTitle: "${phaseTitle.substring(0, 50)}"`);
+            if (!projectId || projectId.trim() === '') {
+                console.error(`[ERROR] projectId is undefined when creating phase "${phaseTitle}"`);
+                throw new Error('Project ID is required when creating phases from BOQ data');
+            }
+            const phaseData = {
+                title: phaseTitle,
+                description: phaseDescription,
+                budget: totalAmount || 0,
+                start_date: phaseStartDate,
+                end_date: phaseEndDate,
+                due_date: phaseEndDate,
+                progress: 0,
+                status: phase_entity_2.PhaseStatus.NOT_STARTED,
+                project_id: projectId,
+            };
+            if (!phaseData.project_id || phaseData.project_id.trim() === '') {
+                console.error('[ERROR] Phase data missing project_id:', phaseData);
+                throw new Error('Cannot create phase without project_id');
+            }
+            const insertQuery = `
+        INSERT INTO phase (
+          title, description, budget, start_date, end_date, due_date, 
+          progress, status, project_id, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        ) RETURNING *
+      `;
+            console.log(`[DEBUG] Inserting phase with project_id: ${phaseData.project_id}`);
+            const result = await this.phasesRepository.query(insertQuery, [
+                phaseData.title,
+                phaseData.description,
+                phaseData.budget,
+                phaseData.start_date,
+                phaseData.end_date,
+                phaseData.due_date,
+                phaseData.progress,
+                phaseData.status,
+                phaseData.project_id,
+            ]);
+            if (!result || result.length === 0 || !result[0]) {
+                console.error(`Failed to create phase: ${phaseTitle} - No result from insert`);
+                throw new Error(`Failed to create phase: ${phaseTitle}`);
+            }
+            if (!result[0].project_id) {
+                if (!projectId || projectId.trim() === '') {
+                    console.error(`[ERROR] projectId is undefined when trying to fix phase project_id! Phase ID: ${result[0].id}`);
+                    await this.phasesRepository.query(`DELETE FROM phase WHERE id = $1`, [result[0].id]);
+                    throw new Error(`Cannot create phase without project_id. Phase ${result[0].id} was deleted.`);
+                }
+                console.error(`Error: Phase created without project_id. Phase ID: ${result[0].id}, Project ID: ${projectId}`);
+                await this.phasesRepository.query(`UPDATE phase SET project_id = $1 WHERE id = $2`, [projectId, result[0].id]);
+                result[0].project_id = projectId;
+            }
+            const savedPhase = await this.phasesRepository.findOne({
+                where: { id: result[0].id },
+                relations: ['project'],
+            });
+            if (!savedPhase) {
+                console.error(`Failed to retrieve created phase: ${result[0].id}`);
+                throw new Error(`Failed to retrieve created phase: ${phaseTitle}`);
+            }
+            if (!savedPhase.project || savedPhase.project.id !== projectId) {
+                console.log(`[DEBUG] Setting project relation for phase ${savedPhase.id}`);
+                savedPhase.project = project;
+                savedPhase.project_id = projectId;
+                await this.phasesRepository.save(savedPhase);
+                console.log(`[DEBUG] Project relation set for phase ${savedPhase.id} - project.id: ${project.id}`);
+            }
+            else {
+                console.log(`[DEBUG] Phase ${savedPhase.id} already has correct project relation - project.id: ${savedPhase.project.id}`);
+            }
+            if (savedPhase.project_id !== projectId) {
+                console.error(`[ERROR] Phase ${savedPhase.id} has incorrect project_id: ${savedPhase.project_id}, expected: ${projectId}`);
+                throw new Error(`Phase ${savedPhase.id} has incorrect project_id`);
+            }
+            phases.push(savedPhase);
+            console.log(`Created phase: "${phaseTitle}" (Budget: ${totalAmount}, Items: ${group.length}, Description: "${combinedDescription || 'N/A'}", Unit: ${combinedUnit || 'N/A'}, Qty: ${totalQuantity}, Project ID: ${projectId})`);
+        }
+        console.log(`[DEBUG] Verifying all ${phases.length} phases are properly related to project ${projectId}`);
+        for (const phase of phases) {
+            if (!phase.project_id || phase.project_id !== projectId) {
+                console.error(`[ERROR] Phase ${phase.id} has incorrect project_id: ${phase.project_id}, expected: ${projectId}`);
+                throw new Error(`Phase ${phase.id} is not properly related to project ${projectId}`);
+            }
+            if (!phase.project || phase.project.id !== projectId) {
+                console.warn(`[WARN] Phase ${phase.id} project relation not set, fixing...`);
+                phase.project = project;
+                phase.project_id = projectId;
+                await this.phasesRepository.save(phase);
+            }
+        }
+        console.log(`[DEBUG] All ${phases.length} phases verified and properly related to project ${projectId}`);
+        return phases;
+    }
     async createTasksFromBoqData(data, projectId) {
-        const worksheet = XLSX.utils.json_to_sheet(data);
-        const columnMappings = this.getColumnMappings(worksheet);
+        const rowKeys = data.length > 0 ? Object.keys(data[0]) : [];
+        const columnMappings = this.getColumnMappingsFromHeaders(rowKeys);
         const { descriptionCol, unitCol, quantityCol, priceCol } = columnMappings;
         const tasks = [];
         console.log(`Creating ${data.length} tasks from BOQ data`);
@@ -727,6 +1879,44 @@ let ProjectsService = class ProjectsService {
             }
         }
         return tasks;
+    }
+    async previewBoqFile(file) {
+        if (!file?.buffer) {
+            throw new common_1.BadRequestException("No file uploaded or file buffer missing");
+        }
+        console.log(`[BOQ Preview] Parsing file: ${file.originalname}`);
+        const parseResult = await this.boqParserService.parseBoqFile(file);
+        console.log(`[BOQ Preview] Parser results:`, {
+            itemsFound: parseResult.items.length,
+            totalAmount: parseResult.totalAmount,
+            sections: parseResult.sections,
+            skipped: parseResult.metadata.skippedRows,
+        });
+        const phases = parseResult.items.map((item) => {
+            const descParts = [];
+            if (item.section)
+                descParts.push(`Section: ${item.section}`);
+            descParts.push(`Unit: ${item.unit}`);
+            descParts.push(`Quantity: ${item.quantity}`);
+            if (item.rate > 0)
+                descParts.push(`Rate: ${item.rate}`);
+            return {
+                title: item.description,
+                description: descParts.join(' | '),
+                budget: item.amount || 0,
+                unit: item.unit,
+                quantity: item.quantity,
+                rate: item.rate > 0 ? item.rate : undefined,
+                mainSection: item.section || undefined,
+                subSection: item.subSection || undefined,
+            };
+        });
+        console.log(`[BOQ Preview] Generated ${phases.length} phase previews`);
+        return {
+            phases,
+            totalAmount: parseResult.totalAmount,
+            totalPhases: phases.length,
+        };
     }
     async createTasksRecursive(tasks, projectId, phaseId, parentTaskId = null) {
         for (const taskDto of tasks) {
@@ -763,23 +1953,55 @@ let ProjectsService = class ProjectsService {
     }
     async getAllConsultantProjects() {
         const projects = await this.projectsRepository.find({
-            relations: ["phases", "owner", "collaborators"],
+            relations: ["phases", "phases.subPhases", "owner", "collaborators"],
         });
-        return projects.map((project) => ({
-            id: project.id,
-            name: project.title,
-            owner: project.owner?.display_name || project.owner_id,
-            collaborators: (project.collaborators || []).map((c) => c.display_name || c.id),
-            startDate: project.start_date,
-            estimatedCompletion: project.end_date,
-            phases: (project.phases || []).map((phase) => ({
-                id: phase.id,
-                name: phase.title,
-                status: phase.status,
-                startDate: phase.start_date,
-                endDate: phase.end_date,
-            })),
-        }));
+        const calculatePhaseCompletion = (phase) => {
+            if (!phase.subPhases || phase.subPhases.length === 0) {
+                return phase.progress || 0;
+            }
+            const completed = phase.subPhases.filter((sp) => sp.isCompleted).length;
+            return Math.round((completed / phase.subPhases.length) * 100);
+        };
+        return projects.map((project) => {
+            const phases = project.phases || [];
+            const projectProgress = phases.length > 0
+                ? Math.round(phases.reduce((sum, p) => sum + calculatePhaseCompletion(p), 0) /
+                    phases.length)
+                : 0;
+            const completedPhases = phases.filter((p) => p.status === "completed").length;
+            return {
+                id: project.id,
+                name: project.title,
+                description: project.description,
+                progress: projectProgress,
+                completedPhases,
+                totalPhases: phases.length,
+                totalAmount: project.totalAmount,
+                totalBudget: project.totalAmount,
+                startDate: project.start_date,
+                estimatedCompletion: project.end_date,
+                owner: project.owner?.display_name || project.owner_id,
+                collaborators: (project.collaborators || []).map((c) => c.display_name || c.id),
+                tags: project.tags || [],
+                phases: phases.map((phase) => ({
+                    id: phase.id,
+                    name: phase.title,
+                    title: phase.title,
+                    status: phase.status,
+                    startDate: phase.start_date,
+                    endDate: phase.end_date,
+                    subPhases: (phase.subPhases || []).map((sub) => ({
+                        id: sub.id,
+                        title: sub.title,
+                        description: sub.description,
+                        isCompleted: sub.isCompleted,
+                    })),
+                })),
+                isOwner: false,
+                isCollaborator: true,
+                hasPendingInvite: false,
+            };
+        });
     }
     async getConsultantProjectDetails(id) {
         const project = await this.projectsRepository.findOne({
@@ -791,17 +2013,30 @@ let ProjectsService = class ProjectsService {
         return {
             id: project.id,
             name: project.title,
+            description: project.description,
             owner: project.owner?.display_name || project.owner_id,
             collaborators: (project.collaborators || []).map((c) => c.display_name || c.id),
             startDate: project.start_date,
             estimatedCompletion: project.end_date,
+            totalAmount: project.totalAmount,
+            tags: project.tags || [],
             phases: (project.phases || []).map((phase) => ({
                 id: phase.id,
                 name: phase.title,
+                title: phase.title,
                 status: phase.status,
                 startDate: phase.start_date,
+                start_date: phase.start_date,
                 endDate: phase.end_date,
+                end_date: phase.end_date,
+                progress: phase.progress || 0,
                 sub_phases: (phase.subPhases || []).map((sub) => ({
+                    id: sub.id,
+                    title: sub.title,
+                    description: sub.description,
+                    isCompleted: sub.isCompleted,
+                })),
+                subPhases: (phase.subPhases || []).map((sub) => ({
                     id: sub.id,
                     title: sub.title,
                     description: sub.description,
@@ -812,8 +2047,8 @@ let ProjectsService = class ProjectsService {
     }
     async getConsultantProjectPhases(projectId) {
         const phases = await this.phasesRepository.find({
-            where: { project_id: projectId },
-            relations: ["subPhases"],
+            where: { project_id: projectId, is_active: true },
+            relations: ["subPhases", "subPhases.subPhases"],
         });
         return phases.map((phase) => ({
             id: phase.id,
@@ -833,20 +2068,278 @@ let ProjectsService = class ProjectsService {
             })),
         }));
     }
-    async getConsultantProjectTasks(projectId) {
-        const tasks = await this.tasksRepository.find({
-            where: { project_id: projectId },
+    async getConsultantProjectPhasesPaginated(projectId, { page = 1, limit = 10 }) {
+        const pageNum = Number(page) || 1;
+        const limitNum = Number(limit) || 10;
+        const [phases, total] = await this.phasesRepository.findAndCount({
+            where: { project_id: projectId, is_active: true },
+            relations: ["subPhases", "subPhases.subPhases"],
+            order: { created_at: "ASC" },
+            skip: (pageNum - 1) * limitNum,
+            take: limitNum,
         });
-        return tasks.map((task) => ({
+        const items = phases.map((phase) => ({
+            id: phase.id,
+            title: phase.title,
+            description: phase.description,
+            start_date: phase.start_date,
+            end_date: phase.end_date,
+            progress: phase.progress,
+            status: phase.status,
+            created_at: phase.created_at,
+            updated_at: phase.updated_at,
+            subPhases: (phase.subPhases || []).map((sub) => ({
+                id: sub.id,
+                title: sub.title,
+                description: sub.description,
+                isCompleted: sub.isCompleted,
+            })),
+        }));
+        return {
+            items,
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum),
+        };
+    }
+    async getBoqDraftPhases(projectId, userId) {
+        await this.findOne(projectId, userId);
+        return this.phasesRepository.find({
+            where: {
+                project_id: projectId,
+                is_active: false,
+                from_boq: true
+            },
+            relations: ["subPhases"],
+            order: { created_at: "ASC" },
+        });
+    }
+    async activateBoqPhases(projectId, phaseIds, userId) {
+        const project = await this.findOne(projectId, userId);
+        if (!phaseIds || phaseIds.length === 0) {
+            throw new common_1.BadRequestException('No phase IDs provided');
+        }
+        console.log(`[Activate BOQ Phases] Activating ${phaseIds.length} phases for project ${projectId}`);
+        const activatedPhases = [];
+        for (const phaseId of phaseIds) {
+            const phase = await this.phasesRepository.findOne({
+                where: {
+                    id: phaseId,
+                    project_id: projectId,
+                    from_boq: true
+                },
+            });
+            if (!phase) {
+                console.warn(`[Activate BOQ Phases] Phase ${phaseId} not found or not from BOQ`);
+                continue;
+            }
+            phase.is_active = true;
+            await this.phasesRepository.save(phase);
+            activatedPhases.push(phase);
+            console.log(`[Activate BOQ Phases] ✅ Activated phase: "${phase.title}"`);
+        }
+        try {
+            const user = await this.usersService.findOne(userId);
+            const totalPhases = await this.phasesRepository.count({
+                where: { project_id: projectId, is_active: true },
+            });
+            for (let i = 0; i < activatedPhases.length; i++) {
+                const phase = activatedPhases[i];
+                try {
+                    await this.activitiesService.logPhaseCreated(user, project, phase, totalPhases - activatedPhases.length + i + 1, totalPhases);
+                }
+                catch (err) {
+                    console.warn(`Failed to log activity for phase ${phase.id}:`, err);
+                }
+            }
+        }
+        catch (error) {
+            console.warn('Failed to log phase activation activities:', error);
+        }
+        return {
+            activated: activatedPhases.length,
+            phases: activatedPhases,
+        };
+    }
+    async getConsultantProjectTasks(projectId) {
+        const project = await this.projectsRepository.findOne({
+            where: { id: projectId },
+        });
+        if (!project) {
+            throw new common_1.NotFoundException("Project not found");
+        }
+        const phases = await this.phasesRepository.find({
+            where: { project_id: projectId },
+            relations: ["tasks"],
+        });
+        const allTasks = phases.flatMap((phase) => phase.tasks.map((task) => ({
             id: task.id,
             description: task.description,
             unit: task.unit,
             quantity: task.quantity,
             price: task.price,
-            phase_id: task.phase_id,
+            phase_id: phase.id,
+            phase_title: phase.title,
             created_at: task.created_at,
-            updated_at: task.updated_at,
+        })));
+        return allTasks;
+    }
+    async getProjectCompletionTrends(period = "daily", from, to) {
+        let startDate = undefined;
+        let endDate = undefined;
+        if (from)
+            startDate = new Date(from);
+        if (to)
+            endDate = new Date(to);
+        let groupFormat;
+        switch (period) {
+            case "daily":
+                groupFormat = "YYYY-MM-DD";
+                break;
+            case "weekly":
+                groupFormat = "IYYY-IW";
+                break;
+            case "monthly":
+            default:
+                groupFormat = "YYYY-MM";
+                break;
+        }
+        const qb = this.projectsRepository
+            .createQueryBuilder("project")
+            .select(`to_char(project.updated_at, '${groupFormat}')`, "date")
+            .addSelect("COUNT(CASE WHEN project.status = 'completed' THEN 1 END)", "completed")
+            .addSelect("COUNT(*)", "total");
+        if (startDate) {
+            qb.andWhere("project.updated_at >= :startDate", { startDate });
+        }
+        if (endDate) {
+            qb.andWhere("project.updated_at <= :endDate", { endDate });
+        }
+        qb.groupBy("date").orderBy("date", "ASC");
+        const results = await qb.getRawMany();
+        return results.map((result) => ({
+            date: result.date,
+            completed: parseInt(result.completed || "0"),
+            total: parseInt(result.total || "0"),
+            completionRate: result.total > 0
+                ? (parseInt(result.completed || "0") / parseInt(result.total)) * 100
+                : 0,
         }));
+    }
+    async getProjectInventory(projectId, userId, options) {
+        const user = await this.usersService.findOne(userId);
+        const isContractor = user?.role === user_entity_1.UserRole.CONTRACTOR;
+        const isSubContractor = user?.role === user_entity_1.UserRole.SUB_CONTRACTOR;
+        if (!isContractor && !isSubContractor) {
+            await this.findOne(projectId, userId);
+        }
+        else {
+            const project = await this.projectsRepository.findOne({
+                where: { id: projectId },
+            });
+            if (!project) {
+                throw new common_1.NotFoundException(`Project with ID ${projectId} not found`);
+            }
+        }
+        const { page = 1, limit = 10, category, search } = options;
+        const skip = (page - 1) * limit;
+        const where = { project_id: projectId, is_active: true };
+        if (category) {
+            where.category = category;
+        }
+        const queryBuilder = this.inventoryRepository.createQueryBuilder("inventory")
+            .leftJoinAndSelect("inventory.creator", "creator")
+            .where("inventory.project_id = :projectId", { projectId })
+            .andWhere("inventory.is_active = :is_active", { is_active: true });
+        if (category) {
+            queryBuilder.andWhere("inventory.category = :category", { category });
+        }
+        if (search) {
+            queryBuilder.andWhere("(inventory.name ILIKE :search OR inventory.description ILIKE :search OR inventory.sku ILIKE :search)", { search: `%${search}%` });
+        }
+        const [items, total] = await queryBuilder
+            .orderBy("inventory.created_at", "DESC")
+            .skip(skip)
+            .take(limit)
+            .getManyAndCount();
+        return {
+            items,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        };
+    }
+    async addProjectInventoryItem(projectId, createInventoryDto, userId, pictureFile) {
+        const user = await this.usersService.findOne(userId);
+        if (user?.role !== user_entity_1.UserRole.CONTRACTOR && user?.role !== user_entity_1.UserRole.SUB_CONTRACTOR) {
+            throw new common_1.ForbiddenException("Only contractors and sub-contractors can add inventory items to projects");
+        }
+        const project = await this.projectsRepository.findOne({
+            where: { id: projectId },
+        });
+        if (!project) {
+            throw new common_1.NotFoundException(`Project with ID ${projectId} not found`);
+        }
+        let pictureUrl = null;
+        if (pictureFile) {
+            const uploadDir = path.join(process.cwd(), "uploads", "inventory", "pictures");
+            if (!fs.existsSync(uploadDir)) {
+                fs.mkdirSync(uploadDir, { recursive: true });
+            }
+            const fileName = `${Date.now()}-${pictureFile.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+            const filePath = path.join(uploadDir, fileName);
+            fs.writeFileSync(filePath, pictureFile.buffer);
+            pictureUrl = `/uploads/inventory/pictures/${fileName}`;
+        }
+        else {
+            throw new common_1.BadRequestException("Picture evidence is required");
+        }
+        const inventory = this.inventoryRepository.create({
+            ...createInventoryDto,
+            project_id: projectId,
+            picture_url: pictureUrl,
+            created_by: userId,
+        });
+        const saved = await this.inventoryRepository.save(inventory);
+        await this.activitiesService.logActivity(activity_entity_1.ActivityType.INVENTORY_ADDED, userId, projectId, {
+            inventoryName: saved.name,
+            category: saved.category,
+            quantity: saved.quantity_available
+        });
+        return saved;
+    }
+    async updateProjectInventoryItem(projectId, inventoryId, updateData, userId) {
+        const user = await this.usersService.findOne(userId);
+        if (user?.role !== user_entity_1.UserRole.CONTRACTOR && user?.role !== user_entity_1.UserRole.SUB_CONTRACTOR) {
+            throw new common_1.ForbiddenException("Only contractors and sub-contractors can update inventory items");
+        }
+        const inventory = await this.inventoryRepository.findOne({
+            where: { id: inventoryId, project_id: projectId },
+        });
+        if (!inventory) {
+            throw new common_1.NotFoundException(`Inventory item not found in this project`);
+        }
+        Object.assign(inventory, updateData);
+        const updated = await this.inventoryRepository.save(inventory);
+        await this.activitiesService.logActivity(activity_entity_1.ActivityType.INVENTORY_UPDATED, userId, projectId, { inventoryName: updated.name });
+        return updated;
+    }
+    async deleteProjectInventoryItem(projectId, inventoryId, userId) {
+        const user = await this.usersService.findOne(userId);
+        if (user?.role !== user_entity_1.UserRole.CONTRACTOR && user?.role !== user_entity_1.UserRole.SUB_CONTRACTOR) {
+            throw new common_1.ForbiddenException("Only contractors and sub-contractors can delete inventory items");
+        }
+        const inventory = await this.inventoryRepository.findOne({
+            where: { id: inventoryId, project_id: projectId },
+        });
+        if (!inventory) {
+            throw new common_1.NotFoundException(`Inventory item not found in this project`);
+        }
+        await this.inventoryRepository.remove(inventory);
+        await this.activitiesService.logActivity(activity_entity_1.ActivityType.INVENTORY_DELETED, userId, projectId, { inventoryName: inventory.name });
+        return { message: "Inventory item deleted successfully" };
     }
 };
 exports.ProjectsService = ProjectsService;
@@ -856,15 +2349,18 @@ exports.ProjectsService = ProjectsService = __decorate([
     __param(1, (0, typeorm_1.InjectRepository)(task_entity_1.Task)),
     __param(2, (0, typeorm_1.InjectRepository)(phase_entity_1.Phase)),
     __param(3, (0, typeorm_1.InjectRepository)(project_access_request_entity_1.ProjectAccessRequest)),
-    __param(5, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
-    __param(7, (0, common_1.Inject)((0, common_1.forwardRef)(() => dashboard_service_1.DashboardService))),
+    __param(4, (0, typeorm_1.InjectRepository)(inventory_entity_1.Inventory)),
+    __param(6, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
+    __param(8, (0, common_1.Inject)((0, common_1.forwardRef)(() => dashboard_service_1.DashboardService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         users_service_1.UsersService,
         activities_service_1.ActivitiesService,
         tasks_service_1.TasksService,
-        dashboard_service_1.DashboardService])
+        dashboard_service_1.DashboardService,
+        boq_parser_service_1.BoqParserService])
 ], ProjectsService);
 //# sourceMappingURL=projects.service.js.map

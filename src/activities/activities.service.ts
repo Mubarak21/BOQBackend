@@ -388,8 +388,12 @@ export class ActivitiesService {
     projectId,
     search = "",
     page = 1,
-    limit = 20,
+    limit = 10,
   }) {
+    // Ensure page and limit are numbers
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 10;
+
     const qb = this.activitiesRepository
       .createQueryBuilder("activity")
       .leftJoinAndSelect("activity.user", "user")
@@ -415,8 +419,8 @@ export class ActivitiesService {
       });
     }
     qb.orderBy("activity.created_at", "DESC")
-      .skip((page - 1) * limit)
-      .take(limit);
+      .skip((pageNum - 1) * limitNum)
+      .take(limitNum);
     const [items, total] = await qb.getManyAndCount();
     return {
       items: items.map((a) => ({
@@ -431,8 +435,8 @@ export class ActivitiesService {
         // add more fields as needed
       })),
       total,
-      page,
-      limit,
+      page: pageNum,
+      limit: limitNum,
     };
   }
 

@@ -3,9 +3,6 @@ import { ProjectsService } from "../../../projects/projects.service";
 import { UsersService } from "../../../users/users.service";
 import { ActivitiesService } from "../../../activities/activities.service";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
-import { RolesGuard } from "../../../auth/guards/roles.guard";
-import { Roles } from "../../../auth/decorators/roles.decorator";
-import { UserRole } from "../../../entities/user.entity";
 
 @Controller("admin/analytics")
 @UseGuards(JwtAuthGuard)
@@ -26,8 +23,8 @@ export class AdminAnalyticsController {
     return this.projectsService.getTrends(period, from, to);
   }
 
-  @Get("user-signups")
-  async userSignups(
+  @Get("users-created")
+  async usersCreated(
     @Query("period") period: string = "monthly",
     @Query("from") from?: string,
     @Query("to") to?: string
@@ -35,8 +32,8 @@ export class AdminAnalyticsController {
     return this.usersService.getTrends(period, from, to);
   }
 
-  @Get("activities")
-  async activities(
+  @Get("activities-logged")
+  async activitiesLogged(
     @Query("period") period: string = "monthly",
     @Query("from") from?: string,
     @Query("to") to?: string
@@ -53,16 +50,35 @@ export class AdminAnalyticsController {
     return this.projectsService.getGroupedByStatus();
   }
 
-  // 2. Grouped: Users by role
+  // 3. Grouped: Users by role
   @Get("users-by-role")
   async usersByRole() {
     return this.usersService.getGroupedByRole();
   }
 
-  // 3. Comparative: User growth
+  // 4. Growth metrics
   @Get("user-growth")
   async userGrowth(@Query("compare") compare: string = "month") {
     return this.usersService.getUserGrowth(compare);
+  }
+
+  // Missing endpoints from frontend documentation
+  @Get("project-completion")
+  async projectCompletion(
+    @Query("period") period: string = "daily",
+    @Query("from") from?: string,
+    @Query("to") to?: string
+  ) {
+    return this.projectsService.getProjectCompletionTrends(period, from, to);
+  }
+
+  @Get("user-engagement")
+  async userEngagement(
+    @Query("period") period: string = "daily",
+    @Query("from") from?: string,
+    @Query("to") to?: string
+  ) {
+    return this.usersService.getUserEngagementMetrics(period, from, to);
   }
 
   // 4. (Optional) Add more custom analytics endpoints as needed

@@ -33,20 +33,27 @@ export class JwtAuthGuard extends AuthGuard("jwt") {
     }
 
     const request = context.switchToHttp().getRequest();
+
+    // Try to get token from Authorization header first
+    let token = null;
     const authHeader = request.headers.authorization;
 
-    if (!authHeader) {
-      this.logger.warn("No authorization header provided");
-      throw new UnauthorizedException("No authorization header provided");
+    if (authHeader) {
+      token = authHeader.split(" ")[1];
+    } else if (request.cookies && request.cookies.auth_token) {
+      // Fallback to cookie if no Authorization header
+      token = request.cookies.auth_token;
+      this.logger.debug("Using token from cookie");
+    }
+
+    if (!token) {
+      this.logger.warn("No authorization header or auth_token cookie provided");
+      throw new UnauthorizedException(
+        "No authorization header or auth_token cookie provided"
+      );
     }
 
     try {
-      const token = authHeader.split(" ")[1];
-      if (!token) {
-        this.logger.warn("No token provided in authorization header");
-        throw new UnauthorizedException("No token provided");
-      }
-
       const user = await this.authService.validateToken(token);
       if (!user) {
         this.logger.warn("Invalid token or user not found");

@@ -7,13 +7,28 @@ export declare class AdminAnalyticsController {
     private readonly activitiesService;
     constructor(projectsService: ProjectsService, usersService: UsersService, activitiesService: ActivitiesService);
     projectsCreated(period?: string, from?: string, to?: string): Promise<any[]>;
-    userSignups(period?: string, from?: string, to?: string): Promise<any[]>;
-    activities(period?: string, from?: string, to?: string): Promise<any[]>;
-    projectsByStatus(): Promise<any[]>;
-    usersByRole(): Promise<any[]>;
+    usersCreated(period?: string, from?: string, to?: string): Promise<any[]>;
+    activitiesLogged(period?: string, from?: string, to?: string): Promise<any[]>;
+    projectsByStatus(): Promise<{
+        status: any;
+        count: number;
+        percentage: number;
+    }[]>;
+    usersByRole(): Promise<{
+        role: any;
+        count: number;
+        percentage: number;
+    }[]>;
     userGrowth(compare?: string): Promise<{
         current: number;
         previous: number;
         growth: number;
     }>;
+    projectCompletion(period?: string, from?: string, to?: string): Promise<{
+        date: any;
+        completed: number;
+        total: number;
+        completionRate: number;
+    }[]>;
+    userEngagement(period?: string, from?: string, to?: string): Promise<any[]>;
 }

@@ -8,12 +8,20 @@ import {
   Query,
   Res,
   UseGuards,
+  Request,
+  HttpStatus,
+  HttpException,
+  BadRequestException,
+  NotFoundException,
 } from "@nestjs/common";
 import { ReportsService } from "../../../reports/reports.service";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
-import { RolesGuard } from "../../../auth/guards/roles.guard";
-import { Roles } from "../../../auth/decorators/roles.decorator";
-import { UserRole } from "../../../entities/user.entity";
+import { CreateReportDto } from "../../dto/reports/create-report.dto";
+import { ReportQueryDto } from "../../dto/reports/report-query.dto";
+import {
+  ReportResponseDto,
+  ReportListResponseDto,
+} from "../../dto/reports/report-response.dto";
 import { Response } from "express";
 
 @Controller("admin/reports")
@@ -21,44 +29,68 @@ import { Response } from "express";
 export class AdminReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
-  // 1. List of available/generated reports
   @Get()
   async listReports(
-    @Query("type") type?: string,
-    @Query("status") status?: string,
-    @Query("page") page: number = 1,
-    @Query("limit") limit: number = 20
-  ) {
-    return this.reportsService.adminList({ type, status, page, limit });
+    @Query() query: ReportQueryDto
+  ): Promise<ReportListResponseDto> {
+    return this.reportsService.adminList(query);
   }
 
-  // 2. Generate a new report
   @Post()
-  async generateReport(@Body() body) {
-    return this.reportsService.adminGenerate(body);
+  async generateReport(
+    @Body() createReportDto: CreateReportDto,
+    @Request() req
+  ): Promise<ReportResponseDto> {
+    const user = req.user;
+
+    if (!user) {
+      throw new BadRequestException("User not found in request");
+    }
+
+    return this.reportsService.adminGenerate(createReportDto, user);
   }
 
-  // 3. Report status/metadata
   @Get(":id")
-  async getReport(@Param("id") id: string) {
+  async getReport(@Param("id") id: string): Promise<ReportResponseDto> {
     return this.reportsService.adminGetDetails(id);
   }
 
-  // 4. Download a report
   @Get(":id/download")
   async downloadReport(@Param("id") id: string, @Res() res: Response) {
-    const file = await this.reportsService.adminDownload(id);
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${file.filename}"`
-    );
-    res.setHeader("Content-Type", file.mimetype);
-    res.sendFile(file.path);
+    try {
+      const file = await this.reportsService.adminDownload(id);
+
+      // Set appropriate headers
+      res.setHeader("Content-Type", file.mimetype);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${file.filename}"`
+      );
+
+      // Send file
+      res.sendFile(file.path);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new HttpException(error.message, HttpStatus.NOT_FOUND);
+      } else if (error instanceof BadRequestException) {
+        throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+      } else {
+        throw new HttpException(
+          "Failed to download report",
+          HttpStatus.INTERNAL_SERVER_ERROR
+        );
+      }
+    }
   }
 
-  // 5. Delete a report
   @Delete(":id")
-  async deleteReport(@Param("id") id: string) {
+  async deleteReport(@Param("id") id: string): Promise<{ success: boolean }> {
     return this.reportsService.adminDelete(id);
+  }
+
+  @Post("cleanup")
+  async cleanupOldReports(): Promise<{ message: string }> {
+    await this.reportsService.cleanupOldReports();
+    return { message: "Old reports cleanup completed" };
   }
 }

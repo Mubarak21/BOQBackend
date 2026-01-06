@@ -20,7 +20,7 @@ let AdminUsersController = class AdminUsersController {
     constructor(usersService) {
         this.usersService = usersService;
     }
-    async listUsers(search = "", role, status, page = 1, limit = 20) {
+    async listUsers(search = "", role, status, page = 1, limit = 10) {
         return this.usersService.adminList({ search, role, status, page, limit });
     }
     async getUser(id) {

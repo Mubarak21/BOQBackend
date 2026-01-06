@@ -6,4 +6,7 @@ export declare class SubPhase {
     isCompleted: boolean;
     phase: Phase;
     phase_id: string;
+    parentSubPhase: SubPhase;
+    parent_sub_phase_id: string;
+    subPhases: SubPhase[];
 }

@@ -18,6 +18,11 @@ import { SubPhase } from "../entities/sub-phase.entity";
 import { SubPhasesController } from "./subphases.controller";
 import { SubPhasesService } from "./subphases.service";
 import { DashboardModule } from "../dashboard/dashboard.module";
+import { ComplaintsPenaltiesModule } from "../complaints-penalties/complaints-penalties.module";
+import { PhaseEvidence } from "../entities/phase-evidence.entity";
+import { EvidenceService } from "./evidence.service";
+import { BoqParserService } from "./boq-parser.service";
+import { BoqProgressGateway } from "./boq-progress.gateway";
 
 @Module({
   imports: [
@@ -28,6 +33,7 @@ import { DashboardModule } from "../dashboard/dashboard.module";
       SubPhase,
       CollaborationRequest,
       ProjectAccessRequest,
+      PhaseEvidence,
     ]),
     UsersModule,
     AuthModule,
@@ -35,8 +41,16 @@ import { DashboardModule } from "../dashboard/dashboard.module";
     TasksModule,
     forwardRef(() => CommentsModule),
     forwardRef(() => DashboardModule),
+    ComplaintsPenaltiesModule,
   ],
-  providers: [ProjectsService, ProjectAccessService, SubPhasesService],
+  providers: [
+    ProjectsService,
+    ProjectAccessService,
+    SubPhasesService,
+    EvidenceService,
+    BoqParserService,
+    BoqProgressGateway,
+  ],
   controllers: [
     ProjectsController,
     CollaborationRequestsController,

@@ -17,7 +17,7 @@ export class Admin {
   @Column()
   password: string;
 
-  @Column({ nullable: true })
+  @Column({ default: "Admin" })
   display_name: string;
 
   @Column({ default: "active" })

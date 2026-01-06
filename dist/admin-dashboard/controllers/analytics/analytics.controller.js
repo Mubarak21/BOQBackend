@@ -27,10 +27,10 @@ let AdminAnalyticsController = class AdminAnalyticsController {
     async projectsCreated(period = "monthly", from, to) {
         return this.projectsService.getTrends(period, from, to);
     }
-    async userSignups(period = "monthly", from, to) {
+    async usersCreated(period = "monthly", from, to) {
         return this.usersService.getTrends(period, from, to);
     }
-    async activities(period = "monthly", from, to) {
+    async activitiesLogged(period = "monthly", from, to) {
         return this.activitiesService.getTrends(period, from, to);
     }
     async projectsByStatus() {
@@ -41,6 +41,12 @@ let AdminAnalyticsController = class AdminAnalyticsController {
     }
     async userGrowth(compare = "month") {
         return this.usersService.getUserGrowth(compare);
+    }
+    async projectCompletion(period = "daily", from, to) {
+        return this.projectsService.getProjectCompletionTrends(period, from, to);
+    }
+    async userEngagement(period = "daily", from, to) {
+        return this.usersService.getUserEngagementMetrics(period, from, to);
     }
 };
 exports.AdminAnalyticsController = AdminAnalyticsController;
@@ -54,23 +60,23 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminAnalyticsController.prototype, "projectsCreated", null);
 __decorate([
-    (0, common_1.Get)("user-signups"),
+    (0, common_1.Get)("users-created"),
     __param(0, (0, common_1.Query)("period")),
     __param(1, (0, common_1.Query)("from")),
     __param(2, (0, common_1.Query)("to")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", Promise)
-], AdminAnalyticsController.prototype, "userSignups", null);
+], AdminAnalyticsController.prototype, "usersCreated", null);
 __decorate([
-    (0, common_1.Get)("activities"),
+    (0, common_1.Get)("activities-logged"),
     __param(0, (0, common_1.Query)("period")),
     __param(1, (0, common_1.Query)("from")),
     __param(2, (0, common_1.Query)("to")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", Promise)
-], AdminAnalyticsController.prototype, "activities", null);
+], AdminAnalyticsController.prototype, "activitiesLogged", null);
 __decorate([
     (0, common_1.Get)("projects-by-status"),
     __metadata("design:type", Function),
@@ -90,6 +96,24 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], AdminAnalyticsController.prototype, "userGrowth", null);
+__decorate([
+    (0, common_1.Get)("project-completion"),
+    __param(0, (0, common_1.Query)("period")),
+    __param(1, (0, common_1.Query)("from")),
+    __param(2, (0, common_1.Query)("to")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", Promise)
+], AdminAnalyticsController.prototype, "projectCompletion", null);
+__decorate([
+    (0, common_1.Get)("user-engagement"),
+    __param(0, (0, common_1.Query)("period")),
+    __param(1, (0, common_1.Query)("from")),
+    __param(2, (0, common_1.Query)("to")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", Promise)
+], AdminAnalyticsController.prototype, "userEngagement", null);
 exports.AdminAnalyticsController = AdminAnalyticsController = __decorate([
     (0, common_1.Controller)("admin/analytics"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

@@ -7,6 +7,7 @@ import {
   Body,
   Request,
   UseGuards,
+  BadRequestException,
 } from "@nestjs/common";
 import { ProjectsService } from "../projects/projects.service";
 import { CommentsService } from "../comments/comments.service";
@@ -40,9 +41,14 @@ export class ConsultantController {
   @Get("projects/:id/phases")
   async getProjectPhases(
     @Param("id") id: string,
+    @Query("page") page: number = 1,
+    @Query("limit") limit: number = 10,
     @Request() req: RequestWithUser
   ) {
-    return this.projectsService.getConsultantProjectPhases(id);
+    return this.projectsService.getConsultantProjectPhasesPaginated(id, {
+      page,
+      limit,
+    });
   }
 
   // GET /consultant/tasks?projectId=... — Tasks for a project
@@ -51,6 +57,9 @@ export class ConsultantController {
     @Query("projectId") projectId: string,
     @Request() req: RequestWithUser
   ) {
+    if (!projectId) {
+      throw new BadRequestException("projectId query parameter is required");
+    }
     return this.projectsService.getConsultantProjectTasks(projectId);
   }
 
@@ -60,6 +69,9 @@ export class ConsultantController {
     @Query("projectId") projectId: string,
     @Request() req: RequestWithUser
   ) {
+    if (!projectId) {
+      throw new BadRequestException("projectId query parameter is required");
+    }
     return this.commentsService.listConsultantFeedbackByProject(projectId);
   }
 
@@ -69,9 +81,15 @@ export class ConsultantController {
     @Body() body: { projectId: string; content: string },
     @Request() req: RequestWithUser
   ) {
+    if (!body.projectId) {
+      throw new BadRequestException("projectId is required");
+    }
+    if (!body.content || body.content.trim().length === 0) {
+      throw new BadRequestException("content is required and cannot be empty");
+    }
     return this.commentsService.createConsultantFeedback(
       body.projectId,
-      body.content,
+      body.content.trim(),
       req.user
     );
   }

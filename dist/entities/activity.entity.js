@@ -31,6 +31,9 @@ var ActivityType;
     ActivityType["COMMENT_ADDED"] = "comment_added";
     ActivityType["COLLABORATOR_ADDED"] = "collaborator_added";
     ActivityType["COLLABORATOR_REMOVED"] = "collaborator_removed";
+    ActivityType["INVENTORY_ADDED"] = "inventory_added";
+    ActivityType["INVENTORY_UPDATED"] = "inventory_updated";
+    ActivityType["INVENTORY_DELETED"] = "inventory_deleted";
 })(ActivityType || (exports.ActivityType = ActivityType = {}));
 let Activity = class Activity {
 };

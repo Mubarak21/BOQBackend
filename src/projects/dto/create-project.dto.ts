@@ -4,6 +4,8 @@ import {
   IsEnum,
   IsArray,
   IsISO8601,
+  IsNumber,
+  Min,
 } from "class-validator";
 import { ProjectStatus, ProjectPriority } from "../../entities/project.entity";
 
@@ -41,6 +43,7 @@ export class CreateProjectDto {
   @IsOptional()
   collaborator_ids?: string[];
 
-  @IsOptional()
-  totalAmount?: number;
+  @IsNumber()
+  @Min(0.01, { message: "Total amount must be greater than 0" })
+  totalAmount: number;
 }

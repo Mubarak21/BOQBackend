@@ -22,11 +22,27 @@ let AdminProjectsController = class AdminProjectsController {
     constructor(projectsService) {
         this.projectsService = projectsService;
     }
-    async listProjects(search = "", status, page = 1, limit = 20) {
-        return this.projectsService.adminList({ search, status, page, limit });
+    async listProjects(search = "", status, page = 1, limit = 10) {
+        console.log("🔍 Admin Projects - Listing projects with filters:", {
+            search,
+            status,
+            page,
+            limit,
+        });
+        const projects = await this.projectsService.adminList({
+            search,
+            status,
+            page,
+            limit,
+        });
+        console.log("📊 Admin Projects List:", projects);
+        return projects;
     }
     async getProject(id) {
-        return this.projectsService.adminGetDetails(id);
+        console.log("🔍 Admin Projects - Getting project details for ID:", id);
+        const project = await this.projectsService.adminGetDetails(id);
+        console.log("📊 Admin Project Details:", project);
+        return project;
     }
     async createProject(createProjectDto, req) {
         return this.projectsService.create(createProjectDto, req.user);

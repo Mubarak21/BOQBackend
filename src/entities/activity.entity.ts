@@ -26,6 +26,9 @@ export enum ActivityType {
   COMMENT_ADDED = "comment_added",
   COLLABORATOR_ADDED = "collaborator_added",
   COLLABORATOR_REMOVED = "collaborator_removed",
+  INVENTORY_ADDED = "inventory_added",
+  INVENTORY_UPDATED = "inventory_updated",
+  INVENTORY_DELETED = "inventory_deleted",
 }
 
 @Entity()

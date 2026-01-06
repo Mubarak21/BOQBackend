@@ -32,17 +32,20 @@ let JwtAuthGuard = JwtAuthGuard_1 = class JwtAuthGuard extends (0, passport_1.Au
             return true;
         }
         const request = context.switchToHttp().getRequest();
+        let token = null;
         const authHeader = request.headers.authorization;
-        if (!authHeader) {
-            this.logger.warn("No authorization header provided");
-            throw new common_1.UnauthorizedException("No authorization header provided");
+        if (authHeader) {
+            token = authHeader.split(" ")[1];
+        }
+        else if (request.cookies && request.cookies.auth_token) {
+            token = request.cookies.auth_token;
+            this.logger.debug("Using token from cookie");
+        }
+        if (!token) {
+            this.logger.warn("No authorization header or auth_token cookie provided");
+            throw new common_1.UnauthorizedException("No authorization header or auth_token cookie provided");
         }
         try {
-            const token = authHeader.split(" ")[1];
-            if (!token) {
-                this.logger.warn("No token provided in authorization header");
-                throw new common_1.UnauthorizedException("No token provided");
-            }
             const user = await this.authService.validateToken(token);
             if (!user) {
                 this.logger.warn("Invalid token or user not found");

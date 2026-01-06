@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from "typeorm";
 import { Phase } from "./phase.entity";
@@ -27,4 +28,14 @@ export class SubPhase {
 
   @Column()
   phase_id: string;
+
+  @ManyToOne(() => SubPhase, (subPhase) => subPhase.subPhases, { nullable: true, onDelete: "CASCADE" })
+  @JoinColumn({ name: "parent_sub_phase_id" })
+  parentSubPhase: SubPhase;
+
+  @Column({ nullable: true })
+  parent_sub_phase_id: string;
+
+  @OneToMany(() => SubPhase, (subPhase) => subPhase.parentSubPhase)
+  subPhases: SubPhase[];
 }

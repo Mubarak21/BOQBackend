@@ -57,7 +57,8 @@ __decorate([
     __metadata("design:type", Array)
 ], CreateProjectDto.prototype, "collaborator_ids", void 0);
 __decorate([
-    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0.01, { message: "Total amount must be greater than 0" }),
     __metadata("design:type", Number)
 ], CreateProjectDto.prototype, "totalAmount", void 0);
 //# sourceMappingURL=create-project.dto.js.map

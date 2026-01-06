@@ -84,6 +84,63 @@ __decorate([
     __metadata("design:type", Number)
 ], Project.prototype, "totalAmount", void 0);
 __decorate([
+    (0, typeorm_1.Column)({
+        type: "decimal",
+        precision: 15,
+        scale: 2,
+        default: 0.0,
+        name: "total_budget",
+    }),
+    __metadata("design:type", Number)
+], Project.prototype, "totalBudget", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        type: "decimal",
+        precision: 15,
+        scale: 2,
+        default: 0.0,
+        name: "allocated_budget",
+    }),
+    __metadata("design:type", Number)
+], Project.prototype, "allocatedBudget", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        type: "decimal",
+        precision: 15,
+        scale: 2,
+        default: 0.0,
+        name: "spent_amount",
+    }),
+    __metadata("design:type", Number)
+], Project.prototype, "spentAmount", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        type: "decimal",
+        precision: 15,
+        scale: 2,
+        default: 0.0,
+        name: "estimated_savings",
+    }),
+    __metadata("design:type", Number)
+], Project.prototype, "estimatedSavings", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        type: "timestamp",
+        nullable: true,
+        name: "budget_last_updated",
+    }),
+    __metadata("design:type", Date)
+], Project.prototype, "budgetLastUpdated", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        type: "enum",
+        enum: ["on_track", "warning", "over_budget", "excellent"],
+        default: "on_track",
+        name: "financial_status",
+    }),
+    __metadata("design:type", String)
+], Project.prototype, "financialStatus", void 0);
+__decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", String)
 ], Project.prototype, "owner_id", void 0);

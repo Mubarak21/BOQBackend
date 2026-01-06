@@ -4,6 +4,7 @@ import { AppModule } from "./app.module";
 import { getDataSourceToken } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 import { SeedService } from "./commands/seed.command";
+import * as cookieParser from "cookie-parser";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,6 +12,9 @@ async function bootstrap() {
   // Run seeding before starting the server
   const seedService = app.get(SeedService);
   await seedService.seed();
+
+  // Enable cookie parsing
+  app.use(cookieParser());
 
   // Enable CORS
   app.enableCors({

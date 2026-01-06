@@ -37,7 +37,7 @@ export class Phase {
   @Column({ type: "timestamp", nullable: true })
   end_date: Date;
 
-  @Column({ type: "decimal", precision: 10, scale: 2, nullable: true })
+  @Column({ type: "decimal", precision: 15, scale: 2, nullable: true })
   budget: number;
 
   @Column({ type: "decimal", precision: 5, scale: 2, nullable: true })
@@ -79,6 +79,12 @@ export class Phase {
 
   @Column({ nullable: true })
   reference_task_id: string;
+
+  @Column({ type: "boolean", default: true })
+  is_active: boolean;
+
+  @Column({ type: "boolean", default: false })
+  from_boq: boolean;
 
   @OneToMany(() => SubPhase, (subPhase) => subPhase.phase, {
     cascade: true,

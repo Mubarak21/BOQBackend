@@ -16,48 +16,66 @@ exports.AdminReportsController = void 0;
 const common_1 = require("@nestjs/common");
 const reports_service_1 = require("../../../reports/reports.service");
 const jwt_auth_guard_1 = require("../../../auth/guards/jwt-auth.guard");
-const roles_guard_1 = require("../../../auth/guards/roles.guard");
-const roles_decorator_1 = require("../../../auth/decorators/roles.decorator");
-const user_entity_1 = require("../../../entities/user.entity");
+const create_report_dto_1 = require("../../dto/reports/create-report.dto");
+const report_query_dto_1 = require("../../dto/reports/report-query.dto");
 let AdminReportsController = class AdminReportsController {
     constructor(reportsService) {
         this.reportsService = reportsService;
     }
-    async listReports(type, status, page = 1, limit = 20) {
-        return this.reportsService.adminList({ type, status, page, limit });
+    async listReports(query) {
+        return this.reportsService.adminList(query);
     }
-    async generateReport(body) {
-        return this.reportsService.adminGenerate(body);
+    async generateReport(createReportDto, req) {
+        const user = req.user;
+        if (!user) {
+            throw new common_1.BadRequestException("User not found in request");
+        }
+        return this.reportsService.adminGenerate(createReportDto, user);
     }
     async getReport(id) {
         return this.reportsService.adminGetDetails(id);
     }
     async downloadReport(id, res) {
-        const file = await this.reportsService.adminDownload(id);
-        res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
-        res.setHeader("Content-Type", file.mimetype);
-        res.sendFile(file.path);
+        try {
+            const file = await this.reportsService.adminDownload(id);
+            res.setHeader("Content-Type", file.mimetype);
+            res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
+            res.sendFile(file.path);
+        }
+        catch (error) {
+            if (error instanceof common_1.NotFoundException) {
+                throw new common_1.HttpException(error.message, common_1.HttpStatus.NOT_FOUND);
+            }
+            else if (error instanceof common_1.BadRequestException) {
+                throw new common_1.HttpException(error.message, common_1.HttpStatus.BAD_REQUEST);
+            }
+            else {
+                throw new common_1.HttpException("Failed to download report", common_1.HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+        }
     }
     async deleteReport(id) {
         return this.reportsService.adminDelete(id);
+    }
+    async cleanupOldReports() {
+        await this.reportsService.cleanupOldReports();
+        return { message: "Old reports cleanup completed" };
     }
 };
 exports.AdminReportsController = AdminReportsController;
 __decorate([
     (0, common_1.Get)(),
-    __param(0, (0, common_1.Query)("type")),
-    __param(1, (0, common_1.Query)("status")),
-    __param(2, (0, common_1.Query)("page")),
-    __param(3, (0, common_1.Query)("limit")),
+    __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, Number, Number]),
+    __metadata("design:paramtypes", [report_query_dto_1.ReportQueryDto]),
     __metadata("design:returntype", Promise)
 ], AdminReportsController.prototype, "listReports", null);
 __decorate([
     (0, common_1.Post)(),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [create_report_dto_1.CreateReportDto, Object]),
     __metadata("design:returntype", Promise)
 ], AdminReportsController.prototype, "generateReport", null);
 __decorate([
@@ -82,10 +100,15 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], AdminReportsController.prototype, "deleteReport", null);
+__decorate([
+    (0, common_1.Post)("cleanup"),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AdminReportsController.prototype, "cleanupOldReports", null);
 exports.AdminReportsController = AdminReportsController = __decorate([
     (0, common_1.Controller)("admin/reports"),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [reports_service_1.ReportsService])
 ], AdminReportsController);
 //# sourceMappingURL=reports.controller.js.map

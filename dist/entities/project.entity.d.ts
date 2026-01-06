@@ -25,6 +25,12 @@ export declare class Project {
     start_date: Date;
     end_date: Date;
     totalAmount: number;
+    totalBudget: number;
+    allocatedBudget: number;
+    spentAmount: number;
+    estimatedSavings: number;
+    budgetLastUpdated: Date;
+    financialStatus: "on_track" | "warning" | "over_budget" | "excellent";
     owner_id: string;
     owner: User;
     collaborators: User[];

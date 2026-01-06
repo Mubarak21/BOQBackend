@@ -1,37 +1,40 @@
 import { UsersService } from "../../../users/users.service";
-import { UserRole } from "../../../entities/user.entity";
 export declare class AdminUsersController {
     private readonly usersService;
     constructor(usersService: UsersService);
     listUsers(search?: string, role?: string, status?: string, page?: number, limit?: number): Promise<{
-        items: {
+        users: {
             id: string;
-            name: string;
+            display_name: string;
             email: string;
-            role: UserRole;
+            role: import("../../../entities/user.entity").UserRole;
             status: string;
-            createdAt: Date;
-            lastLogin: Date;
+            bio: string;
+            avatar_url: string;
+            created_at: Date;
+            updated_at: Date;
+            last_login: Date;
         }[];
         total: number;
         page: number;
         limit: number;
+        totalPages: number;
     }>;
     getUser(id: string): Promise<{
         id: string;
         name: string;
         email: string;
-        role: UserRole;
+        role: import("../../../entities/user.entity").UserRole;
         status: string;
         createdAt: Date;
         lastLogin: Date;
     }>;
-    createUser(body: any): Promise<import("../../../entities/user.entity").User[]>;
+    createUser(body: any): Promise<Omit<import("../../../entities/user.entity").User, "password">>;
     updateUser(id: string, body: any): Promise<{
         id: string;
         name: string;
         email: string;
-        role: UserRole;
+        role: import("../../../entities/user.entity").UserRole;
         status: string;
         createdAt: Date;
         lastLogin: Date;

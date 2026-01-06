@@ -16,9 +16,6 @@ import { ProjectsService } from "../../../projects/projects.service";
 import { CreateProjectDto } from "../../../projects/dto/create-project.dto";
 import { UpdateProjectDto } from "../../../projects/dto/update-project.dto";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
-import { RolesGuard } from "../../../auth/guards/roles.guard";
-import { Roles } from "../../../auth/decorators/roles.decorator";
-import { UserRole } from "../../../entities/user.entity";
 
 @Controller("admin/projects")
 @UseGuards(JwtAuthGuard)
@@ -31,15 +28,31 @@ export class AdminProjectsController {
     @Query("search") search: string = "",
     @Query("status") status?: string,
     @Query("page") page: number = 1,
-    @Query("limit") limit: number = 20
+    @Query("limit") limit: number = 10
   ) {
-    return this.projectsService.adminList({ search, status, page, limit });
+    console.log("🔍 Admin Projects - Listing projects with filters:", {
+      search,
+      status,
+      page,
+      limit,
+    });
+    const projects = await this.projectsService.adminList({
+      search,
+      status,
+      page,
+      limit,
+    });
+    console.log("📊 Admin Projects List:", projects);
+    return projects;
   }
 
   // 2. Project details with related users/members and activities
   @Get(":id")
   async getProject(@Param("id") id: string) {
-    return this.projectsService.adminGetDetails(id);
+    console.log("🔍 Admin Projects - Getting project details for ID:", id);
+    const project = await this.projectsService.adminGetDetails(id);
+    console.log("📊 Admin Project Details:", project);
+    return project;
   }
 
   // 3. Create project

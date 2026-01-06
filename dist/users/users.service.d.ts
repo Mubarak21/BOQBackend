@@ -22,18 +22,22 @@ export declare class UsersService {
         page?: number;
         limit?: number;
     }): Promise<{
-        items: {
+        users: {
             id: string;
-            name: string;
+            display_name: string;
             email: string;
             role: import("../entities/user.entity").UserRole;
             status: string;
-            createdAt: Date;
-            lastLogin: Date;
+            bio: string;
+            avatar_url: string;
+            created_at: Date;
+            updated_at: Date;
+            last_login: Date;
         }[];
         total: number;
         page: number;
         limit: number;
+        totalPages: number;
     }>;
     adminGetDetails(id: string): Promise<{
         id: string;
@@ -44,7 +48,7 @@ export declare class UsersService {
         createdAt: Date;
         lastLogin: Date;
     }>;
-    adminCreate(body: any): Promise<User[]>;
+    adminCreate(body: any): Promise<Omit<User, "password">>;
     adminUpdate(id: string, body: any): Promise<{
         id: string;
         name: string;
@@ -64,10 +68,15 @@ export declare class UsersService {
         role: import("../entities/user.entity").UserRole;
         createdAt: Date;
     }[]>;
-    getGroupedByRole(): Promise<any[]>;
+    getGroupedByRole(): Promise<{
+        role: any;
+        count: number;
+        percentage: number;
+    }[]>;
     getUserGrowth(compare?: string): Promise<{
         current: number;
         previous: number;
         growth: number;
     }>;
+    getUserEngagementMetrics(period?: string, from?: string, to?: string): Promise<any[]>;
 }

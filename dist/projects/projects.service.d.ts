@@ -11,7 +11,10 @@ import { UpdatePhaseDto } from "./dto/update-phase.dto";
 import { Phase } from "../entities/phase.entity";
 import { TasksService } from "../tasks/tasks.service";
 import { ProjectAccessRequest } from "../entities/project-access-request.entity";
+import { PhaseStatus } from "../entities/phase.entity";
 import { DashboardService } from "../dashboard/dashboard.service";
+import { BoqParserService } from "./boq-parser.service";
+import { Inventory } from "../entities/inventory.entity";
 export interface ProcessBoqResult {
     message: string;
     totalAmount: number;
@@ -22,12 +25,39 @@ export declare class ProjectsService {
     private readonly tasksRepository;
     private readonly phasesRepository;
     private readonly accessRequestRepository;
+    private readonly inventoryRepository;
     private readonly usersService;
     private readonly activitiesService;
     private readonly tasksService;
     private readonly dashboardService;
-    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, accessRequestRepository: Repository<ProjectAccessRequest>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService, dashboardService: DashboardService);
+    private readonly boqParserService;
+    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, accessRequestRepository: Repository<ProjectAccessRequest>, inventoryRepository: Repository<Inventory>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService, dashboardService: DashboardService, boqParserService: BoqParserService);
     findAll(): Promise<Project[]>;
+    findAllPaginated({ page, limit, search, status, }: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        status?: string;
+    }): Promise<{
+        items: Project[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }>;
+    findUserProjects(userId: string): Promise<Project[]>;
+    findUserProjectsPaginated(userId: string, { page, limit, search, status, }: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        status?: string;
+    }): Promise<{
+        items: Project[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }>;
     findOne(id: string, userId?: string): Promise<Project>;
     create(createProjectDto: CreateProjectDto, owner: User): Promise<Project>;
     update(id: string, updateProjectDto: UpdateProjectDto, userId: string): Promise<Project>;
@@ -35,10 +65,21 @@ export declare class ProjectsService {
     addCollaborator(projectId: string, collaborator: User, userId: string): Promise<Project>;
     removeCollaborator(projectId: string, collaboratorId: string, userId: string): Promise<Project>;
     processBoqFile(projectId: string, file: Express.Multer.File, userId: string): Promise<ProcessBoqResult>;
+    processBoqFileFromParsedData(projectId: string, data: any[], totalAmount: number, userId: string, fileName?: string): Promise<ProcessBoqResult>;
     createPhase(projectId: string, createPhaseDto: CreatePhaseDto, userId: string): Promise<Phase>;
     updatePhase(projectId: string, phaseId: string, updatePhaseDto: UpdatePhaseDto, userId: string): Promise<Phase>;
     deletePhase(projectId: string, phaseId: string, userId: string): Promise<void>;
     getProjectPhases(projectId: string, userId: string): Promise<Phase[]>;
+    getProjectPhasesPaginated(projectId: string, userId: string, { page, limit }: {
+        page?: number;
+        limit?: number;
+    }): Promise<{
+        items: Phase[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }>;
     getAvailableAssignees(projectId: string): Promise<User[]>;
     getProjectResponse(project: Project): Promise<any>;
     findAllProjects(): Promise<Project[]>;
@@ -74,29 +115,21 @@ export declare class ProjectsService {
                 display_name: string;
             }[];
             tags: string[];
+            progress: number;
+            completedPhases: number;
+            totalPhases: number;
+            totalAmount: number;
+            totalBudget: number;
+            startDate: Date;
+            estimatedCompletion: Date;
         }[];
         total: number;
         page: number;
         limit: number;
+        totalPages: number;
     }>;
-    adminGetDetails(id: string): Promise<{
-        id: string;
-        name: string;
-        description: string;
-        status: ProjectStatus;
-        createdAt: Date;
-        updatedAt: Date;
-        owner: {
-            id: string;
-            display_name: string;
-        };
-        members: {
-            id: string;
-            display_name: string;
-        }[];
-        tags: string[];
-        phases: Phase[];
-    }>;
+    findAllForAdmin(): Promise<Project[]>;
+    adminGetDetails(id: string): Promise<any>;
     getTopActiveProjects(limit?: number): Promise<{
         id: string;
         name: string;
@@ -112,13 +145,37 @@ export declare class ProjectsService {
             display_name: string;
         }[];
     }[]>;
-    getGroupedByStatus(): Promise<any[]>;
+    getGroupedByStatus(): Promise<{
+        status: any;
+        count: number;
+        percentage: number;
+    }[]>;
     private hasProjectAccess;
     private getValidatedCollaborators;
     private parseAmount;
     private parseBoqFile;
+    private parseCsvLine;
+    private detectHierarchicalStructure;
+    private standardizeNumber;
+    private getColumnMappingsFromHeaders;
     private getColumnMappings;
+    private createPhasesFromBoqData;
+    private createPhasesFromBoqData_OLD;
     private createTasksFromBoqData;
+    previewBoqFile(file: Express.Multer.File): Promise<{
+        phases: Array<{
+            title: string;
+            description: string;
+            budget: number;
+            unit?: string;
+            quantity?: number;
+            rate?: number;
+            mainSection?: string;
+            subSection?: string;
+        }>;
+        totalAmount: number;
+        totalPhases: number;
+    }>;
     private createTasksRecursive;
     getConsultantProjectSummary(project: Project): {
         id: string;
@@ -140,5 +197,59 @@ export declare class ProjectsService {
     getAllConsultantProjects(): Promise<any[]>;
     getConsultantProjectDetails(id: string): Promise<any>;
     getConsultantProjectPhases(projectId: string): Promise<any[]>;
+    getConsultantProjectPhasesPaginated(projectId: string, { page, limit }: {
+        page?: number;
+        limit?: number;
+    }): Promise<{
+        items: {
+            id: string;
+            title: string;
+            description: string;
+            start_date: Date;
+            end_date: Date;
+            progress: number;
+            status: PhaseStatus;
+            created_at: Date;
+            updated_at: Date;
+            subPhases: {
+                id: string;
+                title: string;
+                description: string;
+                isCompleted: boolean;
+            }[];
+        }[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }>;
+    getBoqDraftPhases(projectId: string, userId: string): Promise<Phase[]>;
+    activateBoqPhases(projectId: string, phaseIds: string[], userId: string): Promise<{
+        activated: number;
+        phases: Phase[];
+    }>;
     getConsultantProjectTasks(projectId: string): Promise<any[]>;
+    getProjectCompletionTrends(period?: string, from?: string, to?: string): Promise<{
+        date: any;
+        completed: number;
+        total: number;
+        completionRate: number;
+    }[]>;
+    getProjectInventory(projectId: string, userId: string, options: {
+        page?: number;
+        limit?: number;
+        category?: string;
+        search?: string;
+    }): Promise<{
+        items: Inventory[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }>;
+    addProjectInventoryItem(projectId: string, createInventoryDto: any, userId: string, pictureFile?: Express.Multer.File): Promise<Inventory[]>;
+    updateProjectInventoryItem(projectId: string, inventoryId: string, updateData: any, userId: string): Promise<Inventory>;
+    deleteProjectInventoryItem(projectId: string, inventoryId: string, userId: string): Promise<{
+        message: string;
+    }>;
 }

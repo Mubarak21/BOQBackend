@@ -25,5 +25,7 @@ export declare class Phase {
     requirements: string;
     due_date: Date;
     reference_task_id: string;
+    is_active: boolean;
+    from_boq: boolean;
     subPhases: SubPhase[];
 }

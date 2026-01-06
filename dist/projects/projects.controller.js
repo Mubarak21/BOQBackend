@@ -22,17 +22,54 @@ const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const users_service_1 = require("../users/users.service");
 const create_phase_dto_1 = require("./dto/create-phase.dto");
 const update_phase_dto_1 = require("./dto/update-phase.dto");
+const complaints_service_1 = require("../complaints-penalties/complaints.service");
+const penalties_service_1 = require("../complaints-penalties/penalties.service");
+const evidence_service_1 = require("./evidence.service");
+const user_entity_1 = require("../entities/user.entity");
+const boq_parser_service_1 = require("./boq-parser.service");
+const boq_progress_gateway_1 = require("./boq-progress.gateway");
+const file_validation_pipe_1 = require("./pipes/file-validation.pipe");
 let ProjectsController = class ProjectsController {
-    constructor(projectsService, usersService) {
+    constructor(projectsService, usersService, complaintsService, penaltiesService, evidenceService, boqParserService, boqProgressGateway) {
         this.projectsService = projectsService;
         this.usersService = usersService;
+        this.complaintsService = complaintsService;
+        this.penaltiesService = penaltiesService;
+        this.evidenceService = evidenceService;
+        this.boqParserService = boqParserService;
+        this.boqProgressGateway = boqProgressGateway;
     }
     create(createProjectDto, req) {
         return this.projectsService.create(createProjectDto, req.user);
     }
-    async findAll() {
-        const projects = await this.projectsService.findAll();
-        return Promise.all(projects.map((p) => this.projectsService.getProjectResponse(p)));
+    async findAll(req, page = 1, limit = 10, search, status) {
+        console.log("🔍 User Projects - User ID:", req.user.id, "Role:", req.user.role, "Page:", page, "Limit:", limit);
+        let result;
+        if (req.user.role === user_entity_1.UserRole.CONTRACTOR || req.user.role === user_entity_1.UserRole.SUB_CONTRACTOR) {
+            result = await this.projectsService.findAllPaginated({
+                page,
+                limit,
+                search,
+                status,
+            });
+        }
+        else {
+            result = await this.projectsService.findUserProjectsPaginated(req.user.id, {
+                page,
+                limit,
+                search,
+                status,
+            });
+        }
+        console.log("📊 User Projects Found:", result.items.length, "of", result.total);
+        const items = await Promise.all(result.items.map((p) => this.projectsService.getProjectResponse(p)));
+        return {
+            items,
+            total: result.total,
+            page: result.page,
+            limit: result.limit,
+            totalPages: result.totalPages,
+        };
     }
     async findOne(id, req) {
         const project = await this.projectsService.findOne(id, req.user.id);
@@ -51,21 +88,75 @@ let ProjectsController = class ProjectsController {
     removeCollaborator(id, userId, req) {
         return this.projectsService.removeCollaborator(id, userId, req.user.id);
     }
-    async uploadBoq(id, file, req) {
-        if (!file) {
-            throw new common_1.BadRequestException("No file uploaded");
-        }
-        if (!file.mimetype.includes("spreadsheet") &&
-            !file.mimetype.includes("excel")) {
-            throw new common_1.BadRequestException("File must be an Excel spreadsheet");
-        }
-        return this.projectsService.processBoqFile(id, file, req.user.id);
+    async previewBoq(file, req, roomId) {
+        const parseResult = await this.boqParserService.parseBoqFile(file, roomId
+            ? (progress) => {
+                this.boqProgressGateway.emitProgress(roomId, progress);
+            }
+            : undefined);
+        return {
+            items: parseResult.items,
+            totalAmount: parseResult.totalAmount,
+            sections: parseResult.sections,
+            uncertainHeaders: parseResult.uncertainHeaders,
+            metadata: parseResult.metadata,
+            gridData: parseResult.items.map((item) => ({
+                id: item.id,
+                description: item.description,
+                quantity: item.quantity,
+                unit: item.unit,
+                rate: item.rate,
+                amount: item.amount,
+                section: item.section || "",
+                subSection: item.subSection || "",
+                rowIndex: item.rowIndex,
+            })),
+        };
+    }
+    async uploadBoq(id, file, req, roomId) {
+        const parseResult = await this.boqParserService.parseBoqFile(file, roomId
+            ? (progress) => {
+                this.boqProgressGateway.emitProgress(roomId, progress);
+            }
+            : undefined);
+        const processedData = parseResult.items.map((item) => {
+            const row = { ...item.rawData };
+            const descKey = Object.keys(row).find(key => key.toLowerCase().includes('desc') ||
+                key.toLowerCase().includes('description') ||
+                key.toLowerCase().includes('item'));
+            if (item.description && item.description.trim() !== "") {
+                if (descKey) {
+                    row[descKey] = item.description;
+                }
+                else {
+                    row['Description'] = item.description;
+                }
+            }
+            return {
+                ...row,
+                section: item.section,
+                subSection: item.subSection,
+                _extractedDescription: item.description,
+                _extractedUnit: item.unit,
+                _extractedQuantity: item.quantity,
+            };
+        });
+        return this.projectsService.processBoqFileFromParsedData(id, processedData, parseResult.totalAmount, req.user.id);
     }
     async createPhase(id, createPhaseDto, req) {
         return this.projectsService.createPhase(id, createPhaseDto, req.user.id);
     }
-    async getProjectPhases(id, req) {
-        return this.projectsService.getProjectPhases(id, req.user.id);
+    async getBoqDraftPhases(id, req) {
+        return this.projectsService.getBoqDraftPhases(id, req.user.id);
+    }
+    async activateBoqPhases(id, body, req) {
+        return this.projectsService.activateBoqPhases(id, body.phaseIds, req.user.id);
+    }
+    async getProjectPhases(id, page = 1, limit = 10, req) {
+        return this.projectsService.getProjectPhasesPaginated(id, req.user.id, {
+            page,
+            limit,
+        });
     }
     async getAvailableAssignees(req) {
         const projectId = req.query.projectId;
@@ -83,9 +174,6 @@ let ProjectsController = class ProjectsController {
     }
     async joinProject(id, req) {
         return this.projectsService.joinProject(id, req.user);
-    }
-    findAllProjects() {
-        return this.projectsService.findAllProjects();
     }
     async createJoinRequest(projectId, req) {
         return this.projectsService.createJoinRequest(projectId, req.user.id);
@@ -108,6 +196,32 @@ let ProjectsController = class ProjectsController {
     async getAvailablePhaseTasks(id, req) {
         return this.projectsService.getAvailablePhaseTasks(id, req.user.id);
     }
+    async getProjectComplaints(id) {
+        return this.complaintsService.findByProject(id);
+    }
+    async getProjectPenalties(id) {
+        return this.penaltiesService.findByProject(id);
+    }
+    async uploadEvidence(projectId, phaseId, file, body, req) {
+        return this.evidenceService.uploadEvidence(phaseId, file, body.type, body.notes, body.subPhaseId, req.user);
+    }
+    async getProjectInventory(id, page = 1, limit = 10, category, search, req) {
+        return this.projectsService.getProjectInventory(id, req.user.id, {
+            page,
+            limit,
+            category,
+            search,
+        });
+    }
+    async addProjectInventoryItem(id, pictureFile, createInventoryDto, req) {
+        return this.projectsService.addProjectInventoryItem(id, createInventoryDto, req.user.id, pictureFile);
+    }
+    async updateProjectInventoryItem(id, inventoryId, updateData, req) {
+        return this.projectsService.updateProjectInventoryItem(id, inventoryId, updateData, req.user.id);
+    }
+    async deleteProjectInventoryItem(id, inventoryId, req) {
+        return this.projectsService.deleteProjectInventoryItem(id, inventoryId, req.user.id);
+    }
 };
 exports.ProjectsController = ProjectsController;
 __decorate([
@@ -120,8 +234,13 @@ __decorate([
 ], ProjectsController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)("page")),
+    __param(2, (0, common_1.Query)("limit")),
+    __param(3, (0, common_1.Query)("search")),
+    __param(4, (0, common_1.Query)("status")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [Object, Number, Number, String, String]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "findAll", null);
 __decorate([
@@ -168,13 +287,24 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], ProjectsController.prototype, "removeCollaborator", null);
 __decorate([
+    (0, common_1.Post)("boq/preview"),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)("file")),
+    __param(0, (0, common_1.UploadedFile)(new file_validation_pipe_1.FileValidationPipe())),
+    __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Query)("roomId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object, String]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "previewBoq", null);
+__decorate([
     (0, common_1.Post)(":id/boq"),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)("file")),
     __param(0, (0, common_1.Param)("id")),
-    __param(1, (0, common_1.UploadedFile)()),
+    __param(1, (0, common_1.UploadedFile)(new file_validation_pipe_1.FileValidationPipe())),
     __param(2, (0, common_1.Req)()),
+    __param(3, (0, common_1.Query)("roomId")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:paramtypes", [String, Object, Object, String]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "uploadBoq", null);
 __decorate([
@@ -187,11 +317,30 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "createPhase", null);
 __decorate([
-    (0, common_1.Get)(":id/phases"),
+    (0, common_1.Get)(":id/phases/boq-drafts"),
     __param(0, (0, common_1.Param)("id")),
     __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "getBoqDraftPhases", null);
+__decorate([
+    (0, common_1.Post)(":id/phases/activate-boq"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "activateBoqPhases", null);
+__decorate([
+    (0, common_1.Get)(":id/phases"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Query)("page")),
+    __param(2, (0, common_1.Query)("limit")),
+    __param(3, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Number, Number, Object]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "getProjectPhases", null);
 __decorate([
@@ -228,12 +377,6 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "joinProject", null);
-__decorate([
-    (0, common_1.Get)("all"),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
-    __metadata("design:returntype", void 0)
-], ProjectsController.prototype, "findAllProjects", null);
 __decorate([
     (0, common_1.Post)(":projectId/join-request"),
     __param(0, (0, common_1.Param)("projectId")),
@@ -290,10 +433,85 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "getAvailablePhaseTasks", null);
+__decorate([
+    (0, common_1.Get)(":id/complaints"),
+    __param(0, (0, common_1.Param)("id")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "getProjectComplaints", null);
+__decorate([
+    (0, common_1.Get)(":id/penalties"),
+    __param(0, (0, common_1.Param)("id")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "getProjectPenalties", null);
+__decorate([
+    (0, common_1.Post)(":id/phases/:phaseId/evidence"),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)("file")),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Param)("phaseId")),
+    __param(2, (0, common_1.UploadedFile)()),
+    __param(3, (0, common_1.Body)()),
+    __param(4, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "uploadEvidence", null);
+__decorate([
+    (0, common_1.Get)(":id/inventory"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Query)("page")),
+    __param(2, (0, common_1.Query)("limit")),
+    __param(3, (0, common_1.Query)("category")),
+    __param(4, (0, common_1.Query)("search")),
+    __param(5, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Number, Number, String, String, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "getProjectInventory", null);
+__decorate([
+    (0, common_1.Post)(":id/inventory"),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)("picture", {
+        limits: { fileSize: 10 * 1024 * 1024 },
+    })),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.UploadedFile)()),
+    __param(2, (0, common_1.Body)()),
+    __param(3, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "addProjectInventoryItem", null);
+__decorate([
+    (0, common_1.Patch)(":id/inventory/:inventoryId"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Param)("inventoryId")),
+    __param(2, (0, common_1.Body)()),
+    __param(3, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "updateProjectInventoryItem", null);
+__decorate([
+    (0, common_1.Delete)(":id/inventory/:inventoryId"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Param)("inventoryId")),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "deleteProjectInventoryItem", null);
 exports.ProjectsController = ProjectsController = __decorate([
     (0, common_1.Controller)("projects"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [projects_service_1.ProjectsService,
-        users_service_1.UsersService])
+        users_service_1.UsersService,
+        complaints_service_1.ComplaintsService,
+        penalties_service_1.PenaltiesService,
+        evidence_service_1.EvidenceService,
+        boq_parser_service_1.BoqParserService,
+        boq_progress_gateway_1.BoqProgressGateway])
 ], ProjectsController);
 //# sourceMappingURL=projects.controller.js.map

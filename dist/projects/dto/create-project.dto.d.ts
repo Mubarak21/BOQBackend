@@ -8,5 +8,5 @@ export declare class CreateProjectDto {
     end_date?: string;
     tags?: string[];
     collaborator_ids?: string[];
-    totalAmount?: number;
+    totalAmount: number;
 }

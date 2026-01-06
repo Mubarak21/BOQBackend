@@ -5,10 +5,12 @@ const common_1 = require("@nestjs/common");
 const app_module_1 = require("./app.module");
 const typeorm_1 = require("@nestjs/typeorm");
 const seed_command_1 = require("./commands/seed.command");
+const cookieParser = require("cookie-parser");
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     const seedService = app.get(seed_command_1.SeedService);
     await seedService.seed();
+    app.use(cookieParser());
     app.enableCors({
         origin: true,
         methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",

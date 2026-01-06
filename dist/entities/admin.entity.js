@@ -27,7 +27,7 @@ __decorate([
     __metadata("design:type", String)
 ], Admin.prototype, "password", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ default: "Admin" }),
     __metadata("design:type", String)
 ], Admin.prototype, "display_name", void 0);
 __decorate([

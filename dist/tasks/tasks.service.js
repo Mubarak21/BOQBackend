@@ -19,11 +19,13 @@ const typeorm_2 = require("typeorm");
 const task_entity_1 = require("../entities/task.entity");
 const project_entity_1 = require("../entities/project.entity");
 const projects_service_1 = require("../projects/projects.service");
+const users_service_1 = require("../users/users.service");
 let TasksService = class TasksService {
-    constructor(tasksRepository, projectsRepository, projectsService) {
+    constructor(tasksRepository, projectsRepository, projectsService, usersService) {
         this.tasksRepository = tasksRepository;
         this.projectsRepository = projectsRepository;
         this.projectsService = projectsService;
+        this.usersService = usersService;
     }
     async findAllByProject(projectId, userId) {
         await this.projectsRepository.findOne({ where: { id: projectId } });
@@ -72,7 +74,10 @@ let TasksService = class TasksService {
         const project = await this.projectsRepository.findOne({
             where: { id: task.project_id },
         });
-        if (project.owner_id !== userId) {
+        const user = await this.usersService.findOne(userId);
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        if (project.owner_id !== userId && !isAdmin && !isConsultant) {
             throw new common_1.ForbiddenException("You don't have permission to update this task");
         }
         Object.assign(task, updateTaskDto);
@@ -83,16 +88,22 @@ let TasksService = class TasksService {
         const project = await this.projectsRepository.findOne({
             where: { id: task.project_id },
         });
-        if (project.owner_id !== userId) {
-            throw new common_1.ForbiddenException("Only the project owner can delete tasks");
+        const user = await this.usersService.findOne(userId);
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        if (project.owner_id !== userId && !isAdmin && !isConsultant) {
+            throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can delete tasks");
         }
         await this.tasksRepository.remove(task);
     }
     async assignTask(taskId, assigneeId, userId) {
         const task = await this.findOne(taskId, userId);
         const project = await this.projectsService.findOne(task.project_id, userId);
-        if (project.owner_id !== userId) {
-            throw new common_1.ForbiddenException("Only the project owner can assign tasks");
+        const user = await this.usersService.findOne(userId);
+        const isAdmin = user?.role === "admin";
+        const isConsultant = user?.role === "consultant";
+        if (project.owner_id !== userId && !isAdmin && !isConsultant) {
+            throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can assign tasks");
         }
         return this.tasksRepository.save(task);
     }
@@ -105,6 +116,7 @@ exports.TasksService = TasksService = __decorate([
     __param(2, (0, common_1.Inject)((0, common_1.forwardRef)(() => projects_service_1.ProjectsService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         typeorm_2.Repository,
-        projects_service_1.ProjectsService])
+        projects_service_1.ProjectsService,
+        users_service_1.UsersService])
 ], TasksService);
 //# sourceMappingURL=tasks.service.js.map

@@ -20,7 +20,7 @@ let AdminActivitiesController = class AdminActivitiesController {
     constructor(activitiesService) {
         this.activitiesService = activitiesService;
     }
-    async listActivities(userId, type, dateFrom, dateTo, projectId, search = "", page = 1, limit = 20) {
+    async listActivities(userId, type, dateFrom, dateTo, projectId, search = "", page = 1, limit = 10) {
         return this.activitiesService.adminList({
             userId,
             type,

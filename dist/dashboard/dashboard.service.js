@@ -68,7 +68,7 @@ let DashboardService = class DashboardService {
             relations: ["collaborators", "owner", "phases"],
         });
         const totalValue = projects
-            .reduce((sum, project) => sum + Number(project.totalAmount ?? 0), 0)
+            .reduce((sum, project) => sum + Number(project.totalBudget ?? project.totalAmount ?? 0), 0)
             .toFixed(2);
         console.log("Total value:", totalValue);
         const uniqueTeamMembers = new Set();
@@ -106,10 +106,30 @@ let DashboardService = class DashboardService {
         }
         return stats;
     }
+    async getUserStatsForDashboard(userId) {
+        const [totalProjects, completedProjects, totalTeamMembers, totalValue] = await Promise.all([
+            this.getTotalProjects(userId),
+            this.getCompletedProjects(userId),
+            this.getTotalTeamMembers(userId),
+            this.getTotalProjectValues(userId),
+        ]);
+        const completion_rate = totalProjects > 0
+            ? ((completedProjects / totalProjects) * 100).toFixed(2)
+            : "0.00";
+        return {
+            total_projects: totalProjects,
+            team_members: totalTeamMembers,
+            completion_rate: completion_rate,
+            updated_at: new Date().toISOString(),
+        };
+    }
     async getTotalProjects(userId) {
-        return this.projectsRepository.count({
+        console.log("🔍 Dashboard - Getting total projects for user:", userId);
+        const count = await this.projectsRepository.count({
             where: [{ owner_id: userId }, { collaborators: { id: userId } }],
         });
+        console.log("📊 Dashboard - Total projects for user:", count);
+        return count;
     }
     async getActiveProjects(userId) {
         return this.projectsRepository.count({
@@ -200,9 +220,15 @@ let DashboardService = class DashboardService {
     async getTotalProjectValues(userId) {
         const projects = await this.projectsRepository.find({
             where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-            select: ["totalAmount"],
+            select: ["totalBudget", "totalAmount"],
         });
-        return projects.reduce((sum, project) => sum + (project.totalAmount || 0), 0);
+        return projects.reduce((sum, project) => {
+            const budget = project.totalBudget != null ? Number(project.totalBudget) : null;
+            const amount = project.totalAmount != null ? Number(project.totalAmount) : null;
+            const value = (budget != null && !isNaN(budget)) ? budget :
+                (amount != null && !isNaN(amount)) ? amount : 0;
+            return sum + value;
+        }, 0);
     }
     async getProjectProgress(project) {
         const projectPhases = project.phases || [];

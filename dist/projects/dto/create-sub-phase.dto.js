@@ -23,4 +23,9 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreateSubPhaseDto.prototype, "description", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsUUID)(),
+    __metadata("design:type", String)
+], CreateSubPhaseDto.prototype, "parentSubPhaseId", void 0);
 //# sourceMappingURL=create-sub-phase.dto.js.map

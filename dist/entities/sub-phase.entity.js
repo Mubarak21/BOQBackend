@@ -40,6 +40,19 @@ __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", String)
 ], SubPhase.prototype, "phase_id", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => SubPhase, (subPhase) => subPhase.subPhases, { nullable: true, onDelete: "CASCADE" }),
+    (0, typeorm_1.JoinColumn)({ name: "parent_sub_phase_id" }),
+    __metadata("design:type", SubPhase)
+], SubPhase.prototype, "parentSubPhase", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], SubPhase.prototype, "parent_sub_phase_id", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => SubPhase, (subPhase) => subPhase.parentSubPhase),
+    __metadata("design:type", Array)
+], SubPhase.prototype, "subPhases", void 0);
 exports.SubPhase = SubPhase = __decorate([
     (0, typeorm_1.Entity)()
 ], SubPhase);

@@ -13,9 +13,6 @@ import {
 import { AuthService } from "../../../auth/auth.service";
 import { LoginDto } from "../../../auth/dto/login.dto";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
-import { RolesGuard } from "../../../auth/guards/roles.guard";
-import { Roles } from "../../../auth/decorators/roles.decorator";
-import { UserRole } from "../../../entities/user.entity";
 import { User } from "../../../entities/user.entity";
 import { Public } from "../../../auth/decorators/public.decorator";
 import { Admin } from "../../../entities/admin.entity";
@@ -24,6 +21,8 @@ import { Repository } from "typeorm";
 import { LocalAuthGuard } from "../../../auth/guards/local-auth.guard";
 import { JwtService } from "@nestjs/jwt";
 import { Response } from "express";
+import { AdminRegisterDto } from "../../dto/admin-register.dto";
+import { AdminService } from "../../services/admin.service";
 
 @Controller("admin/auth")
 // Removed class-level guards and roles
@@ -32,43 +31,42 @@ export class AdminAuthController {
     private readonly authService: AuthService,
     @InjectRepository(Admin)
     private readonly adminRepository: Repository<Admin>,
-    private readonly jwtService: JwtService
+    private readonly jwtService: JwtService,
+    private readonly adminService: AdminService
   ) {}
 
   @Post("register")
   @Public()
-  async register(@Body() createAdminDto: any) {
+  async register(@Body() createAdminDto: AdminRegisterDto) {
     console.log("Admin registration payload:", createAdminDto);
-    if (
-      !createAdminDto.display_name ||
-      createAdminDto.display_name.trim() === ""
-    ) {
-      createAdminDto.display_name = "Admin";
-    }
-    console.log("Final display_name:", createAdminDto.display_name);
-    // Check if any admin exists
-    const existingAdmin = await this.adminRepository.findOne({ where: {} });
-    if (existingAdmin) {
+
+    try {
+      const admin = await this.adminService.createAdmin({
+        email: createAdminDto.email,
+        password: createAdminDto.password,
+        display_name: createAdminDto.display_name,
+      });
+
+      console.log("Admin created successfully:", admin.email);
+
       return {
-        error: "Admin registration is closed. An admin already exists.",
+        success: true,
+        admin: {
+          id: admin.id,
+          email: admin.email,
+          display_name: admin.display_name,
+          role: "admin",
+        },
       };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        "Failed to create admin account",
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
     }
-    // Hash password, set fields
-    const admin = this.adminRepository.create({
-      email: createAdminDto.email,
-      password: await this.authService.hashPassword(createAdminDto.password),
-      display_name: createAdminDto.display_name,
-      status: "active",
-    });
-    await this.adminRepository.save(admin);
-    return {
-      success: true,
-      admin: {
-        id: admin.id,
-        email: admin.email,
-        display_name: admin.display_name,
-      },
-    };
   }
 
   @Post("login")
@@ -76,7 +74,12 @@ export class AdminAuthController {
   @UseGuards(LocalAuthGuard)
   async login(@Request() req, @Res({ passthrough: true }) res: Response) {
     const admin = req.user;
-    const payload = { sub: admin.id, email: admin.email, role: "admin" };
+    const payload = {
+      sub: admin.id,
+      email: admin.email,
+      role: "admin",
+      type: "admin", // Distinguish admin tokens from user tokens
+    };
     const token = this.jwtService.sign(payload);
     res.cookie("auth_token", token, {
       httpOnly: true,
@@ -91,15 +94,15 @@ export class AdminAuthController {
         id: admin.id,
         email: admin.email,
         display_name: admin.display_name,
+        role: "admin",
       },
     };
-    console.log("Login response sent to frontend:", response);
+    console.log("Admin login successful:", admin.email);
     return response;
   }
 
   @Post("logout")
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(JwtAuthGuard)
   async logout(@Request() req) {
     const token = req.headers.authorization?.split(" ")[1];
     if (!token) {
@@ -110,11 +113,52 @@ export class AdminAuthController {
   }
 
   @Get("me")
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(JwtAuthGuard)
   async getMe(@Request() req) {
-    return req.user;
+    const admin = req.user;
+    return {
+      id: admin.id,
+      email: admin.email,
+      display_name: admin.display_name,
+      role: "admin",
+      type: "admin",
+    };
   }
 
-  // Placeholder for password reset and user roles/permissions endpoints
+  // Admin management endpoints
+  @Get("admins")
+  @UseGuards(JwtAuthGuard)
+  async getAllAdmins() {
+    const admins = await this.adminService.getAllAdmins();
+    return {
+      success: true,
+      admins: admins.map((admin) => ({
+        id: admin.id,
+        email: admin.email,
+        display_name: admin.display_name,
+        status: admin.status,
+        created_at: admin.created_at,
+      })),
+    };
+  }
+
+  @Get("system-stats")
+  @UseGuards(JwtAuthGuard)
+  async getSystemStats() {
+    return this.adminService.getSystemStats();
+  }
+
+  @Post("validate-permissions")
+  @UseGuards(JwtAuthGuard)
+  async validatePermissions(@Request() req) {
+    const isValid = await this.adminService.validateAdminPermissions(
+      req.user.id
+    );
+    return {
+      success: isValid,
+      message: isValid
+        ? "Admin permissions valid"
+        : "Admin permissions invalid",
+    };
+  }
 }

@@ -79,7 +79,8 @@ export class DashboardService {
     });
     const totalValue = projects
       .reduce(
-        (sum: number, project: any) => sum + Number(project.totalAmount ?? 0),
+        (sum: number, project: any) =>
+          sum + Number(project.totalBudget ?? project.totalAmount ?? 0),
         0
       )
       .toFixed(2);
@@ -122,10 +123,39 @@ export class DashboardService {
     return stats;
   }
 
+  /**
+   * Get user-specific dashboard stats in the format expected by frontend
+   */
+  async getUserStatsForDashboard(userId: string) {
+    const [totalProjects, completedProjects, totalTeamMembers, totalValue] =
+      await Promise.all([
+        this.getTotalProjects(userId),
+        this.getCompletedProjects(userId),
+        this.getTotalTeamMembers(userId),
+        this.getTotalProjectValues(userId),
+      ]);
+
+    const completion_rate =
+      totalProjects > 0
+        ? ((completedProjects / totalProjects) * 100).toFixed(2)
+        : "0.00";
+
+    return {
+      total_projects: totalProjects,
+      //total_value: totalValue.toFixed(2),
+      team_members: totalTeamMembers,
+      completion_rate: completion_rate,
+      updated_at: new Date().toISOString(),
+    };
+  }
+
   private async getTotalProjects(userId: string): Promise<number> {
-    return this.projectsRepository.count({
+    console.log("🔍 Dashboard - Getting total projects for user:", userId);
+    const count = await this.projectsRepository.count({
       where: [{ owner_id: userId }, { collaborators: { id: userId } }],
     });
+    console.log("📊 Dashboard - Total projects for user:", count);
+    return count;
   }
 
   private async getActiveProjects(userId: string): Promise<number> {
@@ -235,11 +265,17 @@ export class DashboardService {
   private async getTotalProjectValues(userId: string): Promise<number> {
     const projects = await this.projectsRepository.find({
       where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-      select: ["totalAmount"],
+      select: ["totalBudget", "totalAmount"],
     });
 
     return projects.reduce(
-      (sum, project) => sum + (project.totalAmount || 0),
+      (sum, project) => {
+        const budget = project.totalBudget != null ? Number(project.totalBudget) : null;
+        const amount = project.totalAmount != null ? Number(project.totalAmount) : null;
+        const value = (budget != null && !isNaN(budget)) ? budget : 
+                      (amount != null && !isNaN(amount)) ? amount : 0;
+        return sum + value;
+      },
       0
     );
   }

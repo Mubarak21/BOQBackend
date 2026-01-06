@@ -132,7 +132,9 @@ let UsersService = class UsersService {
         qb.groupBy("period").orderBy("period", "ASC");
         return qb.getRawMany();
     }
-    async adminList({ search = "", role, status, page = 1, limit = 20 }) {
+    async adminList({ search = "", role, status, page = 1, limit = 10 }) {
+        const pageNum = Number(page) || 1;
+        const limitNum = Number(limit) || 10;
         const qb = this.usersRepository.createQueryBuilder("user");
         if (search) {
             qb.andWhere("user.display_name ILIKE :search OR user.email ILIKE :search", { search: `%${search}%` });
@@ -144,22 +146,26 @@ let UsersService = class UsersService {
             qb.andWhere("user.status = :status", { status });
         }
         qb.orderBy("user.created_at", "DESC")
-            .skip((page - 1) * limit)
-            .take(limit);
+            .skip((pageNum - 1) * limitNum)
+            .take(limitNum);
         const [items, total] = await qb.getManyAndCount();
         return {
-            items: items.map((u) => ({
+            users: items.map((u) => ({
                 id: u.id,
-                name: u.display_name,
+                display_name: u.display_name,
                 email: u.email,
                 role: u.role,
                 status: u.status,
-                createdAt: u.created_at,
-                lastLogin: u.last_login,
+                bio: u.bio,
+                avatar_url: u.avatar_url,
+                created_at: u.created_at,
+                updated_at: u.updated_at,
+                last_login: u.last_login,
             })),
             total,
-            page,
-            limit,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum),
         };
     }
     async adminGetDetails(id) {
@@ -177,10 +183,36 @@ let UsersService = class UsersService {
         };
     }
     async adminCreate(body) {
-        const user = this.usersRepository.create(body);
-        return this.usersRepository.save(user);
+        if (!body.email || !body.password || !body.display_name) {
+            throw new Error("Email, password, and display_name are required");
+        }
+        const existingUser = await this.usersRepository.findOne({
+            where: { email: body.email },
+        });
+        if (existingUser) {
+            throw new Error("User with this email already exists");
+        }
+        const hashedPassword = await bcrypt.hash(body.password, 10);
+        const user = this.usersRepository.create({
+            ...body,
+            password: hashedPassword,
+            status: body.status || "active",
+            role: body.role || "user",
+            notification_preferences: body.notification_preferences || {
+                email: true,
+                project_updates: true,
+                task_updates: true,
+            },
+        });
+        const savedResult = await this.usersRepository.save(user);
+        const savedUser = Array.isArray(savedResult) ? savedResult[0] : savedResult;
+        const { password, ...result } = savedUser;
+        return result;
     }
     async adminUpdate(id, body) {
+        if (body.password) {
+            body.password = await bcrypt.hash(body.password, 10);
+        }
         await this.usersRepository.update(id, body);
         return this.adminGetDetails(id);
     }
@@ -202,19 +234,135 @@ let UsersService = class UsersService {
         }));
     }
     async getGroupedByRole() {
-        const qb = this.usersRepository
+        const results = await this.usersRepository
             .createQueryBuilder("user")
             .select("user.role", "role")
             .addSelect("COUNT(*)", "count")
-            .groupBy("user.role");
-        return qb.getRawMany();
+            .groupBy("user.role")
+            .getRawMany();
+        const total = results.reduce((sum, result) => sum + parseInt(result.count), 0);
+        return results.map((result) => ({
+            role: result.role,
+            count: parseInt(result.count),
+            percentage: total > 0 ? (parseInt(result.count) / total) * 100 : 0,
+        }));
     }
     async getUserGrowth(compare = "month") {
+        const now = new Date();
+        let currentPeriodStart;
+        let previousPeriodStart;
+        switch (compare) {
+            case "week":
+                currentPeriodStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                previousPeriodStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+                break;
+            case "month":
+                currentPeriodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                previousPeriodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                break;
+            case "quarter":
+                const currentQuarter = Math.floor(now.getMonth() / 3);
+                currentPeriodStart = new Date(now.getFullYear(), currentQuarter * 3, 1);
+                previousPeriodStart = new Date(now.getFullYear(), (currentQuarter - 1) * 3, 1);
+                break;
+            case "year":
+                currentPeriodStart = new Date(now.getFullYear(), 0, 1);
+                previousPeriodStart = new Date(now.getFullYear() - 1, 0, 1);
+                break;
+            default:
+                currentPeriodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                previousPeriodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        }
+        const [currentCount, previousCount] = await Promise.all([
+            this.usersRepository.count({
+                where: {
+                    created_at: (0, typeorm_2.Between)(currentPeriodStart, now),
+                },
+            }),
+            this.usersRepository.count({
+                where: {
+                    created_at: (0, typeorm_2.Between)(previousPeriodStart, currentPeriodStart),
+                },
+            }),
+        ]);
+        const growth = previousCount > 0
+            ? ((currentCount - previousCount) / previousCount) * 100
+            : 0;
         return {
-            current: 100,
-            previous: 80,
-            growth: 25,
+            current: currentCount,
+            previous: previousCount,
+            growth: Math.round(growth * 100) / 100,
         };
+    }
+    async getUserEngagementMetrics(period = "daily", from, to) {
+        let startDate = undefined;
+        let endDate = undefined;
+        if (from)
+            startDate = new Date(from);
+        if (to)
+            endDate = new Date(to);
+        let groupFormat;
+        switch (period) {
+            case "daily":
+                groupFormat = "YYYY-MM-DD";
+                break;
+            case "weekly":
+                groupFormat = "IYYY-IW";
+                break;
+            case "monthly":
+            default:
+                groupFormat = "YYYY-MM";
+                break;
+        }
+        const activeUsersQuery = this.usersRepository
+            .createQueryBuilder("user")
+            .select(`to_char(user.last_login, '${groupFormat}')`, "date")
+            .addSelect("COUNT(DISTINCT user.id)", "activeUsers")
+            .where("user.last_login IS NOT NULL");
+        if (startDate) {
+            activeUsersQuery.andWhere("user.last_login >= :startDate", { startDate });
+        }
+        if (endDate) {
+            activeUsersQuery.andWhere("user.last_login <= :endDate", { endDate });
+        }
+        activeUsersQuery.groupBy("date").orderBy("date", "ASC");
+        const activeUsersResults = await activeUsersQuery.getRawMany();
+        const loginQuery = this.usersRepository
+            .createQueryBuilder("user")
+            .select(`to_char(user.last_login, '${groupFormat}')`, "date")
+            .addSelect("COUNT(*)", "logins")
+            .where("user.last_login IS NOT NULL");
+        if (startDate) {
+            loginQuery.andWhere("user.last_login >= :startDate", { startDate });
+        }
+        if (endDate) {
+            loginQuery.andWhere("user.last_login <= :endDate", { endDate });
+        }
+        loginQuery.groupBy("date").orderBy("date", "ASC");
+        const loginResults = await loginQuery.getRawMany();
+        const dateMap = new Map();
+        activeUsersResults.forEach((result) => {
+            dateMap.set(result.date, {
+                date: result.date,
+                activeUsers: parseInt(result.activeUsers || "0"),
+                logins: 0,
+                actions: 0,
+            });
+        });
+        loginResults.forEach((result) => {
+            if (dateMap.has(result.date)) {
+                dateMap.get(result.date).logins = parseInt(result.logins || "0");
+            }
+            else {
+                dateMap.set(result.date, {
+                    date: result.date,
+                    activeUsers: 0,
+                    logins: parseInt(result.logins || "0"),
+                    actions: 0,
+                });
+            }
+        });
+        return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
     }
 };
 exports.UsersService = UsersService;

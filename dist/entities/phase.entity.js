@@ -45,7 +45,7 @@ __decorate([
     __metadata("design:type", Date)
 ], Phase.prototype, "end_date", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: "decimal", precision: 10, scale: 2, nullable: true }),
+    (0, typeorm_1.Column)({ type: "decimal", precision: 15, scale: 2, nullable: true }),
     __metadata("design:type", Number)
 ], Phase.prototype, "budget", void 0);
 __decorate([
@@ -99,6 +99,14 @@ __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
 ], Phase.prototype, "reference_task_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "boolean", default: true }),
+    __metadata("design:type", Boolean)
+], Phase.prototype, "is_active", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "boolean", default: false }),
+    __metadata("design:type", Boolean)
+], Phase.prototype, "from_boq", void 0);
 __decorate([
     (0, typeorm_1.OneToMany)(() => sub_phase_entity_1.SubPhase, (subPhase) => subPhase.phase, {
         cascade: true,

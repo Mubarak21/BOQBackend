@@ -27,6 +27,11 @@ const sub_phase_entity_1 = require("../entities/sub-phase.entity");
 const subphases_controller_1 = require("./subphases.controller");
 const subphases_service_1 = require("./subphases.service");
 const dashboard_module_1 = require("../dashboard/dashboard.module");
+const complaints_penalties_module_1 = require("../complaints-penalties/complaints-penalties.module");
+const phase_evidence_entity_1 = require("../entities/phase-evidence.entity");
+const evidence_service_1 = require("./evidence.service");
+const boq_parser_service_1 = require("./boq-parser.service");
+const boq_progress_gateway_1 = require("./boq-progress.gateway");
 let ProjectsModule = class ProjectsModule {
 };
 exports.ProjectsModule = ProjectsModule;
@@ -40,6 +45,7 @@ exports.ProjectsModule = ProjectsModule = __decorate([
                 sub_phase_entity_1.SubPhase,
                 collaboration_request_entity_1.CollaborationRequest,
                 project_access_request_entity_1.ProjectAccessRequest,
+                phase_evidence_entity_1.PhaseEvidence,
             ]),
             users_module_1.UsersModule,
             auth_module_1.AuthModule,
@@ -47,8 +53,16 @@ exports.ProjectsModule = ProjectsModule = __decorate([
             tasks_module_1.TasksModule,
             (0, common_1.forwardRef)(() => comments_module_1.CommentsModule),
             (0, common_1.forwardRef)(() => dashboard_module_1.DashboardModule),
+            complaints_penalties_module_1.ComplaintsPenaltiesModule,
         ],
-        providers: [projects_service_1.ProjectsService, project_access_service_1.ProjectAccessService, subphases_service_1.SubPhasesService],
+        providers: [
+            projects_service_1.ProjectsService,
+            project_access_service_1.ProjectAccessService,
+            subphases_service_1.SubPhasesService,
+            evidence_service_1.EvidenceService,
+            boq_parser_service_1.BoqParserService,
+            boq_progress_gateway_1.BoqProgressGateway,
+        ],
         controllers: [
             projects_controller_1.ProjectsController,
             collaboration_requests_controller_1.CollaborationRequestsController,

@@ -1,7 +1,7 @@
 import { ProjectsService } from "../../../projects/projects.service";
 import { UsersService } from "../../../users/users.service";
 import { ActivitiesService } from "../../../activities/activities.service";
-import { UserRole } from "../../../entities/user.entity";
+import { ProjectStatus } from "../../../entities/project.entity";
 export declare class AdminDashboardController {
     private readonly projectsService;
     private readonly usersService;
@@ -12,22 +12,36 @@ export declare class AdminDashboardController {
         totalUsers: number;
         totalActivities: number;
     }>;
+    getStats(): Promise<{
+        totalProjects: number;
+        activeProjects: number;
+        completedProjects: number;
+        totalValue: number;
+        monthlyGrowth: number;
+        teamMembers: number;
+        phaseStats: {
+            totalPhases: number;
+            completedPhases: number;
+            inProgressPhases: number;
+            totalBudget: number;
+        };
+    }>;
     getRecentActivities(limit?: number): Promise<import("../../../entities/activity.entity").Activity[]>;
-    getTrends(metric?: string, period?: string): Promise<any[] | {
+    getTrends(metric?: string, period?: string, from?: string, to?: string): Promise<any[] | {
         error: string;
     }>;
     getTopUsers(limit?: number): Promise<{
         id: string;
         name: string;
         email: string;
-        role: UserRole;
+        role: import("../../../entities/user.entity").UserRole;
         createdAt: Date;
     }[]>;
     getTopProjects(limit?: number): Promise<{
         id: string;
         name: string;
         description: string;
-        status: import("../../../entities/project.entity").ProjectStatus;
+        status: ProjectStatus;
         createdAt: Date;
         owner: {
             id: string;

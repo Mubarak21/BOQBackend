@@ -18,6 +18,8 @@ const projects_service_1 = require("../../../projects/projects.service");
 const users_service_1 = require("../../../users/users.service");
 const activities_service_1 = require("../../../activities/activities.service");
 const jwt_auth_guard_1 = require("../../../auth/guards/jwt-auth.guard");
+const project_entity_1 = require("../../../entities/project.entity");
+const phase_entity_1 = require("../../../entities/phase.entity");
 let AdminDashboardController = class AdminDashboardController {
     constructor(projectsService, usersService, activitiesService) {
         this.projectsService = projectsService;
@@ -25,28 +27,90 @@ let AdminDashboardController = class AdminDashboardController {
         this.activitiesService = activitiesService;
     }
     async getMetrics() {
+        console.log("🔍 Admin Dashboard - Fetching metrics...");
         const [totalProjects, totalUsers, totalActivities] = await Promise.all([
             this.projectsService.countAll(),
             this.usersService.countAll(),
             this.activitiesService.countAll(),
         ]);
-        return {
+        const metrics = {
             totalProjects,
             totalUsers,
             totalActivities,
         };
+        console.log("📊 Admin Dashboard Metrics:", metrics);
+        return metrics;
+    }
+    async getStats() {
+        console.log("🔍 Admin Dashboard - Fetching comprehensive stats...");
+        const projects = await this.projectsService.findAllForAdmin();
+        const totalProjects = projects.length;
+        const activeProjects = projects.filter((p) => p.status === project_entity_1.ProjectStatus.IN_PROGRESS || p.status === project_entity_1.ProjectStatus.PLANNING).length;
+        const completedProjects = projects.filter((p) => p.status === project_entity_1.ProjectStatus.COMPLETED).length;
+        const totalValue = projects.reduce((sum, project) => {
+            const budget = project.totalBudget != null ? Number(project.totalBudget) : null;
+            const amount = project.totalAmount != null ? Number(project.totalAmount) : null;
+            const value = (budget != null && !isNaN(budget)) ? budget :
+                (amount != null && !isNaN(amount)) ? amount : 0;
+            return sum + value;
+        }, 0);
+        const now = new Date();
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastMonthProjects = projects.filter((p) => p.created_at >= lastMonth && p.created_at < thisMonth).length;
+        const thisMonthProjects = projects.filter((p) => p.created_at >= thisMonth && p.created_at <= now).length;
+        const monthlyGrowth = lastMonthProjects === 0
+            ? (thisMonthProjects > 0 ? 100 : 0)
+            : ((thisMonthProjects - lastMonthProjects) / lastMonthProjects) * 100;
+        const uniqueTeamMembers = new Set();
+        projects.forEach((project) => {
+            project.collaborators?.forEach((collaborator) => {
+                uniqueTeamMembers.add(collaborator.id);
+            });
+            if (project.owner_id) {
+                uniqueTeamMembers.add(project.owner_id);
+            }
+        });
+        const teamMembers = uniqueTeamMembers.size;
+        const phaseStats = {
+            totalPhases: 0,
+            completedPhases: 0,
+            inProgressPhases: 0,
+            totalBudget: 0,
+        };
+        projects.forEach((project) => {
+            const projectPhases = project.phases || [];
+            phaseStats.totalPhases += projectPhases.length;
+            phaseStats.completedPhases += projectPhases.filter((phase) => phase.status === phase_entity_1.PhaseStatus.COMPLETED).length;
+            phaseStats.inProgressPhases += projectPhases.filter((phase) => phase.status === phase_entity_1.PhaseStatus.IN_PROGRESS).length;
+            phaseStats.totalBudget += projectPhases.reduce((sum, phase) => sum + (Number(phase.budget) || 0), 0);
+        });
+        const stats = {
+            totalProjects,
+            activeProjects,
+            completedProjects,
+            totalValue,
+            monthlyGrowth: Math.round(monthlyGrowth * 100) / 100,
+            teamMembers,
+            phaseStats,
+        };
+        console.log("📊 Admin Dashboard Stats:", stats);
+        return stats;
     }
     async getRecentActivities(limit = 10) {
-        return this.activitiesService.getRecentActivities(limit);
+        console.log("🔍 Admin Dashboard - Fetching recent activities (limit:", limit, ")");
+        const activities = await this.activitiesService.getRecentActivities(limit);
+        console.log("📊 Admin Dashboard Recent Activities:", activities);
+        return activities;
     }
-    async getTrends(metric = "projects", period = "monthly") {
+    async getTrends(metric = "projects", period = "monthly", from, to) {
         switch (metric) {
             case "projects":
-                return this.projectsService.getTrends(period);
+                return this.projectsService.getTrends(period, from, to);
             case "users":
-                return this.usersService.getTrends(period);
+                return this.usersService.getTrends(period, from, to);
             case "activities":
-                return this.activitiesService.getTrends(period);
+                return this.activitiesService.getTrends(period, from, to);
             default:
                 return { error: "Invalid metric" };
         }
@@ -55,7 +119,10 @@ let AdminDashboardController = class AdminDashboardController {
         return this.usersService.getTopActiveUsers(limit);
     }
     async getTopProjects(limit = 5) {
-        return this.projectsService.getTopActiveProjects(limit);
+        console.log("🔍 Admin Dashboard - Fetching top projects (limit:", limit, ")");
+        const projects = await this.projectsService.getTopActiveProjects(limit);
+        console.log("📊 Admin Dashboard Top Projects:", projects);
+        return projects;
     }
 };
 exports.AdminDashboardController = AdminDashboardController;
@@ -65,6 +132,12 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], AdminDashboardController.prototype, "getMetrics", null);
+__decorate([
+    (0, common_1.Get)("stats"),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AdminDashboardController.prototype, "getStats", null);
 __decorate([
     (0, common_1.Get)("recent-activities"),
     __param(0, (0, common_1.Query)("limit")),
@@ -76,8 +149,10 @@ __decorate([
     (0, common_1.Get)("trends"),
     __param(0, (0, common_1.Query)("metric")),
     __param(1, (0, common_1.Query)("period")),
+    __param(2, (0, common_1.Query)("from")),
+    __param(3, (0, common_1.Query)("to")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:paramtypes", [String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], AdminDashboardController.prototype, "getTrends", null);
 __decorate([

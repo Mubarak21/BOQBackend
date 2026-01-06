@@ -34,6 +34,12 @@ export declare class DashboardService {
         team_members: number;
         updated_at: any;
     }>;
+    getUserStatsForDashboard(userId: string): Promise<{
+        total_projects: number;
+        team_members: number;
+        completion_rate: string;
+        updated_at: string;
+    }>;
     private getTotalProjects;
     private getActiveProjects;
     private getCompletedProjects;

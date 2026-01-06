@@ -4,7 +4,10 @@ import { Department } from "./department.entity";
 export declare enum UserRole {
     USER = "user",
     ADMIN = "admin",
-    CONSULTANT = "consultant"
+    CONSULTANT = "consultant",
+    CONTRACTOR = "contractor",
+    SUB_CONTRACTOR = "sub_contractor",
+    FINANCE = "finance"
 }
 export declare class User {
     id: string;

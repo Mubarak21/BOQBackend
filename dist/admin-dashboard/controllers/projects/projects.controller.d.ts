@@ -21,29 +21,20 @@ export declare class AdminProjectsController {
                 display_name: string;
             }[];
             tags: string[];
+            progress: number;
+            completedPhases: number;
+            totalPhases: number;
+            totalAmount: number;
+            totalBudget: number;
+            startDate: Date;
+            estimatedCompletion: Date;
         }[];
         total: number;
         page: number;
         limit: number;
+        totalPages: number;
     }>;
-    getProject(id: string): Promise<{
-        id: string;
-        name: string;
-        description: string;
-        status: import("../../../entities/project.entity").ProjectStatus;
-        createdAt: Date;
-        updatedAt: Date;
-        owner: {
-            id: string;
-            display_name: string;
-        };
-        members: {
-            id: string;
-            display_name: string;
-        }[];
-        tags: string[];
-        phases: import("../../../entities/phase.entity").Phase[];
-    }>;
+    getProject(id: string): Promise<any>;
     createProject(createProjectDto: CreateProjectDto, req: any): Promise<import("../../../entities/project.entity").Project>;
     updateProject(id: string, updateProjectDto: UpdateProjectDto, req: any): Promise<import("../../../entities/project.entity").Project>;
     deleteProject(id: string, req: any): Promise<void>;
