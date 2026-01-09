@@ -100,7 +100,7 @@ export class AuthService {
       }
 
       const payload = this.jwtService.verify(token);
-      console.log("JWT payload:", payload);
+      // JWT payload verified - removed console.log to reduce noise
 
       // Check if token is expired
       if (payload.exp && payload.exp * 1000 < Date.now()) {
@@ -120,7 +120,6 @@ export class AuthService {
       if (admin) {
         // Add role from JWT payload to admin object for RolesGuard compatibility
         (admin as any).role = payload.role;
-        console.log("Admin object with role:", admin);
         return admin;
       }
 

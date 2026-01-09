@@ -61,6 +61,9 @@ export class Penalty {
   @Column({ type: "timestamp", nullable: true })
   paid_at: Date;
 
+  @Column({ nullable: true })
+  evidence_image_url: string;
+
   @CreateDateColumn()
   created_at: Date;
 

@@ -14,38 +14,34 @@ const schedule_1 = require("@nestjs/schedule");
 const auth_module_1 = require("./auth/auth.module");
 const users_module_1 = require("./users/users.module");
 const nestjs_command_1 = require("nestjs-command");
-const user_entity_1 = require("./entities/user.entity");
-const project_entity_1 = require("./entities/project.entity");
-const task_entity_1 = require("./entities/task.entity");
-const comment_entity_1 = require("./entities/comment.entity");
-const activity_entity_1 = require("./entities/activity.entity");
-const phase_entity_1 = require("./entities/phase.entity");
 const projects_module_1 = require("./projects/projects.module");
 const tasks_module_1 = require("./tasks/tasks.module");
 const comments_module_1 = require("./comments/comments.module");
 const dashboard_module_1 = require("./dashboard/dashboard.module");
 const activities_module_1 = require("./activities/activities.module");
 const departments_module_1 = require("./departments/departments.module");
-const department_entity_1 = require("./entities/department.entity");
 const seed_command_1 = require("./commands/seed.command");
 const consultant_module_1 = require("./consultant/consultant.module");
-const sub_phase_entity_1 = require("./entities/sub-phase.entity");
-const stats_entity_1 = require("./entities/stats.entity");
 const admin_dashboard_module_1 = require("./admin-dashboard/admin-dashboard.module");
-const admin_entity_1 = require("./entities/admin.entity");
-const report_entity_1 = require("./entities/report.entity");
+const finance_module_1 = require("./finance/finance.module");
+const inventory_module_1 = require("./inventory/inventory.module");
+const complaints_penalties_module_1 = require("./complaints-penalties/complaints-penalties.module");
+const user_entity_1 = require("./entities/user.entity");
+const department_entity_1 = require("./entities/department.entity");
+const project_entity_1 = require("./entities/project.entity");
+const phase_entity_1 = require("./entities/phase.entity");
+const task_entity_1 = require("./entities/task.entity");
 const budget_category_entity_1 = require("./finance/entities/budget-category.entity");
 const project_transaction_entity_1 = require("./finance/entities/project-transaction.entity");
 const project_savings_entity_1 = require("./finance/entities/project-savings.entity");
 const budget_alert_entity_1 = require("./finance/entities/budget-alert.entity");
-const financial_report_entity_1 = require("./finance/entities/financial-report.entity");
-const finance_module_1 = require("./finance/finance.module");
-const inventory_entity_1 = require("./entities/inventory.entity");
-const inventory_module_1 = require("./inventory/inventory.module");
+const admin_entity_1 = require("./entities/admin.entity");
+const activity_entity_1 = require("./entities/activity.entity");
+const report_entity_1 = require("./entities/report.entity");
+const comment_entity_1 = require("./entities/comment.entity");
 const complaint_entity_1 = require("./entities/complaint.entity");
-const penalty_entity_1 = require("./entities/penalty.entity");
-const phase_evidence_entity_1 = require("./entities/phase-evidence.entity");
-const complaints_penalties_module_1 = require("./complaints-penalties/complaints-penalties.module");
+const sub_phase_entity_1 = require("./entities/sub-phase.entity");
+const inventory_entity_1 = require("./entities/inventory.entity");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -61,29 +57,11 @@ exports.AppModule = AppModule = __decorate([
                 username: process.env.DB_USERNAME || "postgres",
                 password: process.env.DB_PASSWORD || "postgres",
                 database: process.env.DB_DATABASE || "project_tracker_db",
-                entities: [
-                    user_entity_1.User,
-                    project_entity_1.Project,
-                    task_entity_1.Task,
-                    comment_entity_1.Comment,
-                    activity_entity_1.Activity,
-                    phase_entity_1.Phase,
-                    department_entity_1.Department,
-                    sub_phase_entity_1.SubPhase,
-                    stats_entity_1.Stats,
-                    admin_entity_1.Admin,
-                    report_entity_1.Report,
-                    budget_category_entity_1.BudgetCategory,
-                    project_transaction_entity_1.ProjectTransaction,
-                    project_savings_entity_1.ProjectSavings,
-                    budget_alert_entity_1.BudgetAlert,
-                    financial_report_entity_1.FinancialReport,
-                    inventory_entity_1.Inventory,
-                    complaint_entity_1.Complaint,
-                    penalty_entity_1.Penalty,
-                    phase_evidence_entity_1.PhaseEvidence,
-                ],
+                autoLoadEntities: true,
                 synchronize: process.env.NODE_ENV !== "production",
+                retryAttempts: 3,
+                retryDelay: 3000,
+                logging: false,
             }),
             typeorm_1.TypeOrmModule.forFeature([
                 user_entity_1.User,
@@ -101,6 +79,7 @@ exports.AppModule = AppModule = __decorate([
                 comment_entity_1.Comment,
                 complaint_entity_1.Complaint,
                 sub_phase_entity_1.SubPhase,
+                inventory_entity_1.Inventory,
             ]),
             auth_module_1.AuthModule,
             users_module_1.UsersModule,

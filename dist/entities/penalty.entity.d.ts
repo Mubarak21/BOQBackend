@@ -21,6 +21,7 @@ export declare class Penalty {
     appeal_reason: string;
     appealed_at: Date;
     paid_at: Date;
+    evidence_image_url: string;
     created_at: Date;
     updated_at: Date;
     project: Project;

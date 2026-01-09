@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ProjectFinanceListResponseDto = exports.FinanceMetricsDto = exports.ProjectFinanceDto = exports.TimelineDto = exports.SavingsDto = exports.SpendingDto = exports.BudgetDto = exports.SavingsReasonDto = exports.SavingsBreakdownDto = exports.TransactionDto = exports.MonthlySpendingDto = exports.CategorySpendingDto = exports.BudgetCategoryDto = void 0;
+exports.ProjectFinanceListResponseDto = exports.FinanceTotalsDto = exports.FinanceMetricsDto = exports.ProjectFinanceDto = exports.TimelineDto = exports.SavingsDto = exports.SpendingDto = exports.BudgetDto = exports.SavingsReasonDto = exports.SavingsBreakdownDto = exports.TransactionDto = exports.MonthlySpendingDto = exports.CategorySpendingDto = exports.BudgetCategoryDto = void 0;
 class BudgetCategoryDto {
 }
 exports.BudgetCategoryDto = BudgetCategoryDto;
@@ -37,6 +37,9 @@ exports.ProjectFinanceDto = ProjectFinanceDto;
 class FinanceMetricsDto {
 }
 exports.FinanceMetricsDto = FinanceMetricsDto;
+class FinanceTotalsDto {
+}
+exports.FinanceTotalsDto = FinanceTotalsDto;
 class ProjectFinanceListResponseDto {
 }
 exports.ProjectFinanceListResponseDto = ProjectFinanceListResponseDto;

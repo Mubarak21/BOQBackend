@@ -23,7 +23,7 @@ let DashboardController = class DashboardController {
         this.projectsService = projectsService;
     }
     async getStats(req) {
-        return this.dashboardService.getStats(req.user.id);
+        return this.dashboardService.getStats(req.user.id, req.user.role);
     }
     async getMyProjects(req) {
         const userProjects = await this.projectsService.findUserProjects(req.user.id);
@@ -38,7 +38,7 @@ let DashboardController = class DashboardController {
     }
     async getDashboardSummary(req) {
         const [stats, recentProjects] = await Promise.all([
-            this.dashboardService.getUserStatsForDashboard(req.user.id),
+            this.dashboardService.getUserStatsForDashboard(req.user.id, req.user.role),
             this.getMyProjects(req),
         ]);
         return {

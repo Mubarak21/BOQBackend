@@ -14,8 +14,9 @@ export class CreateTransactionDto {
   @IsString()
   projectId: string;
 
+  @IsOptional()
   @IsString()
-  categoryId: string;
+  categoryId?: string;
 
   @IsNumber()
   @Min(0.01)

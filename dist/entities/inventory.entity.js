@@ -80,6 +80,10 @@ __decorate([
 __decorate([
     (0, typeorm_1.Column)({ type: "int", default: 0 }),
     __metadata("design:type", Number)
+], Inventory.prototype, "quantity_used", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
 ], Inventory.prototype, "minimum_stock", void 0);
 __decorate([
     (0, typeorm_1.Column)({ nullable: true }),

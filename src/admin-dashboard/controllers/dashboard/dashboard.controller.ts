@@ -1,16 +1,17 @@
-import { Controller, Get, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, Query, UseGuards, Request } from "@nestjs/common";
 import { ProjectsService } from "../../../projects/projects.service";
+import { ProjectDashboardService } from "../../../projects/services/project-dashboard.service";
 import { UsersService } from "../../../users/users.service";
 import { ActivitiesService } from "../../../activities/activities.service";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
-import { ProjectStatus } from "../../../entities/project.entity";
-import { PhaseStatus } from "../../../entities/phase.entity";
+import { RequestWithUser } from "../../../auth/interfaces/request-with-user.interface";
 
-@Controller("admin/dashboard")
+@Controller("consultant/dashboard")
 @UseGuards(JwtAuthGuard)
 export class AdminDashboardController {
   constructor(
     private readonly projectsService: ProjectsService,
+    private readonly projectDashboardService: ProjectDashboardService,
     private readonly usersService: UsersService,
     private readonly activitiesService: ActivitiesService
   ) {}
@@ -35,93 +36,43 @@ export class AdminDashboardController {
     return metrics;
   }
 
-  // Comprehensive stats endpoint for admin dashboard
+  // Comprehensive stats endpoint for consultant dashboard - Optimized with database aggregations
   @Get("stats")
-  async getStats() {
-    console.log("🔍 Admin Dashboard - Fetching comprehensive stats...");
+  async getStats(@Request() req: RequestWithUser) {
+    console.log("🔍 Consultant Dashboard - Fetching comprehensive stats...");
+    const startTime = Date.now();
     
-    // Get all projects with relations
-    const projects = await this.projectsService.findAllForAdmin();
-    
-    // Calculate project statistics
-    const totalProjects = projects.length;
-    const activeProjects = projects.filter(
-      (p) => p.status === ProjectStatus.IN_PROGRESS || p.status === ProjectStatus.PLANNING
-    ).length;
-    const completedProjects = projects.filter(
-      (p) => p.status === ProjectStatus.COMPLETED
-    ).length;
-
-    // Calculate total value
-    const totalValue = projects.reduce((sum, project) => {
-      const budget = project.totalBudget != null ? Number(project.totalBudget) : null;
-      const amount = project.totalAmount != null ? Number(project.totalAmount) : null;
-      const value = (budget != null && !isNaN(budget)) ? budget : 
-                    (amount != null && !isNaN(amount)) ? amount : 0;
-      return sum + value;
-    }, 0);
-
-    // Calculate monthly growth
-    const now = new Date();
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    
-    const lastMonthProjects = projects.filter(
-      (p) => p.created_at >= lastMonth && p.created_at < thisMonth
-    ).length;
-    const thisMonthProjects = projects.filter(
-      (p) => p.created_at >= thisMonth && p.created_at <= now
-    ).length;
-    const monthlyGrowth = lastMonthProjects === 0 
-      ? (thisMonthProjects > 0 ? 100 : 0)
-      : ((thisMonthProjects - lastMonthProjects) / lastMonthProjects) * 100;
-
-    // Calculate unique team members
-    const uniqueTeamMembers = new Set<string>();
-    projects.forEach((project) => {
-      project.collaborators?.forEach((collaborator) => {
-        uniqueTeamMembers.add(collaborator.id);
-      });
-      if (project.owner_id) {
-        uniqueTeamMembers.add(project.owner_id);
-      }
-    });
-    const teamMembers = uniqueTeamMembers.size;
-
-    // Calculate phase statistics
-    const phaseStats = {
-      totalPhases: 0,
-      completedPhases: 0,
-      inProgressPhases: 0,
-      totalBudget: 0,
-    };
-
-    projects.forEach((project) => {
-      const projectPhases = project.phases || [];
-      phaseStats.totalPhases += projectPhases.length;
-      phaseStats.completedPhases += projectPhases.filter(
-        (phase) => phase.status === PhaseStatus.COMPLETED
-      ).length;
-      phaseStats.inProgressPhases += projectPhases.filter(
-        (phase) => phase.status === PhaseStatus.IN_PROGRESS
-      ).length;
-      phaseStats.totalBudget += projectPhases.reduce(
-        (sum, phase) => sum + (Number(phase.budget) || 0),
-        0
-      );
-    });
+    // Use optimized aggregation methods instead of loading all projects
+    const [
+      projectStats,
+      phaseStats,
+      teamMembersCount,
+      monthlyGrowth
+    ] = await Promise.all([
+      this.projectDashboardService.getDashboardProjectStats(),
+      this.projectDashboardService.getDashboardPhaseStats(),
+      this.projectDashboardService.getDashboardTeamMembersCount(),
+      this.projectDashboardService.getDashboardMonthlyGrowth()
+    ]);
 
     const stats = {
-      totalProjects,
-      activeProjects,
-      completedProjects,
-      totalValue,
-      monthlyGrowth: Math.round(monthlyGrowth * 100) / 100, // Round to 2 decimal places
-      teamMembers,
-      phaseStats,
+      totalProjects: projectStats.total,
+      activeProjects: projectStats.active,
+      completedProjects: projectStats.completed,
+      totalValue: projectStats.totalValue,
+      monthlyGrowth: monthlyGrowth,
+      teamMembers: teamMembersCount,
+      phaseStats: {
+        totalPhases: phaseStats.total,
+        completedPhases: phaseStats.completed,
+        inProgressPhases: phaseStats.inProgress,
+        totalBudget: phaseStats.totalBudget,
+        completionRate: phaseStats.completionRate,
+      },
     };
 
-    console.log("📊 Admin Dashboard Stats:", stats);
+    const duration = Date.now() - startTime;
+    console.log(`📊 Consultant Dashboard Stats (${duration}ms):`, stats);
     return stats;
   }
 

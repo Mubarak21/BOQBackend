@@ -20,14 +20,16 @@ const penalty_entity_1 = require("../entities/penalty.entity");
 const user_entity_1 = require("../entities/user.entity");
 const project_entity_1 = require("../entities/project.entity");
 const complaint_entity_1 = require("../entities/complaint.entity");
+const path = require("path");
+const fs = require("fs");
 let PenaltiesService = class PenaltiesService {
     constructor(penaltiesRepository, projectsRepository, complaintsRepository) {
         this.penaltiesRepository = penaltiesRepository;
         this.projectsRepository = projectsRepository;
         this.complaintsRepository = complaintsRepository;
     }
-    async create(createPenaltyDto, user) {
-        if (user.role !== user_entity_1.UserRole.CONSULTANT && user.role !== user_entity_1.UserRole.ADMIN) {
+    async create(createPenaltyDto, user, evidenceFile) {
+        if (user.role !== user_entity_1.UserRole.CONSULTANT) {
             throw new common_1.ForbiddenException("Only consultants and admins can assign penalties");
         }
         const project = await this.projectsRepository.findOne({
@@ -44,10 +46,25 @@ let PenaltiesService = class PenaltiesService {
                 throw new common_1.NotFoundException("Complaint not found");
             }
         }
+        let evidenceImageUrl = null;
+        if (evidenceFile) {
+            if (!evidenceFile.mimetype.startsWith("image/")) {
+                throw new common_1.BadRequestException("Evidence file must be an image (JPEG, PNG, etc.)");
+            }
+            const uploadDir = path.join(process.cwd(), "uploads", "penalties", "evidence");
+            if (!fs.existsSync(uploadDir)) {
+                fs.mkdirSync(uploadDir, { recursive: true });
+            }
+            const fileName = `${Date.now()}-${evidenceFile.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+            const filePath = path.join(uploadDir, fileName);
+            fs.writeFileSync(filePath, evidenceFile.buffer);
+            evidenceImageUrl = `/uploads/penalties/evidence/${fileName}`;
+        }
         const penalty = this.penaltiesRepository.create({
             ...createPenaltyDto,
             assigned_by: user.id,
             status: penalty_entity_1.PenaltyStatus.PENDING,
+            evidence_image_url: evidenceImageUrl,
         });
         return this.penaltiesRepository.save(penalty);
     }
@@ -67,6 +84,7 @@ let PenaltiesService = class PenaltiesService {
             status: penalty.status,
             createdAt: penalty.created_at,
             appealReason: penalty.appeal_reason,
+            evidenceImageUrl: penalty.evidence_image_url,
         }));
     }
     async findOne(id) {
@@ -100,7 +118,7 @@ let PenaltiesService = class PenaltiesService {
     }
     async markAsPaid(id, user) {
         const penalty = await this.findOne(id);
-        if (user.role !== user_entity_1.UserRole.ADMIN) {
+        if (user.role !== user_entity_1.UserRole.CONSULTANT) {
             throw new common_1.ForbiddenException("Only admins can mark penalties as paid");
         }
         penalty.status = penalty_entity_1.PenaltyStatus.PAID;

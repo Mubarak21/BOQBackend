@@ -14,6 +14,8 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProjectsController = void 0;
 const common_1 = require("@nestjs/common");
+const typeorm_1 = require("@nestjs/typeorm");
+const typeorm_2 = require("typeorm");
 const platform_express_1 = require("@nestjs/platform-express");
 const projects_service_1 = require("./projects.service");
 const create_project_dto_1 = require("./dto/create-project.dto");
@@ -25,12 +27,12 @@ const update_phase_dto_1 = require("./dto/update-phase.dto");
 const complaints_service_1 = require("../complaints-penalties/complaints.service");
 const penalties_service_1 = require("../complaints-penalties/penalties.service");
 const evidence_service_1 = require("./evidence.service");
-const user_entity_1 = require("../entities/user.entity");
 const boq_parser_service_1 = require("./boq-parser.service");
 const boq_progress_gateway_1 = require("./boq-progress.gateway");
 const file_validation_pipe_1 = require("./pipes/file-validation.pipe");
+const collaboration_request_entity_1 = require("../entities/collaboration-request.entity");
 let ProjectsController = class ProjectsController {
-    constructor(projectsService, usersService, complaintsService, penaltiesService, evidenceService, boqParserService, boqProgressGateway) {
+    constructor(projectsService, usersService, complaintsService, penaltiesService, evidenceService, boqParserService, boqProgressGateway, collaborationRequestRepository) {
         this.projectsService = projectsService;
         this.usersService = usersService;
         this.complaintsService = complaintsService;
@@ -38,14 +40,17 @@ let ProjectsController = class ProjectsController {
         this.evidenceService = evidenceService;
         this.boqParserService = boqParserService;
         this.boqProgressGateway = boqProgressGateway;
+        this.collaborationRequestRepository = collaborationRequestRepository;
     }
     create(createProjectDto, req) {
         return this.projectsService.create(createProjectDto, req.user);
     }
     async findAll(req, page = 1, limit = 10, search, status) {
         console.log("🔍 User Projects - User ID:", req.user.id, "Role:", req.user.role, "Page:", page, "Limit:", limit);
+        const isContractor = req.user.role?.toLowerCase() === 'contractor';
+        const isSubContractor = req.user.role?.toLowerCase() === 'sub_contractor';
         let result;
-        if (req.user.role === user_entity_1.UserRole.CONTRACTOR || req.user.role === user_entity_1.UserRole.SUB_CONTRACTOR) {
+        if (isContractor || isSubContractor) {
             result = await this.projectsService.findAllPaginated({
                 page,
                 limit,
@@ -71,6 +76,13 @@ let ProjectsController = class ProjectsController {
             totalPages: result.totalPages,
         };
     }
+    async getAvailableAssignees(req) {
+        const projectId = req.query.projectId;
+        if (!projectId) {
+            throw new common_1.BadRequestException("projectId query parameter is required");
+        }
+        return this.projectsService.getAvailableAssignees(projectId);
+    }
     async findOne(id, req) {
         const project = await this.projectsService.findOne(id, req.user.id);
         return await this.projectsService.getProjectResponse(project);
@@ -80,6 +92,38 @@ let ProjectsController = class ProjectsController {
     }
     remove(id, req) {
         return this.projectsService.remove(id, req.user.id);
+    }
+    async inviteCollaborator(id, body, req) {
+        const project = await this.projectsService.findOne(id, req.user.id);
+        const user = await this.usersService.findOne(req.user.id);
+        const isConsultant = user?.role === "consultant";
+        if (project.owner_id !== req.user.id && !isConsultant) {
+            throw new common_1.BadRequestException("Only the project owner or consultant can invite collaborators");
+        }
+        if (project.collaborators?.some((c) => c.id === body.userId)) {
+            throw new common_1.BadRequestException("User is already a collaborator");
+        }
+        if (project.owner_id === body.userId) {
+            throw new common_1.BadRequestException("Owner cannot be invited as collaborator");
+        }
+        const existingRequest = await this.collaborationRequestRepository.findOne({
+            where: {
+                projectId: id,
+                userId: body.userId,
+                status: collaboration_request_entity_1.CollaborationRequestStatus.PENDING,
+            },
+        });
+        if (existingRequest) {
+            throw new common_1.BadRequestException("Invitation already sent to this user");
+        }
+        const collaborationRequest = this.collaborationRequestRepository.create({
+            projectId: id,
+            userId: body.userId,
+            inviterId: req.user.id,
+            status: collaboration_request_entity_1.CollaborationRequestStatus.PENDING,
+        });
+        await this.collaborationRequestRepository.save(collaborationRequest);
+        return { message: "Invitation sent successfully" };
     }
     async addCollaborator(id, userId, req) {
         const collaborator = await this.usersService.findOne(userId);
@@ -158,13 +202,6 @@ let ProjectsController = class ProjectsController {
             limit,
         });
     }
-    async getAvailableAssignees(req) {
-        const projectId = req.query.projectId;
-        if (!projectId) {
-            throw new common_1.BadRequestException("projectId query parameter is required");
-        }
-        return this.projectsService.getAvailableAssignees(projectId);
-    }
     async updatePhase(projectId, phaseId, updatePhaseDto, req) {
         return this.projectsService.updatePhase(projectId, phaseId, updatePhaseDto, req.user.id);
     }
@@ -205,7 +242,7 @@ let ProjectsController = class ProjectsController {
     async uploadEvidence(projectId, phaseId, file, body, req) {
         return this.evidenceService.uploadEvidence(phaseId, file, body.type, body.notes, body.subPhaseId, req.user);
     }
-    async getProjectInventory(id, page = 1, limit = 10, category, search, req) {
+    async getProjectInventory(id, req, page = 1, limit = 10, category, search) {
         return this.projectsService.getProjectInventory(id, req.user.id, {
             page,
             limit,
@@ -213,7 +250,7 @@ let ProjectsController = class ProjectsController {
             search,
         });
     }
-    async addProjectInventoryItem(id, pictureFile, createInventoryDto, req) {
+    async addProjectInventoryItem(id, createInventoryDto, pictureFile, req) {
         return this.projectsService.addProjectInventoryItem(id, createInventoryDto, req.user.id, pictureFile);
     }
     async updateProjectInventoryItem(id, inventoryId, updateData, req) {
@@ -221,6 +258,21 @@ let ProjectsController = class ProjectsController {
     }
     async deleteProjectInventoryItem(id, inventoryId, req) {
         return this.projectsService.deleteProjectInventoryItem(id, inventoryId, req.user.id);
+    }
+    async recordInventoryUsage(id, inventoryId, body, req) {
+        return this.projectsService.recordInventoryUsage(id, inventoryId, body.quantity, req.user.id, body.phase_id, body.notes);
+    }
+    async getInventoryUsageHistory(id, inventoryId, page = 1, limit = 10, req) {
+        return this.projectsService.getInventoryUsageHistory(id, inventoryId, req.user.id, { page, limit });
+    }
+    async getProjectInventoryUsage(id, page = 1, limit = 10, req) {
+        return this.projectsService.getProjectInventoryUsage(id, req.user.id, { page, limit });
+    }
+    async linkInventoryToProject(projectId, inventoryId, req) {
+        return this.projectsService.linkInventoryToProject(inventoryId, projectId, req.user.id);
+    }
+    async unlinkInventoryFromProject(projectId, inventoryId, req) {
+        return this.projectsService.unlinkInventoryFromProject(inventoryId, projectId, req.user.id);
     }
 };
 exports.ProjectsController = ProjectsController;
@@ -243,6 +295,13 @@ __decorate([
     __metadata("design:paramtypes", [Object, Number, Number, String, String]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Get)("available-assignees"),
+    __param(0, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "getAvailableAssignees", null);
 __decorate([
     (0, common_1.Get)(":id"),
     __param(0, (0, common_1.Param)("id")),
@@ -268,6 +327,15 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", void 0)
 ], ProjectsController.prototype, "remove", null);
+__decorate([
+    (0, common_1.Post)(":id/collaborators/invite"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "inviteCollaborator", null);
 __decorate([
     (0, common_1.Post)(":id/collaborators/:userId"),
     __param(0, (0, common_1.Param)("id")),
@@ -343,13 +411,6 @@ __decorate([
     __metadata("design:paramtypes", [String, Number, Number, Object]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "getProjectPhases", null);
-__decorate([
-    (0, common_1.Get)("available-assignees"),
-    __param(0, (0, common_1.Request)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
-], ProjectsController.prototype, "getAvailableAssignees", null);
 __decorate([
     (0, common_1.Patch)(":projectId/phases/:phaseId"),
     __param(0, (0, common_1.Param)("projectId")),
@@ -462,13 +523,13 @@ __decorate([
 __decorate([
     (0, common_1.Get)(":id/inventory"),
     __param(0, (0, common_1.Param)("id")),
-    __param(1, (0, common_1.Query)("page")),
-    __param(2, (0, common_1.Query)("limit")),
-    __param(3, (0, common_1.Query)("category")),
-    __param(4, (0, common_1.Query)("search")),
-    __param(5, (0, common_1.Req)()),
+    __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Query)("page")),
+    __param(3, (0, common_1.Query)("limit")),
+    __param(4, (0, common_1.Query)("category")),
+    __param(5, (0, common_1.Query)("search")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Number, Number, String, String, Object]),
+    __metadata("design:paramtypes", [String, Object, Number, Number, String, String]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "getProjectInventory", null);
 __decorate([
@@ -477,8 +538,8 @@ __decorate([
         limits: { fileSize: 10 * 1024 * 1024 },
     })),
     __param(0, (0, common_1.Param)("id")),
-    __param(1, (0, common_1.UploadedFile)()),
-    __param(2, (0, common_1.Body)()),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.UploadedFile)()),
     __param(3, (0, common_1.Req)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, Object, Object, Object]),
@@ -503,15 +564,66 @@ __decorate([
     __metadata("design:paramtypes", [String, String, Object]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "deleteProjectInventoryItem", null);
+__decorate([
+    (0, common_1.Post)(":id/inventory/:inventoryId/usage"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Param)("inventoryId")),
+    __param(2, (0, common_1.Body)()),
+    __param(3, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "recordInventoryUsage", null);
+__decorate([
+    (0, common_1.Get)(":id/inventory/:inventoryId/usage"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Param)("inventoryId")),
+    __param(2, (0, common_1.Query)("page")),
+    __param(3, (0, common_1.Query)("limit")),
+    __param(4, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Number, Number, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "getInventoryUsageHistory", null);
+__decorate([
+    (0, common_1.Get)(":id/inventory/usage"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Query)("page")),
+    __param(2, (0, common_1.Query)("limit")),
+    __param(3, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Number, Number, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "getProjectInventoryUsage", null);
+__decorate([
+    (0, common_1.Post)(":id/inventory/:inventoryId/link"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Param)("inventoryId")),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "linkInventoryToProject", null);
+__decorate([
+    (0, common_1.Post)(":id/inventory/:inventoryId/unlink"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Param)("inventoryId")),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "unlinkInventoryFromProject", null);
 exports.ProjectsController = ProjectsController = __decorate([
     (0, common_1.Controller)("projects"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(7, (0, typeorm_1.InjectRepository)(collaboration_request_entity_1.CollaborationRequest)),
     __metadata("design:paramtypes", [projects_service_1.ProjectsService,
         users_service_1.UsersService,
         complaints_service_1.ComplaintsService,
         penalties_service_1.PenaltiesService,
         evidence_service_1.EvidenceService,
         boq_parser_service_1.BoqParserService,
-        boq_progress_gateway_1.BoqProgressGateway])
+        boq_progress_gateway_1.BoqProgressGateway,
+        typeorm_2.Repository])
 ], ProjectsController);
 //# sourceMappingURL=projects.controller.js.map

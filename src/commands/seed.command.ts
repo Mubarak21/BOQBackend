@@ -158,7 +158,7 @@ export class SeedService {
         email: "admin@kipimo.co.tz",
         password: "admin123",
         display_name: "Mwalimu Hassan Kikwete",
-        role: UserRole.ADMIN,
+        role: UserRole.CONSULTANT,
         department: departments[0],
         bio: "Mkurugenzi Mkuu wa Mradi wa Ujenzi Tanzania",
         phone: "+255 754 123 456",
@@ -964,38 +964,73 @@ export class SeedService {
   }
 
   private async seedFinancialData(projects: Project[], users: User[]) {
-    console.log("💰 Seeding financial data...");
+    console.log("💰 Seeding comprehensive financial data...");
+
+    // Track all used transaction numbers across all projects to ensure global uniqueness
+    const globalUsedTransactionNumbers = new Set<string>();
 
     for (const project of projects) {
-      // Create budget categories
+      console.log(`   📊 Seeding finance for project: ${project.title}`);
+      
+      // Create more comprehensive budget categories
       const categories = [
-        { name: "Vifaa na Malighafi", budgetPercentage: 0.4 },
-        { name: "Ajira na Mishahara", budgetPercentage: 0.25 },
-        { name: "Usafirishaji na Logistiki", budgetPercentage: 0.15 },
-        { name: "Matibabu na Bima", budgetPercentage: 0.1 },
-        { name: "Uongozi wa Mradi", budgetPercentage: 0.1 },
+        { name: "Vifaa na Malighafi", budgetPercentage: 0.35, description: "Ununuzi wa vifaa vya ujenzi, saruji, chuma, na malighafi zingine" },
+        { name: "Ajira na Mishahara", budgetPercentage: 0.25, description: "Mishahara ya wafanyakazi, mafundi, na wataalamu" },
+        { name: "Usafirishaji na Logistiki", budgetPercentage: 0.15, description: "Gharama za usafirishaji wa vifaa na watu" },
+        { name: "Matibabu na Bima", budgetPercentage: 0.08, description: "Bima ya afya na dhamana kwa wafanyakazi" },
+        { name: "Uongozi wa Mradi", budgetPercentage: 0.07, description: "Gharama za usimamizi na uongozi wa mradi" },
+        { name: "Mafunzo na Ujuzi", budgetPercentage: 0.05, description: "Mafunzo ya wafanyakazi na uboreshaji wa ujuzi" },
+        { name: "Mazingira na Usafi", budgetPercentage: 0.05, description: "Gharama za utunzaji wa mazingira na usafi" },
       ];
 
+      const createdCategories = [];
       for (const categoryData of categories) {
         const budgetedAmount =
           project.totalBudget * categoryData.budgetPercentage;
-        const spentAmount = budgetedAmount * (0.3 + Math.random() * 0.6); // 30-90% spent
-
+        
+        // Don't set spentAmount here - it will be calculated from transactions
         const category = this.budgetCategoryRepository.create({
           projectId: project.id,
           name: categoryData.name,
-          description: `Bajeti ya ${categoryData.name} kwa ${project.title}`,
+          description: categoryData.description || `Bajeti ya ${categoryData.name} kwa ${project.title}`,
           budgetedAmount,
-          spentAmount,
+          spentAmount: 0, // Will be calculated from transactions
           isActive: true,
           createdBy: users[0].id,
         });
 
         await this.budgetCategoryRepository.save(category);
+        createdCategories.push(category);
 
-        // Create transactions for this category
-        await this.createTransactionsForCategory(category, users);
+        // Create more transactions for this category (5-15 transactions)
+        await this.createTransactionsForCategory(category, users, globalUsedTransactionNumbers);
       }
+
+      // Create some transactions without categories (general project expenses)
+      await this.createGeneralProjectTransactions(project, users, globalUsedTransactionNumbers);
+
+      // Recalculate category spent amounts from transactions
+      for (const category of createdCategories) {
+        await this.recalculateCategorySpentAmount(category.id);
+      }
+
+      // Recalculate project spent amount from all transactions
+      await this.recalculateProjectSpentAmount(project.id);
+
+      // Update project allocated budget - ensure all values are numbers
+      const totalAllocated = createdCategories.reduce((sum, cat) => {
+        const amount = typeof cat.budgetedAmount === 'number' 
+          ? cat.budgetedAmount 
+          : parseFloat(String(cat.budgetedAmount || 0)) || 0;
+        return sum + amount;
+      }, 0);
+      
+      // Validate and normalize the allocated budget
+      const normalizedAllocated = Math.max(0, Math.min(totalAllocated, 9999999999999.99));
+      
+      await this.projectRepository.update(project.id, {
+        allocatedBudget: normalizedAllocated,
+      });
 
       // Create savings records
       await this.createSavingsRecords(project, users[0]);
@@ -1003,17 +1038,136 @@ export class SeedService {
       // Create budget alerts if needed
       await this.createBudgetAlerts(project);
     }
+
+    console.log("   ✅ Financial data seeding complete!");
+  }
+
+  private async recalculateCategorySpentAmount(categoryId: string) {
+    const transactions = await this.transactionRepository.find({
+      where: { categoryId },
+    });
+
+    // Sum all transaction amounts regardless of type
+    const { sumAmounts, extractTransactionAmount } = await import('../utils/amount.utils');
+    const totalSpent = transactions.reduce((sum, t) => {
+      return sum + extractTransactionAmount(t);
+    }, 0);
+
+    const normalizedSpent = Math.max(0, totalSpent);
+    await this.budgetCategoryRepository.update(categoryId, {
+      spentAmount: normalizedSpent,
+    });
+  }
+
+  private async recalculateProjectSpentAmount(projectId: string) {
+    // CRITICAL: Filter by projectId to ensure we only get transactions for this specific project
+    const transactions = await this.transactionRepository.find({
+      where: { projectId },
+    });
+
+    // Sum all transaction amounts regardless of type
+    // Defensive check: Ensure all transactions belong to the specified project
+    const { extractTransactionAmount } = await import('../utils/amount.utils');
+    const validTransactions = transactions.filter(t => {
+      if (t.projectId !== projectId) {
+        console.warn(`⚠️ [Seed] Transaction ${t.id} has mismatched projectId. Expected: ${projectId}, Found: ${t.projectId}`);
+        return false; // Skip this transaction to prevent cross-project contamination
+      }
+      return true;
+    });
+
+    const totalSpent = validTransactions.reduce((sum, t) => {
+      return sum + extractTransactionAmount(t);
+    }, 0);
+
+    const normalizedSpent = Math.max(0, totalSpent);
+    await this.projectRepository.update(projectId, {
+      spentAmount: normalizedSpent,
+    });
+  }
+
+  private async createGeneralProjectTransactions(project: Project, users: User[], globalUsedNumbers: Set<string>) {
+    // Create 3-8 general project transactions (not assigned to categories)
+    const transactionCount = Math.floor(Math.random() * 6) + 3;
+    const tanzanianVendors = [
+      "NMB Bank Tanzania",
+      "CRDB Bank",
+      "Precision Air",
+      "Vodacom Tanzania",
+      "TANESCO",
+      "Tanzania Portland Cement",
+      "Kilimanjaro Steel",
+      "Mbeya Cement",
+      "Simba Cement",
+      "Azam Group Tanzania",
+      "Tanzania Revenue Authority",
+      "Tanzania Bureau of Standards",
+    ];
+
+    for (let i = 0; i < transactionCount; i++) {
+      const amount = Math.random() * 5000000 + 500000; // 500K - 5.5M TSh
+      const now = new Date();
+      const daysAgo = Math.floor(Math.random() * 90); // Last 90 days
+      const transactionDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+
+      // Generate unique transaction number with timestamp and random component
+      let transactionNumber: string;
+      let attempts = 0;
+      do {
+        const timestamp = Date.now();
+        const random = Math.floor(Math.random() * 1000000);
+        const uniqueId = `${timestamp}${random}${i}`;
+        transactionNumber = `TXN${transactionDate.getFullYear()}${(transactionDate.getMonth() + 1).toString().padStart(2, "0")}${transactionDate.getDate().toString().padStart(2, "0")}${uniqueId.slice(-12)}`;
+        attempts++;
+        if (attempts > 100) {
+          // Fallback: use UUID-like string if we can't generate unique number
+          transactionNumber = `TXN${transactionDate.getFullYear()}${(transactionDate.getMonth() + 1).toString().padStart(2, "0")}${transactionDate.getDate().toString().padStart(2, "0")}${Math.random().toString(36).substring(2, 15).toUpperCase()}${i}`;
+          break;
+        }
+      } while (globalUsedNumbers.has(transactionNumber));
+      
+      globalUsedNumbers.add(transactionNumber);
+
+      // Mix of transaction types
+      let transactionType = TransactionType.EXPENSE;
+      if (Math.random() < 0.1) {
+        transactionType = TransactionType.REFUND; // 10% refunds
+      } else if (Math.random() < 0.15) {
+        transactionType = TransactionType.ADJUSTMENT; // 15% adjustments
+      }
+
+      const transaction = this.transactionRepository.create({
+        projectId: project.id,
+        categoryId: null, // General project transaction
+        transactionNumber,
+        amount,
+        type: transactionType,
+        description: this.getRandomTransactionDescription("General"),
+        vendor: tanzanianVendors[Math.floor(Math.random() * tanzanianVendors.length)],
+        transactionDate,
+        approvalStatus: Math.random() < 0.8 ? ApprovalStatus.APPROVED : ApprovalStatus.PENDING,
+        approvedBy: transactionType === TransactionType.EXPENSE && Math.random() < 0.8 
+          ? users[Math.floor(Math.random() * users.length)].id 
+          : null,
+        approvedAt: transactionType === TransactionType.EXPENSE && Math.random() < 0.8 
+          ? transactionDate 
+          : null,
+        createdBy: users[Math.floor(Math.random() * users.length)].id,
+      });
+
+      await this.transactionRepository.save(transaction);
+    }
   }
 
   private async createTransactionsForCategory(
     category: BudgetCategory,
-    users: User[]
+    users: User[],
+    globalUsedNumbers: Set<string>
   ) {
-    if (category.spentAmount === 0) return;
-
-    const transactionCount = Math.floor(Math.random() * 8) + 2; // 2-9 transactions
+    // Create 5-15 transactions per category for more realistic data
+    const transactionCount = Math.floor(Math.random() * 11) + 5; // 5-15 transactions
+    const targetSpent = category.budgetedAmount * (0.4 + Math.random() * 0.5); // 40-90% of budget
     let totalSpent = 0;
-    const targetSpent = category.spentAmount;
 
     const tanzanianVendors = [
       "NMB Bank Tanzania",
@@ -1026,9 +1180,17 @@ export class SeedService {
       "Mbeya Cement",
       "Simba Cement",
       "Azam Group Tanzania",
+      "Tanzania Revenue Authority",
+      "Tanzania Bureau of Standards",
+      "Tanzania Electric Supply Company",
+      "Tanzania Railways Corporation",
+      "Air Tanzania",
     ];
 
-    for (let i = 0; i < transactionCount && totalSpent < targetSpent; i++) {
+    const now = new Date();
+    const projectStartDate = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000); // 180 days ago
+
+    for (let i = 0; i < transactionCount; i++) {
       const remainingAmount = targetSpent - totalSpent;
       const maxAmount =
         i === transactionCount - 1
@@ -1036,35 +1198,63 @@ export class SeedService {
           : remainingAmount / (transactionCount - i);
       const amount = Math.min(maxAmount, Math.random() * maxAmount + 100000); // Minimum TSh 100,000
 
-      const now = new Date();
-      const transactionNumber = `TXN${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, "0")}${now.getDate().toString().padStart(2, "0")}${now.getHours().toString().padStart(2, "0")}${now.getMinutes().toString().padStart(2, "0")}${now.getSeconds().toString().padStart(2, "0")}${now.getMilliseconds().toString().padStart(3, "0")}${Math.floor(
-        Math.random() * 100
-      )
-        .toString()
-        .padStart(2, "0")}`;
+      // Spread transactions over the last 180 days
+      const daysAgo = Math.floor(Math.random() * 180);
+      const transactionDate = new Date(projectStartDate.getTime() + daysAgo * 24 * 60 * 60 * 1000);
+
+      // Generate unique transaction number with timestamp and random component
+      let transactionNumber: string;
+      let attempts = 0;
+      do {
+        const timestamp = Date.now();
+        const random = Math.floor(Math.random() * 1000000);
+        const uniqueId = `${timestamp}${random}${i}${category.id.slice(0, 4)}`;
+        transactionNumber = `TXN${transactionDate.getFullYear()}${(transactionDate.getMonth() + 1).toString().padStart(2, "0")}${transactionDate.getDate().toString().padStart(2, "0")}${uniqueId.slice(-12)}`;
+        attempts++;
+        if (attempts > 100) {
+          // Fallback: use UUID-like string if we can't generate unique number
+          transactionNumber = `TXN${transactionDate.getFullYear()}${(transactionDate.getMonth() + 1).toString().padStart(2, "0")}${transactionDate.getDate().toString().padStart(2, "0")}${Math.random().toString(36).substring(2, 15).toUpperCase()}${i}`;
+          break;
+        }
+      } while (globalUsedNumbers.has(transactionNumber));
+      
+      globalUsedNumbers.add(transactionNumber);
+
+      // Mix of transaction types (mostly expenses, some refunds and adjustments)
+      let transactionType = TransactionType.EXPENSE;
+      if (Math.random() < 0.08) {
+        transactionType = TransactionType.REFUND; // 8% refunds
+      } else if (Math.random() < 0.12) {
+        transactionType = TransactionType.ADJUSTMENT; // 12% adjustments
+      }
+
+      const isApproved = Math.random() < 0.85; // 85% approved
+      const approvalStatus = isApproved ? ApprovalStatus.APPROVED : 
+                            Math.random() < 0.5 ? ApprovalStatus.PENDING : ApprovalStatus.REJECTED;
 
       const transaction = this.transactionRepository.create({
         projectId: category.projectId,
         categoryId: category.id,
         transactionNumber,
         amount,
-        type: TransactionType.EXPENSE,
+        type: transactionType,
         description: this.getRandomTransactionDescription(category.name),
-        vendor:
-          tanzanianVendors[Math.floor(Math.random() * tanzanianVendors.length)],
-        transactionDate: new Date(
-          Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000
-        ), // Last 60 days
-        approvalStatus: ApprovalStatus.APPROVED,
-        approvedBy: users[Math.floor(Math.random() * users.length)].id,
-        approvedAt: new Date(),
+        vendor: tanzanianVendors[Math.floor(Math.random() * tanzanianVendors.length)],
+        transactionDate,
+        approvalStatus,
+        approvedBy: isApproved && transactionType === TransactionType.EXPENSE
+          ? users[Math.floor(Math.random() * users.length)].id
+          : null,
+        approvedAt: isApproved && transactionType === TransactionType.EXPENSE
+          ? transactionDate
+          : null,
         createdBy: users[Math.floor(Math.random() * users.length)].id,
       });
 
       await this.transactionRepository.save(transaction);
       totalSpent += amount;
 
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 5));
     }
   }
 
@@ -1104,10 +1294,23 @@ export class SeedService {
   }
 
   private async createBudgetAlerts(project: Project) {
-    const utilizationPercentage =
-      project.totalBudget > 0
-        ? (project.spentAmount / project.totalBudget) * 100
-        : 0;
+    // Ensure values are numbers before calculation
+    const totalBudget = typeof project.totalBudget === 'number' 
+      ? project.totalBudget 
+      : parseFloat(String(project.totalBudget || 0)) || 0;
+    const spentAmount = typeof project.spentAmount === 'number' 
+      ? project.spentAmount 
+      : parseFloat(String(project.spentAmount || 0)) || 0;
+
+    // Calculate utilization percentage and ensure it's valid
+    let utilizationPercentage = 0;
+    if (totalBudget > 0) {
+      utilizationPercentage = (spentAmount / totalBudget) * 100;
+    }
+
+    // Validate and clamp percentage to fit in decimal(5,2) - max 999.99
+    utilizationPercentage = Math.min(Math.max(utilizationPercentage, 0), 999.99);
+    utilizationPercentage = Math.round(utilizationPercentage * 100) / 100; // Round to 2 decimals
 
     if (utilizationPercentage >= 95) {
       const alert = this.alertRepository.create({
@@ -1858,7 +2061,7 @@ export class SeedService {
 
     const createdItems = [];
     const financeUsers = users.filter(
-      (u) => u.role === UserRole.FINANCE || u.role === UserRole.ADMIN
+      (u) => u.role === UserRole.FINANCE || u.role === UserRole.CONSULTANT
     );
     const randomUser =
       financeUsers[Math.floor(Math.random() * financeUsers.length)] || users[0];

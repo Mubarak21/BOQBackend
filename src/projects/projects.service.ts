@@ -32,7 +32,12 @@ import { ActivityType } from "../entities/activity.entity";
 import { PhaseStatus } from "../entities/phase.entity";
 import { DashboardService } from "../dashboard/dashboard.service";
 import { BoqParserService } from "./boq-parser.service";
+import { parseAmount, validateAndNormalizeAmount } from "../utils/amount.utils";
 import { Inventory, InventoryCategory } from "../entities/inventory.entity";
+import { InventoryUsage } from "../entities/inventory-usage.entity";
+import { ProjectDashboardService } from "./services/project-dashboard.service";
+import { ProjectConsultantService } from "./services/project-consultant.service";
+import { ProjectContractorService } from "./services/project-contractor.service";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -80,13 +85,18 @@ export class ProjectsService {
     private readonly accessRequestRepository: Repository<ProjectAccessRequest>,
     @InjectRepository(Inventory)
     private readonly inventoryRepository: Repository<Inventory>,
+    @InjectRepository(InventoryUsage)
+    private readonly inventoryUsageRepository: Repository<InventoryUsage>,
     private readonly usersService: UsersService,
     @Inject(forwardRef(() => ActivitiesService))
     private readonly activitiesService: ActivitiesService,
     private readonly tasksService: TasksService,
     @Inject(forwardRef(() => DashboardService))
     private readonly dashboardService: DashboardService,
-    private readonly boqParserService: BoqParserService
+    private readonly boqParserService: BoqParserService,
+    private readonly projectDashboardService: ProjectDashboardService,
+    private readonly projectConsultantService: ProjectConsultantService,
+    private readonly projectContractorService: ProjectContractorService
   ) {}
 
   async findAll(): Promise<Project[]> {
@@ -220,7 +230,7 @@ export class ProjectsService {
       const user = await this.usersService.findOne(userId);
       const isContractor = user?.role === "contractor";
       const isSubContractor = user?.role === "sub_contractor";
-      const isAdmin = user?.role === "admin";
+      const isAdmin = user?.role === "consultant";
       const isConsultant = user?.role === "consultant";
 
       if (
@@ -265,7 +275,9 @@ export class ProjectsService {
         : null,
       tags: createProjectDto.tags,
       owner_id: owner.id,
-      totalAmount: createProjectDto.totalAmount ?? 0,
+      totalAmount: this.validateAndNormalizeProjectAmount(createProjectDto.totalAmount ?? 0),
+      // Set totalBudget to the same value as totalAmount when project is created
+      totalBudget: this.validateAndNormalizeProjectAmount(createProjectDto.totalAmount ?? 0),
     });
 
     // Handle collaborators if provided
@@ -499,35 +511,32 @@ export class ProjectsService {
 
     try {
       // Filter data to only include rows with BOTH Unit AND Quantity filled
+      // Handle both BOQ parser format (lowercase) and transformed format (capitalized/extracted)
       const dataWithUnits = data.filter((row) => {
-        // Check if row has 'unit' property (from BOQ parser interface)
-        if (row.unit && row.quantity) {
-          const unit = (row.unit || "").toString().trim();
-          const quantity = row.quantity;
-          const hasUnit = unit && unit !== "" && unit !== "No";
-          const hasQuantity = quantity && quantity > 0;
-          return hasUnit && hasQuantity;
-        }
+        // Extract unit and quantity - check multiple possible field names
+        const unit = 
+          row.unit || 
+          row.Unit || 
+          row._extractedUnit ||
+          (row.rawData && (row.rawData.unit || row.rawData.Unit)) ||
+          '';
         
-        // Fallback: try to find unit and quantity columns using various methods
-        const rowKeys = Object.keys(row);
-        const unitCol = rowKeys.find((key) => {
-          const normalized = normalizeColumnName(key);
-          return normalized.includes('unit') || normalized.includes('unt');
-        });
-        const quantityCol = rowKeys.find((key) => {
-          const normalized = normalizeColumnName(key);
-          return normalized.includes('quantity') || normalized.includes('qty');
-        });
+        const quantity = 
+          row.quantity !== undefined ? row.quantity :
+          row.Quantity !== undefined ? row.Quantity :
+          row._extractedQuantity !== undefined ? row._extractedQuantity :
+          (row.rawData && (row.rawData.quantity || row.rawData.Quantity)) ?
+            (typeof row.rawData.quantity === 'number' ? row.rawData.quantity : 
+             typeof row.rawData.Quantity === 'number' ? row.rawData.Quantity :
+             parseFloat(String(row.rawData.quantity || row.rawData.Quantity || 0))) :
+          0;
         
-        if (unitCol && quantityCol) {
-          const unit = (row[unitCol] || "").toString().trim();
-          const quantityStr = (row[quantityCol] || "").toString().trim();
-          const hasUnit = unit && unit !== "";
-          const hasQuantity = quantityStr && quantityStr !== "" && parseFloat(quantityStr) > 0;
-          return hasUnit && hasQuantity;
-        }
-        return false;
+        // Validate unit and quantity
+        const unitStr = String(unit || "").trim();
+        const hasUnit = unitStr && unitStr !== "" && unitStr !== "No";
+        const hasQuantity = quantity && quantity > 0;
+        
+        return hasUnit && hasQuantity;
       });
 
       console.log(`Filtered ${data.length} rows to ${dataWithUnits.length} rows with BOTH Unit and Quantity filled`);
@@ -882,30 +891,7 @@ export class ProjectsService {
   }
 
   async getProjectPhases(projectId: string, userId: string): Promise<Phase[]> {
-    // Check if user is contractor or sub_contractor - they can access all projects
-    const user = await this.usersService.findOne(userId);
-    const isContractor = user?.role === "contractor";
-    const isSubContractor = user?.role === "sub_contractor";
-
-    // Verify project access (skip for contractors and sub_contractors)
-    if (!isContractor && !isSubContractor) {
-      await this.findOne(projectId, userId);
-    } else {
-      // For contractors and sub_contractors, just verify project exists
-      const project = await this.projectsRepository.findOne({
-        where: { id: projectId },
-      });
-      if (!project) {
-        throw new NotFoundException(`Project with ID ${projectId} not found`);
-      }
-    }
-
-    // Only return active phases (excludes BOQ draft phases)
-    return this.phasesRepository.find({
-      where: { project_id: projectId, is_active: true },
-      relations: ["subPhases", "subPhases.subPhases"],
-      order: { created_at: "ASC" },
-    });
+    return this.projectContractorService.getProjectPhases(projectId, userId);
   }
 
   async getProjectPhasesPaginated(
@@ -969,11 +955,31 @@ export class ProjectsService {
   async getProjectResponse(project: Project): Promise<any> {
     // Calculate progress the same way as ContractorProjectDetails
     const calculatePhaseCompletion = (phase: Phase): number => {
-      if (!phase.subPhases || phase.subPhases.length === 0) {
-        return phase.progress || 0;
+      // If phase has subPhases, calculate based on subPhase completion
+      if (phase.subPhases && phase.subPhases.length > 0) {
+        const completed = phase.subPhases.filter((sp) => sp.isCompleted).length;
+        return Math.round((completed / phase.subPhases.length) * 100);
       }
-      const completed = phase.subPhases.filter((sp) => sp.isCompleted).length;
-      return Math.round((completed / phase.subPhases.length) * 100);
+      
+      // If phase has explicit progress value, use it
+      if (phase.progress != null && phase.progress !== undefined) {
+        const progress = Number(phase.progress);
+        if (!Number.isNaN(progress) && Number.isFinite(progress)) {
+          return Math.max(0, Math.min(100, Math.round(progress)));
+        }
+      }
+      
+      // Fallback: use phase status to determine progress
+      if (phase.status === 'completed') {
+        return 100;
+      } else if (phase.status === 'in_progress') {
+        return 50; // Default to 50% if in progress but no other indicators
+      } else if (phase.status === 'not_started') {
+        return 0;
+      }
+      
+      // Default to 0 if no indicators
+      return 0;
     };
 
     const phases = project.phases || [];
@@ -997,7 +1003,7 @@ export class ProjectsService {
       progress: projectProgress,
       completedPhases,
       totalPhases,
-      totalAmount: project.totalAmount,
+      totalAmount: project.totalAmount ?? project.totalBudget ?? 0,
       startDate: project.start_date,
       estimatedCompletion: project.end_date,
       owner: project.owner?.display_name || project.owner_id,
@@ -1357,24 +1363,14 @@ export class ProjectsService {
     return collaborators;
   }
 
-  private parseAmount(value: string | number | undefined): number {
-    if (typeof value === "number") return value;
-    if (!value) return 0;
+  // Use shared parseAmount utility - alias to avoid naming conflict
+  private parseAmountValue = parseAmount;
 
-    const str = value.toString().trim();
-    // Handle empty values like " - ", "-", or empty strings
-    if (
-      str === "" ||
-      str === "-" ||
-      str === " - " ||
-      str.toLowerCase() === "n/a"
-    ) {
-      return 0;
-    }
-
-    const numStr = str.replace(/[^0-9.-]+/g, "");
-    const parsed = Number(numStr);
-    return isNaN(parsed) ? 0 : parsed;
+  /**
+   * Validate and normalize amount for decimal(20,2) - used for project amounts
+   */
+  private validateAndNormalizeProjectAmount(value: number | string | null | undefined): number {
+    return validateAndNormalizeAmount(value, 999999999999999999.99, 2);
   }
 
   private async parseBoqFile(file: Express.Multer.File): Promise<{
@@ -1596,8 +1592,8 @@ export class ProjectsService {
       const hasDescription = desc && typeof desc === "string" && desc.trim() !== "";
       
       // Check if row has quantity or price data
-      const hasQuantity = quantityCol && row[quantityCol] && this.parseAmount(row[quantityCol]) > 0;
-      const hasPrice = priceCol && row[priceCol] && this.parseAmount(row[priceCol]) > 0;
+      const hasQuantity = quantityCol && row[quantityCol] && this.parseAmountValue(row[quantityCol]) > 0;
+      const hasPrice = priceCol && row[priceCol] && this.parseAmountValue(row[priceCol]) > 0;
       
       // Include if has description OR has quantity/price data
       if (hasDescription || hasQuantity || hasPrice) {
@@ -1616,7 +1612,7 @@ export class ProjectsService {
     if (totalPriceCol) {
       // Sum all TOTAL PRICE values from valid rows
       totalAmount = validData.reduce((sum, row) => {
-        const amount = this.parseAmount(row[totalPriceCol]) || 0;
+        const amount = this.parseAmountValue(row[totalPriceCol]) || 0;
         return sum + amount;
       }, 0);
       console.log(
@@ -1627,10 +1623,10 @@ export class ProjectsService {
         totalAmount = validData.reduce((sum, row) => {
           let amount = 0;
           if (totalPriceCol && row[totalPriceCol]) {
-            amount = this.parseAmount(row[totalPriceCol]) || 0;
+            amount = this.parseAmountValue(row[totalPriceCol]) || 0;
           } else {
-            const qty = this.parseAmount(row[quantityCol]) || 0;
-            const price = this.parseAmount(row[priceCol]) || 0;
+            const qty = this.parseAmountValue(row[quantityCol]) || 0;
+            const price = this.parseAmountValue(row[priceCol]) || 0;
             amount = qty * price;
           }
           return sum + amount;
@@ -1698,8 +1694,8 @@ export class ProjectsService {
       // - All caps OR start with numbers like "1.", "2.", etc.
       // - Have NO quantity AND NO price (definitely not a work item)
       // - Are clearly headers, not actual line items
-      const hasQuantity = quantityCol && row[quantityCol] && this.parseAmount(row[quantityCol]) > 0;
-      const hasPrice = priceCol && row[priceCol] && this.parseAmount(row[priceCol]) > 0;
+      const hasQuantity = quantityCol && row[quantityCol] && this.parseAmountValue(row[quantityCol]) > 0;
+      const hasPrice = priceCol && row[priceCol] && this.parseAmountValue(row[priceCol]) > 0;
       
       // NEVER mark rows with quantity or price as main sections
       if (hasQuantity || hasPrice) {
@@ -1921,27 +1917,99 @@ export class ProjectsService {
     for (let i = 0; i < data.length; i++) {
       const item = data[i];
 
+      // Validate item has required fields
+      if (!item) {
+        console.warn(`[Phase Creation] Skipping item ${i + 1}: item is null or undefined`);
+        continue;
+      }
+
+      // Ensure description exists - check multiple possible field names (case-insensitive)
+      // The BOQ parser returns items with lowercase 'description', but raw parsed data might have 'Description' (capital D)
+      const itemDescription = 
+        item.description || 
+        item.Description || 
+        item._extractedDescription ||
+        item.title || 
+        item.Title ||
+        (item.rawData && (item.rawData.description || item.rawData.Description)) ||
+        '';
+      
+      if (!itemDescription || itemDescription.trim() === '') {
+        console.warn(`[Phase Creation] Skipping item ${i + 1}: no description found. Item data:`, JSON.stringify(item, null, 2));
+        continue;
+      }
+
       // Calculate phase dates
       const phaseStartDate = new Date(projectStartDate);
       phaseStartDate.setDate(phaseStartDate.getDate() + i * daysPerPhase);
       const phaseEndDate = new Date(phaseStartDate);
       phaseEndDate.setDate(phaseEndDate.getDate() + daysPerPhase);
 
+      // Extract other fields - handle both lowercase and capitalized field names
+      // Also handle rawData fields and numeric string conversions
+      const itemUnit = 
+        item.unit || 
+        item.Unit || 
+        item._extractedUnit || 
+        (item.rawData && (item.rawData.unit || item.rawData.Unit)) || 
+        '';
+      
+      // Quantity can be number or string, need to parse it
+      const itemQuantity = 
+        item.quantity !== undefined && item.quantity !== null ? 
+          (typeof item.quantity === 'number' ? item.quantity : parseFloat(String(item.quantity)) || 0) :
+        item.Quantity !== undefined && item.Quantity !== null ?
+          (typeof item.Quantity === 'number' ? item.Quantity : parseFloat(String(item.Quantity)) || 0) :
+        item._extractedQuantity !== undefined && item._extractedQuantity !== null ?
+          (typeof item._extractedQuantity === 'number' ? item._extractedQuantity : parseFloat(String(item._extractedQuantity)) || 0) :
+        (item.rawData && (item.rawData.quantity || item.rawData.Quantity)) ?
+          (typeof item.rawData.quantity === 'number' ? item.rawData.quantity :
+           typeof item.rawData.Quantity === 'number' ? item.rawData.Quantity :
+           parseFloat(String(item.rawData.quantity || item.rawData.Quantity || 0))) :
+        0;
+      
+      // Rate and Amount - parse numeric values
+      const itemRate = 
+        item.rate !== undefined && item.rate !== null ?
+          (typeof item.rate === 'number' ? item.rate : parseFloat(String(item.rate)) || 0) :
+        item.Rate !== undefined && item.Rate !== null ?
+          (typeof item.Rate === 'number' ? item.Rate : parseFloat(String(item.Rate)) || 0) :
+        (item.rawData && (item.rawData.rate || item.rawData['Rate ($)'] || item.rawData.Rate)) ?
+          (typeof item.rawData.rate === 'number' ? item.rawData.rate :
+           typeof item.rawData['Rate ($)'] === 'number' ? item.rawData['Rate ($)'] :
+           typeof item.rawData.Rate === 'number' ? item.rawData.Rate :
+           parseFloat(String(item.rawData.rate || item.rawData['Rate ($)'] || item.rawData.Rate || 0))) :
+        0;
+      
+      const itemAmount = 
+        item.amount !== undefined && item.amount !== null ?
+          (typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount)) || 0) :
+        item.Amount !== undefined && item.Amount !== null ?
+          (typeof item.Amount === 'number' ? item.Amount : parseFloat(String(item.Amount)) || 0) :
+        (item.rawData && (item.rawData.amount || item.rawData['Amount ($)'] || item.rawData.Amount)) ?
+          (typeof item.rawData.amount === 'number' ? item.rawData.amount :
+           typeof item.rawData['Amount ($)'] === 'number' ? item.rawData['Amount ($)'] :
+           typeof item.rawData.Amount === 'number' ? item.rawData.Amount :
+           parseFloat(String(item.rawData.amount || item.rawData['Amount ($)'] || item.rawData.Amount || 0))) :
+        0;
+      
+      const itemSection = item.section || item.Section || '';
+
       // Build phase description with metadata
       const phaseDescription = [
-        item.section ? `Section: ${item.section}` : null,
-        `Unit: ${item.unit}`,
-        `Quantity: ${item.quantity}`,
-        item.rate > 0 ? `Rate: ${item.rate}` : null,
+        itemSection ? `Section: ${itemSection}` : null,
+        itemUnit ? `Unit: ${itemUnit}` : null,
+        itemQuantity ? `Quantity: ${itemQuantity}` : null,
+        itemRate > 0 ? `Rate: ${itemRate}` : null,
       ].filter(Boolean).join(' | ');
 
       // STEP 4: Create phase object
       // ⚠️ IMPORTANT: BOQ phases are created as INACTIVE (is_active = false)
       // User must explicitly activate them from the BOQ phases list
       const phaseData = {
-        title: item.description, // Title = Description from BOQ
+        title: itemDescription.trim(), // Title = Description from BOQ
         description: phaseDescription, // Additional metadata
-        budget: item.amount || 0,
+        budget: itemAmount || 0,
         start_date: phaseStartDate,
         end_date: phaseEndDate,
         due_date: phaseEndDate,
@@ -1954,12 +2022,12 @@ export class ProjectsService {
 
       // STEP 5: Safety net - verify projectId before INSERT
       if (!phaseData.project_id || phaseData.project_id.trim() === '') {
-        const error = `❌ CRITICAL: Phase "${item.description}" has no projectId`;
+        const error = `❌ CRITICAL: Phase "${itemDescription}" has no projectId`;
         console.error(`[Phase Creation] ${error}`);
         throw new Error(error);
       }
 
-      console.log(`[Phase Creation] Creating phase ${i + 1}/${data.length}: "${item.description.substring(0, 50)}..."`);
+      console.log(`[Phase Creation] Creating phase ${i + 1}/${data.length}: "${itemDescription.substring(0, 50)}..."`);
 
       // Insert phase using raw query to avoid TypeORM relation issues
       const insertQuery = `
@@ -1987,7 +2055,7 @@ export class ProjectsService {
         ]);
 
         if (!result || result.length === 0) {
-          throw new Error(`Failed to create phase: ${item.description}`);
+          throw new Error(`Failed to create phase: ${itemDescription}`);
         }
 
         // Fetch the created phase
@@ -1997,7 +2065,7 @@ export class ProjectsService {
         });
 
         if (!savedPhase) {
-          throw new Error(`Failed to retrieve created phase: ${item.description}`);
+          throw new Error(`Failed to retrieve created phase: ${itemDescription}`);
         }
 
         // STEP 5: Final verification - ensure phase has correct project_id
@@ -2010,10 +2078,10 @@ export class ProjectsService {
         phases.push(savedPhase);
 
         console.log(
-          `[Phase Creation] ✅ Created phase ${i + 1}: "${item.description.substring(0, 40)}" | Budget: ${item.amount} | Qty: ${item.quantity} ${item.unit}`
+          `[Phase Creation] ✅ Created phase ${i + 1}: "${itemDescription.substring(0, 40)}" | Budget: ${itemAmount} | Qty: ${itemQuantity} ${itemUnit}`
         );
       } catch (error) {
-        console.error(`[Phase Creation] ❌ Failed to create phase "${item.description}":`, error);
+        console.error(`[Phase Creation] ❌ Failed to create phase "${itemDescription}":`, error);
         throw error;
       }
     }
@@ -2059,38 +2127,29 @@ export class ProjectsService {
       }, {} as Record<string, string>) : null
     });
     
-    // If description column not found, try to find it manually by checking actual data
-    if (!descriptionCol && data.length > 0) {
-      // Check first few rows to find which column has the longest text (likely description)
-      const firstFewRows = data.slice(0, Math.min(5, data.length));
-      const columnLengths: Record<string, number> = {};
-      
-      rowKeys.forEach(key => {
-        let totalLength = 0;
-        firstFewRows.forEach(row => {
-          const value = String(row[key] || "").trim();
-          totalLength += value.length;
-        });
-        columnLengths[key] = totalLength;
-      });
-      
-      // Find column with longest average text (likely description)
-      const longestCol = Object.entries(columnLengths)
-        .sort((a, b) => b[1] - a[1])
-        .find(([key]) => {
-          const keyLower = key.toLowerCase();
-          return !keyLower.includes('qty') && 
-                 !keyLower.includes('quantity') &&
-                 !keyLower.includes('unit') &&
-                 !keyLower.includes('price') &&
-                 !keyLower.includes('amount') &&
-                 !keyLower.includes('total');
-        });
-      
-      if (longestCol && longestCol[1] > 10) {
-        descriptionCol = longestCol[0];
-        console.log(`[DEBUG] Auto-detected description column: ${descriptionCol} (avg length: ${longestCol[1] / firstFewRows.length})`);
-      }
+    // Validate required columns - DO NOT fall back to first column or auto-detection
+    if (!descriptionCol) {
+      throw new BadRequestException(
+        'Could not find DESCRIPTION column in the file. ' +
+        'Please ensure your file has a "Description", "Desc", "Item Description", or "Work Description" column. ' +
+        `Available columns: ${rowKeys.join(', ')}`
+      );
+    }
+    
+    if (!quantityCol) {
+      throw new BadRequestException(
+        'Could not find QUANTITY column in the file. ' +
+        'Please ensure your file has a "Quantity", "Qty", or "Qty." column. ' +
+        `Available columns: ${rowKeys.join(', ')}`
+      );
+    }
+    
+    if (!unitCol) {
+      throw new BadRequestException(
+        'Could not find UNIT column in the file. ' +
+        'Please ensure your file has a "Unit", "Units", or "UOM" column. ' +
+        `Available columns: ${rowKeys.join(', ')}`
+      );
     }
 
     // Find TOTAL PRICE column from the first row
@@ -2139,9 +2198,9 @@ export class ProjectsService {
       const row = data[i];
       const description = (row[descriptionCol] || "").toString().trim();
       const unit = unitCol ? (row[unitCol] || "").toString().trim() : "";
-      const quantity = this.parseAmount(quantityCol ? row[quantityCol] : undefined) || 0;
-      const price = this.parseAmount(priceCol ? row[priceCol] : undefined) || 0;
-      const totalPrice = totalPriceCol ? this.parseAmount(row[totalPriceCol]) || 0 : 0;
+      const quantity = this.parseAmountValue(quantityCol ? row[quantityCol] : undefined) || 0;
+      const price = this.parseAmountValue(priceCol ? row[priceCol] : undefined) || 0;
+      const totalPrice = totalPriceCol ? this.parseAmountValue(row[totalPriceCol]) || 0 : 0;
       
       // ✅ REQUIREMENT: Only include rows that have Unit column filled
       // Skip rows without unit
@@ -2181,7 +2240,7 @@ export class ProjectsService {
         if (currentGroup.length > 0) {
           const lastRow = currentGroup[currentGroup.length - 1];
           const lastUnit = unitCol ? (lastRow[unitCol] || "").toString().trim() : "";
-          const lastHasQuantity = this.parseAmount(quantityCol ? lastRow[quantityCol] : undefined) || 0;
+          const lastHasQuantity = this.parseAmountValue(quantityCol ? lastRow[quantityCol] : undefined) || 0;
           
           // If unit changes or if previous row had quantity+unit and this one doesn't, start new group
           if ((lastUnit && unit && lastUnit !== unit) || 
@@ -2256,59 +2315,24 @@ export class ProjectsService {
             console.log(`[DEBUG] Using mapped description column "${descriptionCol}": "${description.substring(0, 50)}"`);
           }
         }
-        // Fallback: try common description column names
+        // If description is still empty after trying mapped column, skip this row
+        // DO NOT fall back to first column or auto-detection - we validated columns upfront
         if (!description || description === "") {
-          const possibleDescCols = Object.keys(row).filter(key => 
-            !key.startsWith('_') && // Skip internal fields
-            (key.toLowerCase().includes('desc') || 
-             key.toLowerCase().includes('description') ||
-             key.toLowerCase().includes('item') ||
-             key.toLowerCase().includes('work'))
-          );
-          if (possibleDescCols.length > 0) {
-            description = (row[possibleDescCols[0]] || "").toString().trim();
-            if (description) {
-              console.log(`[DEBUG] Using fallback description column "${possibleDescCols[0]}": "${description.substring(0, 50)}"`);
-            }
-          }
-        }
-        
-        // Last resort: check all columns for the longest text value (likely description)
-        if (!description || description === "") {
-          const allKeys = Object.keys(row).filter(key => !key.startsWith('_'));
-          let longestText = "";
-          let longestLength = 0;
-          for (const key of allKeys) {
-            const value = String(row[key] || "").trim();
-            // Skip if it looks like a number, unit, or code
-            if (value.length > longestLength && 
-                !value.match(/^\d+$/) && 
-                !value.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i) &&
-                value.length > 5) {
-              longestText = value;
-              longestLength = value.length;
-            }
-          }
-          if (longestText) {
-            description = longestText;
-            console.log(`[FIX] Found description by longest text method from column: "${description.substring(0, 50)}"`);
-          } else {
-            console.warn(`[WARN] No description found for row. Available keys:`, Object.keys(row));
-            console.warn(`[WARN] Row values:`, Object.entries(row).map(([k, v]) => `${k}: ${String(v).substring(0, 30)}`));
-          }
+          console.warn(`[WARN] Skipping row in group ${groupIndex + 1}: No description found in mapped column "${descriptionCol}". Available keys:`, Object.keys(row));
+          continue; // Skip this row instead of using wrong column
         }
         
         // Use extracted unit/quantity if available, otherwise try to find them
         const unit = row._extractedUnit || (unitCol ? (row[unitCol] || "").toString().trim() : "") || "";
         const quantity = row._extractedQuantity !== undefined 
           ? row._extractedQuantity 
-          : (this.parseAmount(quantityCol ? row[quantityCol] : undefined) || 0);
-        const price = this.parseAmount(priceCol ? row[priceCol] : undefined) || 0;
+          : (this.parseAmountValue(quantityCol ? row[quantityCol] : undefined) || 0);
+        const price = this.parseAmountValue(priceCol ? row[priceCol] : undefined) || 0;
 
         // Use TOTAL PRICE column if available, otherwise calculate
         let rowTotalPrice = 0;
         if (totalPriceCol && row[totalPriceCol]) {
-          rowTotalPrice = this.parseAmount(row[totalPriceCol]) || 0;
+          rowTotalPrice = this.parseAmountValue(row[totalPriceCol]) || 0;
         }
         // Fallback: calculated amount if no total price found
         if (!rowTotalPrice && quantity > 0 && price > 0) {
@@ -2397,68 +2421,38 @@ export class ProjectsService {
           }
         }
         
-        // Last resort: find longest text value
-        if (!firstDesc || firstDesc === "") {
-          const allKeys = Object.keys(firstRow).filter(key => !key.startsWith('_'));
-          let longestText = "";
-          let longestLength = 0;
-          for (const key of allKeys) {
-            const value = String(firstRow[key] || "").trim();
-            if (value.length > longestLength && 
-                !value.match(/^\d+$/) && 
-                !value.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i) &&
-                value.length > 5) {
-              longestText = value;
-              longestLength = value.length;
-            }
-          }
-          if (longestText) {
-            firstDesc = longestText;
-            console.log(`[FIX] Phase ${groupIndex + 1} using longest text: "${firstDesc.substring(0, 50)}"`);
-          }
+        // If description is still empty, throw error - DO NOT fall back to first column or auto-detection
+        if (!firstDesc || firstDesc.trim() === "") {
+          console.error(`[ERROR] Phase ${groupIndex + 1} has no description in mapped column "${descriptionCol}". Row keys:`, Object.keys(firstRow));
+          console.error(`[ERROR] Row values:`, Object.entries(firstRow).map(([k, v]) => `${k}: ${String(v).substring(0, 50)}`));
+          throw new BadRequestException(
+            `Phase ${groupIndex + 1} has no description. ` +
+            `Expected description in column "${descriptionCol}" but found empty value. ` +
+            `Please ensure your BOQ file has valid descriptions in the description column.`
+          );
         }
         
-        if (firstDesc && firstDesc.trim() !== "") {
-          phaseTitle = firstDesc.trim();
-        } else {
-          // Last resort: log warning and use a generic title
-          console.error(`[ERROR] Phase ${groupIndex + 1} has no description. Row keys:`, Object.keys(firstRow));
-          console.error(`[ERROR] Row values:`, Object.entries(firstRow).map(([k, v]) => `${k}: ${String(v).substring(0, 50)}`));
-          phaseTitle = `Phase ${groupIndex + 1}`;
-        }
+        phaseTitle = firstDesc.trim();
       } else {
-        phaseTitle = `Phase ${groupIndex + 1}`;
+        // If no description found at all, throw error instead of using generic title
+        throw new BadRequestException(
+          `Phase ${groupIndex + 1} has no description. ` +
+          `Please ensure your BOQ file has a valid description column with data.`
+        );
       }
       
-      // Final check: if phaseTitle is still just unit/qty, try harder to find description
+      // Final check: if phaseTitle is still just unit/qty, this indicates a problem with column mapping
       if (phaseTitle === `${combinedUnit} ${totalQuantity}`.trim() || 
           phaseTitle.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i)) {
-        console.error(`[ERROR] Phase title is unit/qty only: "${phaseTitle}". Descriptions found:`, descriptions);
+        console.error(`[ERROR] Phase title is unit/qty only: "${phaseTitle}". This indicates the description column was not properly mapped.`);
+        console.error(`[ERROR] Expected description column: "${descriptionCol}"`);
         console.error(`[ERROR] Row data sample:`, group[0]);
         console.error(`[ERROR] Available columns:`, Object.keys(group[0]));
-        
-        // Try one more time to find description in any column
-        if (group.length > 0) {
-          const firstRow = group[0];
-          const allKeys = Object.keys(firstRow);
-          const descCandidate = allKeys.find(key => {
-            const value = String(firstRow[key] || "").trim();
-            return value.length > 10 && // Longer than unit/qty codes
-                   !value.match(/^\d+$/) && // Not just a number
-                   !value.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i) && // Not unit+qty
-                   value.length > (combinedUnit?.length || 0) + 5; // Longer than unit name
-          });
-          
-          if (descCandidate && firstRow[descCandidate]) {
-            const foundDesc = String(firstRow[descCandidate]).trim();
-            if (foundDesc) {
-              console.log(`[FIX] Found description in column "${descCandidate}": "${foundDesc}"`);
-              phaseTitle = foundDesc;
-              // Update combinedDescription for logging
-              combinedDescription = foundDesc;
-            }
-          }
-        }
+        throw new BadRequestException(
+          `Phase ${groupIndex + 1} has invalid description. ` +
+          `The description column "${descriptionCol}" appears to contain unit/quantity data instead of descriptions. ` +
+          `Please verify your BOQ file has the correct column headers.`
+        );
       }
 
       // Calculate phase dates
@@ -2638,10 +2632,10 @@ export class ProjectsService {
     for (const row of data) {
       const description = row[descriptionCol] || "";
       const unit = unitCol ? row[unitCol] || "" : "";
-      const quantity = this.parseAmount(
+      const quantity = this.parseAmountValue(
         quantityCol ? row[quantityCol] : undefined
       );
-      const price = this.parseAmount(priceCol ? row[priceCol] : undefined);
+      const price = this.parseAmountValue(priceCol ? row[priceCol] : undefined);
 
       if (description.trim()) {
         const task = this.tasksRepository.create({
@@ -2705,13 +2699,13 @@ export class ProjectsService {
     // All items from parser are already validated (have description, quantity, unit)
     const phases = parseResult.items.map((item) => {
       // Build description with metadata
-      const descParts: string[] = [];
+        const descParts: string[] = [];
       if (item.section) descParts.push(`Section: ${item.section}`);
       descParts.push(`Unit: ${item.unit}`);
       descParts.push(`Quantity: ${item.quantity}`);
       if (item.rate > 0) descParts.push(`Rate: ${item.rate}`);
-      
-      return {
+        
+        return {
         title: item.description, // Title = Description from BOQ
         description: descParts.join(' | '),
         budget: item.amount || 0,
@@ -2720,8 +2714,8 @@ export class ProjectsService {
         rate: item.rate > 0 ? item.rate : undefined,
         mainSection: item.section || undefined,
         subSection: item.subSection || undefined,
-      };
-    });
+        };
+      });
     
     console.log(`[BOQ Preview] Generated ${phases.length} phase previews`);
     
@@ -2782,142 +2776,34 @@ export class ProjectsService {
     };
   }
 
-  // Consultant: List all projects (summary info)
+  // Delegate to ProjectConsultantService
   async getAllConsultantProjects(): Promise<any[]> {
-    const projects = await this.projectsRepository.find({
-      relations: ["phases", "phases.subPhases", "owner", "collaborators"],
-    });
-    
-    // Calculate progress for each project
-    const calculatePhaseCompletion = (phase: Phase): number => {
-      if (!phase.subPhases || phase.subPhases.length === 0) {
-        return phase.progress || 0;
-      }
-      const completed = phase.subPhases.filter((sp) => sp.isCompleted).length;
-      return Math.round((completed / phase.subPhases.length) * 100);
-    };
+    return this.projectConsultantService.getAllConsultantProjects();
+  }
 
-    return projects.map((project) => {
-      const phases = project.phases || [];
-      const projectProgress =
-        phases.length > 0
-          ? Math.round(
-              phases.reduce((sum, p) => sum + calculatePhaseCompletion(p), 0) /
-                phases.length
-            )
-          : 0;
-      const completedPhases = phases.filter(
-        (p) => p.status === "completed"
-      ).length;
-
-      return {
-        id: project.id,
-        name: project.title,
-        description: project.description,
-        progress: projectProgress,
-        completedPhases,
-        totalPhases: phases.length,
-        totalAmount: project.totalAmount,
-        totalBudget: project.totalAmount,
-        startDate: project.start_date,
-        estimatedCompletion: project.end_date,
-        owner: project.owner?.display_name || project.owner_id,
-        collaborators: (project.collaborators || []).map(
-          (c) => c.display_name || c.id
-        ),
-        tags: project.tags || [],
-        phases: phases.map((phase) => ({
-          id: phase.id,
-          name: phase.title,
-          title: phase.title,
-          status: phase.status,
-          startDate: phase.start_date,
-          endDate: phase.end_date,
-          subPhases: (phase.subPhases || []).map((sub) => ({
-            id: sub.id,
-            title: sub.title,
-            description: sub.description,
-            isCompleted: sub.isCompleted,
-          })),
-        })),
-        isOwner: false, // Consultants are not owners
-        isCollaborator: true, // Consultants are collaborators
-        hasPendingInvite: false,
-      };
-    });
+  async getAllConsultantProjectsPaginated(
+    page: number = 1,
+    limit: number = 10,
+    search?: string,
+    status?: string
+  ): Promise<{
+    items: any[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    return this.projectConsultantService.getAllConsultantProjectsPaginated(page, limit, search, status);
   }
 
   // Consultant: Get project details (consultant-facing)
   async getConsultantProjectDetails(id: string): Promise<any> {
-    const project = await this.projectsRepository.findOne({
-      where: { id },
-      relations: ["phases", "phases.subPhases", "owner", "collaborators"],
-    });
-    if (!project) throw new NotFoundException("Project not found");
-    
-    return {
-      id: project.id,
-      name: project.title,
-      description: project.description,
-      owner: project.owner?.display_name || project.owner_id,
-      collaborators: (project.collaborators || []).map(
-        (c) => c.display_name || c.id
-      ),
-      startDate: project.start_date,
-      estimatedCompletion: project.end_date,
-      totalAmount: project.totalAmount,
-      tags: project.tags || [],
-      phases: (project.phases || []).map((phase) => ({
-        id: phase.id,
-        name: phase.title,
-        title: phase.title,
-        status: phase.status,
-        startDate: phase.start_date,
-        start_date: phase.start_date,
-        endDate: phase.end_date,
-        end_date: phase.end_date,
-        progress: phase.progress || 0,
-        sub_phases: (phase.subPhases || []).map((sub) => ({
-          id: sub.id,
-          title: sub.title,
-          description: sub.description,
-          isCompleted: sub.isCompleted,
-        })),
-        subPhases: (phase.subPhases || []).map((sub) => ({
-          id: sub.id,
-          title: sub.title,
-          description: sub.description,
-          isCompleted: sub.isCompleted,
-        })),
-      })),
-    };
+    return this.projectConsultantService.getConsultantProjectDetails(id);
   }
 
   // Consultant: Get phases for a project (consultant-facing)
   async getConsultantProjectPhases(projectId: string): Promise<any[]> {
-    // Only return active phases (excludes BOQ draft phases)
-    const phases = await this.phasesRepository.find({
-      where: { project_id: projectId, is_active: true },
-      relations: ["subPhases", "subPhases.subPhases"],
-    });
-    // Return public fields for phases and their subPhases
-    return phases.map((phase) => ({
-      id: phase.id,
-      title: phase.title,
-      description: phase.description,
-      start_date: phase.start_date,
-      end_date: phase.end_date,
-      progress: phase.progress,
-      status: phase.status,
-      created_at: phase.created_at,
-      updated_at: phase.updated_at,
-      subPhases: (phase.subPhases || []).map((sub) => ({
-        id: sub.id,
-        title: sub.title,
-        description: sub.description,
-        isCompleted: sub.isCompleted,
-      })),
-    }));
+    return this.projectConsultantService.getConsultantProjectPhases(projectId);
   }
 
   // Consultant: Get phases for a project with pagination (consultant-facing)
@@ -2925,44 +2811,7 @@ export class ProjectsService {
     projectId: string,
     { page = 1, limit = 10 }: { page?: number; limit?: number }
   ) {
-    const pageNum = Number(page) || 1;
-    const limitNum = Number(limit) || 10;
-
-    // Only return active phases (excludes BOQ draft phases)
-    const [phases, total] = await this.phasesRepository.findAndCount({
-      where: { project_id: projectId, is_active: true },
-      relations: ["subPhases", "subPhases.subPhases"],
-      order: { created_at: "ASC" },
-      skip: (pageNum - 1) * limitNum,
-      take: limitNum,
-    });
-
-    // Return public fields for phases and their subPhases
-    const items = phases.map((phase) => ({
-      id: phase.id,
-      title: phase.title,
-      description: phase.description,
-      start_date: phase.start_date,
-      end_date: phase.end_date,
-      progress: phase.progress,
-      status: phase.status,
-      created_at: phase.created_at,
-      updated_at: phase.updated_at,
-      subPhases: (phase.subPhases || []).map((sub) => ({
-        id: sub.id,
-        title: sub.title,
-        description: sub.description,
-        isCompleted: sub.isCompleted,
-      })),
-    }));
-
-    return {
-      items,
-      total,
-      page: pageNum,
-      limit: limitNum,
-      totalPages: Math.ceil(total / limitNum),
-    };
+    return this.projectConsultantService.getConsultantProjectPhasesPaginated(projectId, page, limit);
   }
 
   /**
@@ -2970,18 +2819,7 @@ export class ProjectsService {
    * These are hidden phases that user can choose to activate
    */
   async getBoqDraftPhases(projectId: string, userId: string): Promise<Phase[]> {
-    // Verify user has access to project
-    await this.findOne(projectId, userId);
-    
-    return this.phasesRepository.find({
-      where: { 
-        project_id: projectId, 
-        is_active: false,
-        from_boq: true 
-      },
-      relations: ["subPhases"],
-      order: { created_at: "ASC" },
-    });
+    return this.projectConsultantService.getBoqDraftPhases(projectId, userId);
   }
 
   /**
@@ -3058,31 +2896,7 @@ export class ProjectsService {
 
   // Consultant: Get tasks for a project (consultant-facing)
   async getConsultantProjectTasks(projectId: string): Promise<any[]> {
-    const project = await this.projectsRepository.findOne({
-      where: { id: projectId },
-    });
-    if (!project) {
-      throw new NotFoundException("Project not found");
-    }
-    const phases = await this.phasesRepository.find({
-      where: { project_id: projectId },
-      relations: ["tasks"],
-    });
-
-    const allTasks = phases.flatMap((phase) =>
-      phase.tasks.map((task) => ({
-        id: task.id,
-        description: task.description,
-        unit: task.unit,
-        quantity: task.quantity,
-        price: task.price,
-        phase_id: phase.id,
-        phase_title: phase.title,
-        created_at: task.created_at,
-      }))
-    );
-
-    return allTasks;
+    return this.projectConsultantService.getConsultantProjectTasks(projectId);
   }
 
   async getProjectCompletionTrends(
@@ -3142,6 +2956,7 @@ export class ProjectsService {
   }
 
   // ==================== PROJECT INVENTORY METHODS ====================
+  // Delegate to ProjectContractorService
 
   /**
    * Get inventory items for a specific project
@@ -3156,60 +2971,7 @@ export class ProjectsService {
       search?: string;
     }
   ) {
-    // Verify user has access to the project
-    const user = await this.usersService.findOne(userId);
-    const isContractor = user?.role === UserRole.CONTRACTOR;
-    const isSubContractor = user?.role === UserRole.SUB_CONTRACTOR;
-
-    if (!isContractor && !isSubContractor) {
-      await this.findOne(projectId, userId);
-    } else {
-      const project = await this.projectsRepository.findOne({
-        where: { id: projectId },
-      });
-      if (!project) {
-        throw new NotFoundException(`Project with ID ${projectId} not found`);
-      }
-    }
-
-    const { page = 1, limit = 10, category, search } = options;
-    const skip = (page - 1) * limit;
-
-    const where: any = { project_id: projectId, is_active: true };
-
-    if (category) {
-      where.category = category;
-    }
-
-    const queryBuilder = this.inventoryRepository.createQueryBuilder("inventory")
-      .leftJoinAndSelect("inventory.creator", "creator")
-      .where("inventory.project_id = :projectId", { projectId })
-      .andWhere("inventory.is_active = :is_active", { is_active: true });
-
-    if (category) {
-      queryBuilder.andWhere("inventory.category = :category", { category });
-    }
-
-    if (search) {
-      queryBuilder.andWhere(
-        "(inventory.name ILIKE :search OR inventory.description ILIKE :search OR inventory.sku ILIKE :search)",
-        { search: `%${search}%` }
-      );
-    }
-
-    const [items, total] = await queryBuilder
-      .orderBy("inventory.created_at", "DESC")
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
-
-    return {
-      items,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    return this.projectContractorService.getProjectInventory(projectId, userId, options);
   }
 
   /**
@@ -3221,66 +2983,7 @@ export class ProjectsService {
     userId: string,
     pictureFile?: Express.Multer.File
   ) {
-    // Verify user is contractor or sub-contractor
-    const user = await this.usersService.findOne(userId);
-    if (user?.role !== UserRole.CONTRACTOR && user?.role !== UserRole.SUB_CONTRACTOR) {
-      throw new ForbiddenException(
-        "Only contractors and sub-contractors can add inventory items to projects"
-      );
-    }
-
-    // Verify project exists
-    const project = await this.projectsRepository.findOne({
-      where: { id: projectId },
-    });
-    if (!project) {
-      throw new NotFoundException(`Project with ID ${projectId} not found`);
-    }
-
-    // Handle picture upload (required)
-    let pictureUrl: string | null = null;
-    if (pictureFile) {
-      const uploadDir = path.join(
-        process.cwd(),
-        "uploads",
-        "inventory",
-        "pictures"
-      );
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-
-      const fileName = `${Date.now()}-${pictureFile.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      const filePath = path.join(uploadDir, fileName);
-      fs.writeFileSync(filePath, pictureFile.buffer);
-      pictureUrl = `/uploads/inventory/pictures/${fileName}`;
-    } else {
-      throw new BadRequestException("Picture evidence is required");
-    }
-
-    // Create inventory item linked to the project
-    const inventory = this.inventoryRepository.create({
-      ...createInventoryDto,
-      project_id: projectId,
-      picture_url: pictureUrl,
-      created_by: userId,
-    });
-
-    const saved = await this.inventoryRepository.save(inventory);
-
-    // Log activity
-    await this.activitiesService.logActivity(
-      ActivityType.INVENTORY_ADDED,
-      userId,
-      projectId,
-      { 
-        inventoryName: saved.name,
-        category: saved.category,
-        quantity: saved.quantity_available 
-      }
-    );
-
-    return saved;
+    return this.projectContractorService.addProjectInventoryItem(projectId, createInventoryDto, userId, pictureFile);
   }
 
   /**
@@ -3292,37 +2995,7 @@ export class ProjectsService {
     updateData: any,
     userId: string
   ) {
-    // Verify user is contractor or sub-contractor
-    const user = await this.usersService.findOne(userId);
-    if (user?.role !== UserRole.CONTRACTOR && user?.role !== UserRole.SUB_CONTRACTOR) {
-      throw new ForbiddenException(
-        "Only contractors and sub-contractors can update inventory items"
-      );
-    }
-
-    // Verify inventory item belongs to the project
-    const inventory = await this.inventoryRepository.findOne({
-      where: { id: inventoryId, project_id: projectId },
-    });
-
-    if (!inventory) {
-      throw new NotFoundException(
-        `Inventory item not found in this project`
-      );
-    }
-
-    Object.assign(inventory, updateData);
-    const updated = await this.inventoryRepository.save(inventory);
-
-    // Log activity
-    await this.activitiesService.logActivity(
-      ActivityType.INVENTORY_UPDATED,
-      userId,
-      projectId,
-      { inventoryName: updated.name }
-    );
-
-    return updated;
+    return this.projectContractorService.updateProjectInventoryItem(projectId, inventoryId, updateData, userId);
   }
 
   /**
@@ -3333,35 +3006,85 @@ export class ProjectsService {
     inventoryId: string,
     userId: string
   ) {
-    // Verify user is contractor or sub-contractor
-    const user = await this.usersService.findOne(userId);
-    if (user?.role !== UserRole.CONTRACTOR && user?.role !== UserRole.SUB_CONTRACTOR) {
-      throw new ForbiddenException(
-        "Only contractors and sub-contractors can delete inventory items"
-      );
-    }
+    return this.projectContractorService.deleteProjectInventoryItem(projectId, inventoryId, userId);
+  }
 
-    // Verify inventory item belongs to the project
-    const inventory = await this.inventoryRepository.findOne({
-      where: { id: inventoryId, project_id: projectId },
-    });
+  // ==================== INVENTORY USAGE TRACKING METHODS ====================
+  // Delegate to ProjectContractorService
 
-    if (!inventory) {
-      throw new NotFoundException(
-        `Inventory item not found in this project`
-      );
-    }
+  /**
+   * Record inventory usage (contractors and sub-contractors only)
+   */
+  async recordInventoryUsage(
+    projectId: string,
+    inventoryId: string,
+    quantity: number,
+    userId: string,
+    phaseId?: string,
+    notes?: string
+  ) {
+    return this.projectContractorService.recordInventoryUsage(projectId, inventoryId, quantity, userId, phaseId, notes);
+  }
 
-    await this.inventoryRepository.remove(inventory);
+  /**
+   * Get usage history for a specific inventory item
+   */
+  async getInventoryUsageHistory(
+    projectId: string,
+    inventoryId: string,
+    userId: string,
+    options: { page?: number; limit?: number }
+  ) {
+    return this.projectContractorService.getInventoryUsageHistory(projectId, inventoryId, userId, options);
+  }
 
-    // Log activity
-    await this.activitiesService.logActivity(
-      ActivityType.INVENTORY_DELETED,
-      userId,
-      projectId,
-      { inventoryName: inventory.name }
-    );
+  /**
+   * Get usage history for all inventory items in a project
+   */
+  async getProjectInventoryUsage(
+    projectId: string,
+    userId: string,
+    options: { page?: number; limit?: number }
+  ) {
+    return this.projectContractorService.getProjectInventoryUsage(projectId, userId, options);
+  }
 
-    return { message: "Inventory item deleted successfully" };
+  /**
+   * Link an existing inventory item to a project (contractors and sub-contractors only)
+   */
+  async linkInventoryToProject(
+    inventoryId: string,
+    projectId: string,
+    userId: string
+  ) {
+    return this.projectContractorService.linkInventoryToProject(inventoryId, projectId, userId);
+  }
+
+  /**
+   * Unlink an inventory item from a project (contractors and sub-contractors only)
+   */
+  async unlinkInventoryFromProject(
+    inventoryId: string,
+    projectId: string,
+    userId: string
+  ) {
+    return this.projectContractorService.unlinkInventoryFromProject(inventoryId, projectId, userId);
+  }
+
+  // Delegate dashboard aggregation methods to ProjectDashboardService
+  async getDashboardProjectStats() {
+    return this.projectDashboardService.getDashboardProjectStats();
+  }
+
+  async getDashboardPhaseStats() {
+    return this.projectDashboardService.getDashboardPhaseStats();
+  }
+
+  async getDashboardTeamMembersCount() {
+    return this.projectDashboardService.getDashboardTeamMembersCount();
+  }
+
+  async getDashboardMonthlyGrowth() {
+    return this.projectDashboardService.getDashboardMonthlyGrowth();
   }
 }

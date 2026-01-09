@@ -68,7 +68,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminProfileController.prototype, "uploadAvatar", null);
 exports.AdminProfileController = AdminProfileController = __decorate([
-    (0, common_1.Controller)("admin/profile"),
+    (0, common_1.Controller)("consultant/profile"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [admin_service_1.AdminService])
 ], AdminProfileController);

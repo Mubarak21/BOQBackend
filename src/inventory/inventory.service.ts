@@ -222,7 +222,7 @@ export class InventoryService {
 
     // Check if user has permission to update (creator, admin, or finance manager)
     const isCreator = inventory.created_by === userId;
-    const isAdmin = user?.role === UserRole.ADMIN;
+    const isAdmin = user?.role === UserRole.CONSULTANT;
     const isFinanceManager = user?.role === UserRole.FINANCE;
 
     if (!isCreator && !isAdmin && !isFinanceManager) {
@@ -249,7 +249,7 @@ export class InventoryService {
 
     // Check if user has permission to delete (creator, admin, or finance manager)
     const isCreator = inventory.created_by === userId;
-    const isAdmin = user?.role === UserRole.ADMIN;
+    const isAdmin = user?.role === UserRole.CONSULTANT;
     const isFinanceManager = user?.role === UserRole.FINANCE;
 
     if (!isCreator && !isAdmin && !isFinanceManager) {

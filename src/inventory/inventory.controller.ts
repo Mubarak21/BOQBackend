@@ -27,11 +27,13 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { UserRole } from "../entities/user.entity";
+import { SetMetadata } from "@nestjs/common";
+import { ROLES_KEY } from "../auth/decorators/roles.decorator";
 import { RequestWithUser } from "../auth/interfaces/request-with-user.interface";
 
 @Controller("inventory")
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.FINANCE, UserRole.USER)
+@Roles(UserRole.CONSULTANT, UserRole.FINANCE, UserRole.USER)
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
@@ -161,8 +163,10 @@ export class InventoryController {
 
   /**
    * Get all inventory items with filtering and pagination
+   * Allow contractors and sub-contractors to read inventory items
    */
   @Get()
+  @SetMetadata(ROLES_KEY, [UserRole.CONSULTANT, UserRole.FINANCE, UserRole.USER, UserRole.CONTRACTOR, UserRole.SUB_CONTRACTOR])
   async findAll(@Query() query: InventoryQueryDto) {
     return this.inventoryService.findAll(query);
   }
@@ -196,8 +200,10 @@ export class InventoryController {
 
   /**
    * Get a single inventory item
+   * Allow contractors and sub-contractors to read inventory items
    */
   @Get(":id")
+  @SetMetadata(ROLES_KEY, [UserRole.CONSULTANT, UserRole.FINANCE, UserRole.USER, UserRole.CONTRACTOR, UserRole.SUB_CONTRACTOR])
   async findOne(@Param("id") id: string) {
     return this.inventoryService.findOne(id);
   }

@@ -24,7 +24,7 @@ import { Response } from "express";
 import { AdminRegisterDto } from "../../dto/admin-register.dto";
 import { AdminService } from "../../services/admin.service";
 
-@Controller("admin/auth")
+@Controller("consultant/auth")
 // Removed class-level guards and roles
 export class AdminAuthController {
   constructor(

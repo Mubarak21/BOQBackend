@@ -6,7 +6,10 @@ import {
   Param,
   UseGuards,
   Request,
+  UseInterceptors,
+  UploadedFile,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { PenaltiesService } from "./penalties.service";
 import { CreatePenaltyDto } from "./dto/create-penalty.dto";
@@ -18,8 +21,17 @@ export class PenaltiesController {
   constructor(private readonly penaltiesService: PenaltiesService) {}
 
   @Post()
-  create(@Body() createPenaltyDto: CreatePenaltyDto, @Request() req) {
-    return this.penaltiesService.create(createPenaltyDto, req.user);
+  @UseInterceptors(
+    FileInterceptor("evidence", {
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+    })
+  )
+  create(
+    @Body() createPenaltyDto: CreatePenaltyDto,
+    @Request() req,
+    @UploadedFile() evidenceFile?: Express.Multer.File
+  ) {
+    return this.penaltiesService.create(createPenaltyDto, req.user, evidenceFile);
   }
 
   @Get("project/:projectId")

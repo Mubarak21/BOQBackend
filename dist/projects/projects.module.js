@@ -32,6 +32,11 @@ const phase_evidence_entity_1 = require("../entities/phase-evidence.entity");
 const evidence_service_1 = require("./evidence.service");
 const boq_parser_service_1 = require("./boq-parser.service");
 const boq_progress_gateway_1 = require("./boq-progress.gateway");
+const inventory_entity_1 = require("../entities/inventory.entity");
+const inventory_usage_entity_1 = require("../entities/inventory-usage.entity");
+const project_dashboard_service_1 = require("./services/project-dashboard.service");
+const project_consultant_service_1 = require("./services/project-consultant.service");
+const project_contractor_service_1 = require("./services/project-contractor.service");
 let ProjectsModule = class ProjectsModule {
 };
 exports.ProjectsModule = ProjectsModule;
@@ -46,6 +51,8 @@ exports.ProjectsModule = ProjectsModule = __decorate([
                 collaboration_request_entity_1.CollaborationRequest,
                 project_access_request_entity_1.ProjectAccessRequest,
                 phase_evidence_entity_1.PhaseEvidence,
+                inventory_entity_1.Inventory,
+                inventory_usage_entity_1.InventoryUsage,
             ]),
             users_module_1.UsersModule,
             auth_module_1.AuthModule,
@@ -62,13 +69,16 @@ exports.ProjectsModule = ProjectsModule = __decorate([
             evidence_service_1.EvidenceService,
             boq_parser_service_1.BoqParserService,
             boq_progress_gateway_1.BoqProgressGateway,
+            project_dashboard_service_1.ProjectDashboardService,
+            project_consultant_service_1.ProjectConsultantService,
+            project_contractor_service_1.ProjectContractorService,
         ],
         controllers: [
             projects_controller_1.ProjectsController,
             collaboration_requests_controller_1.CollaborationRequestsController,
             subphases_controller_1.SubPhasesController,
         ],
-        exports: [projects_service_1.ProjectsService, typeorm_1.TypeOrmModule],
+        exports: [projects_service_1.ProjectsService, project_dashboard_service_1.ProjectDashboardService, project_consultant_service_1.ProjectConsultantService, project_contractor_service_1.ProjectContractorService, typeorm_1.TypeOrmModule],
     })
 ], ProjectsModule);
 //# sourceMappingURL=projects.module.js.map

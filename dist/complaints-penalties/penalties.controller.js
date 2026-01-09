@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PenaltiesController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const penalties_service_1 = require("./penalties.service");
 const create_penalty_dto_1 = require("./dto/create-penalty.dto");
@@ -22,8 +23,8 @@ let PenaltiesController = class PenaltiesController {
     constructor(penaltiesService) {
         this.penaltiesService = penaltiesService;
     }
-    create(createPenaltyDto, req) {
-        return this.penaltiesService.create(createPenaltyDto, req.user);
+    create(createPenaltyDto, req, evidenceFile) {
+        return this.penaltiesService.create(createPenaltyDto, req.user, evidenceFile);
     }
     findByProject(projectId) {
         return this.penaltiesService.findByProject(projectId);
@@ -41,10 +42,14 @@ let PenaltiesController = class PenaltiesController {
 exports.PenaltiesController = PenaltiesController;
 __decorate([
     (0, common_1.Post)(),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)("evidence", {
+        limits: { fileSize: 10 * 1024 * 1024 },
+    })),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Request)()),
+    __param(2, (0, common_1.UploadedFile)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [create_penalty_dto_1.CreatePenaltyDto, Object]),
+    __metadata("design:paramtypes", [create_penalty_dto_1.CreatePenaltyDto, Object, Object]),
     __metadata("design:returntype", void 0)
 ], PenaltiesController.prototype, "create", null);
 __decorate([

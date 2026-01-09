@@ -123,7 +123,7 @@ let InventoryService = class InventoryService {
             select: ["id", "role"],
         });
         const isCreator = inventory.created_by === userId;
-        const isAdmin = user?.role === user_entity_1.UserRole.ADMIN;
+        const isAdmin = user?.role === user_entity_1.UserRole.CONSULTANT;
         const isFinanceManager = user?.role === user_entity_1.UserRole.FINANCE;
         if (!isCreator && !isAdmin && !isFinanceManager) {
             throw new common_1.ForbiddenException("You don't have permission to update this inventory item");
@@ -138,7 +138,7 @@ let InventoryService = class InventoryService {
             select: ["id", "role"],
         });
         const isCreator = inventory.created_by === userId;
-        const isAdmin = user?.role === user_entity_1.UserRole.ADMIN;
+        const isAdmin = user?.role === user_entity_1.UserRole.CONSULTANT;
         const isFinanceManager = user?.role === user_entity_1.UserRole.FINANCE;
         if (!isCreator && !isAdmin && !isFinanceManager) {
             throw new common_1.ForbiddenException("You don't have permission to delete this inventory item");

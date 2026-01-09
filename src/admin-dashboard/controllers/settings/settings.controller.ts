@@ -2,7 +2,7 @@ import { Controller, Get, Put, Body, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
 import { AdminService } from "../../services/admin.service";
 
-@Controller("admin/settings")
+@Controller("consultant/settings")
 @UseGuards(JwtAuthGuard)
 export class AdminSettingsController {
   constructor(private readonly adminService: AdminService) {}

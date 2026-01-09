@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FinanceController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const jwt_auth_guard_1 = require("../../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../../auth/guards/roles.guard");
 const roles_decorator_1 = require("../../auth/decorators/roles.decorator");
@@ -37,8 +38,8 @@ let FinanceController = class FinanceController {
     async getProjectsFinance(query) {
         return await this.financeService.getProjectsFinance(query);
     }
-    async getProjectFinance(id) {
-        return await this.financeService.getProjectFinanceById(id);
+    async getProjectFinance(id, page = 1, limit = 10) {
+        return await this.financeService.getProjectFinanceById(id, { page, limit });
     }
     async getFinanceMetrics() {
         return await this.financeService.getFinanceMetrics();
@@ -46,9 +47,9 @@ let FinanceController = class FinanceController {
     async getTransactions(query) {
         return await this.financeService.getTransactions(query);
     }
-    async createTransaction(createTransactionDto, req) {
+    async createTransaction(createTransactionDto, invoiceFile, req) {
         const userId = req.user.id;
-        return await this.financeService.createTransaction(createTransactionDto, userId);
+        return await this.financeService.createTransaction(createTransactionDto, userId, invoiceFile);
     }
     async updateTransaction(id, updateTransactionDto, req) {
         const userId = req.user.id;
@@ -105,6 +106,9 @@ let FinanceController = class FinanceController {
     async configureBudgetAlerts(alertConfig) {
         throw new common_1.HttpException("Budget alerts configuration will be implemented", common_1.HttpStatus.NOT_IMPLEMENTED);
     }
+    async recalculateAllProjects() {
+        return await this.financeService.recalculateAllProjectsSpentAmounts();
+    }
 };
 exports.FinanceController = FinanceController;
 __decorate([
@@ -116,9 +120,12 @@ __decorate([
 ], FinanceController.prototype, "getProjectsFinance", null);
 __decorate([
     (0, common_1.Get)("projects/:id"),
+    (0, common_1.SetMetadata)(roles_decorator_1.ROLES_KEY, []),
     __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Query)("page")),
+    __param(2, (0, common_1.Query)("limit")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], FinanceController.prototype, "getProjectFinance", null);
 __decorate([
@@ -136,10 +143,20 @@ __decorate([
 ], FinanceController.prototype, "getTransactions", null);
 __decorate([
     (0, common_1.Post)("transactions"),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)("invoice", {
+        limits: { fileSize: 10 * 1024 * 1024 },
+    })),
+    (0, common_1.SetMetadata)(roles_decorator_1.ROLES_KEY, [
+        user_entity_1.UserRole.CONSULTANT,
+        user_entity_1.UserRole.FINANCE,
+        user_entity_1.UserRole.CONTRACTOR,
+        user_entity_1.UserRole.SUB_CONTRACTOR
+    ]),
     __param(0, (0, common_1.Body)()),
-    __param(1, (0, common_1.Request)()),
+    __param(1, (0, common_1.UploadedFile)()),
+    __param(2, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [transaction_dto_1.CreateTransactionDto, Object]),
+    __metadata("design:paramtypes", [transaction_dto_1.CreateTransactionDto, Object, Object]),
     __metadata("design:returntype", Promise)
 ], FinanceController.prototype, "createTransaction", null);
 __decorate([
@@ -214,10 +231,17 @@ __decorate([
     __metadata("design:paramtypes", [budget_update_dto_1.BudgetAlertConfigDto]),
     __metadata("design:returntype", Promise)
 ], FinanceController.prototype, "configureBudgetAlerts", null);
-exports.FinanceController = FinanceController = __decorate([
-    (0, common_1.Controller)("admin/finance"),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+__decorate([
+    (0, common_1.Post)("recalculate-all"),
     (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.FINANCE),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], FinanceController.prototype, "recalculateAllProjects", null);
+exports.FinanceController = FinanceController = __decorate([
+    (0, common_1.Controller)("consultant/finance"),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.CONSULTANT, user_entity_1.UserRole.FINANCE),
     __metadata("design:paramtypes", [finance_service_1.FinanceService,
         analytics_service_1.AnalyticsService,
         finance_report_generator_service_1.FinanceReportGeneratorService])

@@ -23,6 +23,8 @@ const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const user_entity_1 = require("../entities/user.entity");
+const common_2 = require("@nestjs/common");
+const roles_decorator_2 = require("../auth/decorators/roles.decorator");
 let InventoryController = class InventoryController {
     constructor(inventoryService) {
         this.inventoryService = inventoryService;
@@ -183,6 +185,7 @@ __decorate([
 ], InventoryController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
+    (0, common_2.SetMetadata)(roles_decorator_2.ROLES_KEY, [user_entity_1.UserRole.CONSULTANT, user_entity_1.UserRole.FINANCE, user_entity_1.UserRole.USER, user_entity_1.UserRole.CONTRACTOR, user_entity_1.UserRole.SUB_CONTRACTOR]),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [inventory_query_dto_1.InventoryQueryDto]),
@@ -211,6 +214,7 @@ __decorate([
 ], InventoryController.prototype, "searchInventory", null);
 __decorate([
     (0, common_1.Get)(":id"),
+    (0, common_2.SetMetadata)(roles_decorator_2.ROLES_KEY, [user_entity_1.UserRole.CONSULTANT, user_entity_1.UserRole.FINANCE, user_entity_1.UserRole.USER, user_entity_1.UserRole.CONTRACTOR, user_entity_1.UserRole.SUB_CONTRACTOR]),
     __param(0, (0, common_1.Param)("id")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -251,7 +255,7 @@ __decorate([
 exports.InventoryController = InventoryController = __decorate([
     (0, common_1.Controller)("inventory"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.FINANCE, user_entity_1.UserRole.USER),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.CONSULTANT, user_entity_1.UserRole.FINANCE, user_entity_1.UserRole.USER),
     __metadata("design:paramtypes", [inventory_service_1.InventoryService])
 ], InventoryController);
 //# sourceMappingURL=inventory.controller.js.map

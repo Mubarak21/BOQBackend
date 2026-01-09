@@ -93,7 +93,7 @@ export class TasksService {
       where: { id: task.project_id },
     });
     const user = await this.usersService.findOne(userId);
-    const isAdmin = user?.role === "admin";
+    const isAdmin = user?.role === "consultant";
     const isConsultant = user?.role === "consultant";
 
     if (project.owner_id !== userId && !isAdmin && !isConsultant) {
@@ -112,7 +112,7 @@ export class TasksService {
       where: { id: task.project_id },
     });
     const user = await this.usersService.findOne(userId);
-    const isAdmin = user?.role === "admin";
+    const isAdmin = user?.role === "consultant";
     const isConsultant = user?.role === "consultant";
 
     if (project.owner_id !== userId && !isAdmin && !isConsultant) {
@@ -130,7 +130,7 @@ export class TasksService {
     const task = await this.findOne(taskId, userId);
     const project = await this.projectsService.findOne(task.project_id, userId);
     const user = await this.usersService.findOne(userId);
-    const isAdmin = user?.role === "admin";
+    const isAdmin = user?.role === "consultant";
     const isConsultant = user?.role === "consultant";
 
     if (project.owner_id !== userId && !isAdmin && !isConsultant) {

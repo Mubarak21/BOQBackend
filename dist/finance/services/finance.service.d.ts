@@ -8,16 +8,23 @@ import { ProjectFinanceQueryDto } from "../dto/project-finance-query.dto";
 import { ProjectFinanceListResponseDto, ProjectFinanceDto, FinanceMetricsDto } from "../dto/project-finance-response.dto";
 import { CreateTransactionDto, UpdateTransactionDto, TransactionQueryDto } from "../dto/transaction.dto";
 import { UpdateProjectBudgetDto } from "../dto/budget-update.dto";
+import { TransactionService } from "./transaction.service";
+import { BudgetManagementService } from "./budget-management.service";
 export declare class FinanceService {
     private readonly projectRepository;
     private readonly budgetCategoryRepository;
     private readonly transactionRepository;
     private readonly savingsRepository;
     private readonly alertRepository;
+    private readonly transactionService;
+    private readonly budgetManagementService;
     private readonly logger;
-    constructor(projectRepository: Repository<Project>, budgetCategoryRepository: Repository<BudgetCategory>, transactionRepository: Repository<ProjectTransaction>, savingsRepository: Repository<ProjectSavings>, alertRepository: Repository<BudgetAlert>);
+    constructor(projectRepository: Repository<Project>, budgetCategoryRepository: Repository<BudgetCategory>, transactionRepository: Repository<ProjectTransaction>, savingsRepository: Repository<ProjectSavings>, alertRepository: Repository<BudgetAlert>, transactionService: TransactionService, budgetManagementService: BudgetManagementService);
     getProjectsFinance(query: ProjectFinanceQueryDto): Promise<ProjectFinanceListResponseDto>;
-    getProjectFinanceById(projectId: string): Promise<ProjectFinanceDto>;
+    getProjectFinanceById(projectId: string, pagination?: {
+        page: number;
+        limit: number;
+    }): Promise<ProjectFinanceDto>;
     getFinanceMetrics(): Promise<FinanceMetricsDto>;
     getTransactions(query: TransactionQueryDto): Promise<{
         transactions: ProjectTransaction[];
@@ -26,7 +33,7 @@ export declare class FinanceService {
         limit: number;
         totalPages: number;
     }>;
-    createTransaction(createTransactionDto: CreateTransactionDto, userId: string): Promise<ProjectTransaction>;
+    createTransaction(createTransactionDto: CreateTransactionDto, userId: string, invoiceFile?: Express.Multer.File): Promise<ProjectTransaction>;
     updateTransaction(transactionId: string, updateTransactionDto: UpdateTransactionDto, userId: string): Promise<ProjectTransaction>;
     deleteTransaction(transactionId: string): Promise<{
         success: boolean;
@@ -39,13 +46,10 @@ export declare class FinanceService {
     private formatDateToISOString;
     private calculateFinanceMetrics;
     private calculateMonthlySpending;
-    private generateTransactionNumber;
-    private updateCategorySpentAmount;
-    private updateProjectSpentAmount;
-    private updateProjectAllocatedBudget;
-    private updateProjectFinancialStatus;
-    private checkAndCreateBudgetAlerts;
-    private createBudgetAlert;
+    recalculateAllProjectsSpentAmounts(): Promise<{
+        fixed: number;
+        errors: string[];
+    }>;
     getAdminFinancialMetrics(): Promise<{
         totalProjects: number;
         totalBudget: number;

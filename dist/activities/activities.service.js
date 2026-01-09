@@ -131,6 +131,15 @@ let ActivitiesService = class ActivitiesService {
     async logCollaboratorAdded(user, project, collaborator) {
         return this.createActivity(activity_entity_1.ActivityType.COLLABORATOR_ADDED, `${collaborator.display_name} joined as a collaborator in ${project.title}`, user, project, null, { collaborator_id: collaborator.id });
     }
+    async logInventoryAdded(user, project, inventoryName, metadata) {
+        return this.createActivity(activity_entity_1.ActivityType.INVENTORY_ADDED, `${user.display_name} added inventory item "${inventoryName}" to ${project.title}`, user, project, null, metadata);
+    }
+    async logInventoryUpdated(user, project, inventoryName, metadata) {
+        return this.createActivity(activity_entity_1.ActivityType.INVENTORY_UPDATED, `${user.display_name} updated inventory item "${inventoryName}" in ${project.title}`, user, project, null, metadata);
+    }
+    async logInventoryDeleted(user, project, inventoryName, metadata) {
+        return this.createActivity(activity_entity_1.ActivityType.INVENTORY_DELETED, `${user.display_name} removed inventory item "${inventoryName}" from ${project.title}`, user, project, null, metadata);
+    }
     async getPhaseActivities(phaseId, limit = 10, offset = 0) {
         return this.activitiesRepository
             .createQueryBuilder("activity")

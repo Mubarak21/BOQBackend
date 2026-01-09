@@ -75,7 +75,7 @@ let TasksService = class TasksService {
             where: { id: task.project_id },
         });
         const user = await this.usersService.findOne(userId);
-        const isAdmin = user?.role === "admin";
+        const isAdmin = user?.role === "consultant";
         const isConsultant = user?.role === "consultant";
         if (project.owner_id !== userId && !isAdmin && !isConsultant) {
             throw new common_1.ForbiddenException("You don't have permission to update this task");
@@ -89,7 +89,7 @@ let TasksService = class TasksService {
             where: { id: task.project_id },
         });
         const user = await this.usersService.findOne(userId);
-        const isAdmin = user?.role === "admin";
+        const isAdmin = user?.role === "consultant";
         const isConsultant = user?.role === "consultant";
         if (project.owner_id !== userId && !isAdmin && !isConsultant) {
             throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can delete tasks");
@@ -100,7 +100,7 @@ let TasksService = class TasksService {
         const task = await this.findOne(taskId, userId);
         const project = await this.projectsService.findOne(task.project_id, userId);
         const user = await this.usersService.findOne(userId);
-        const isAdmin = user?.role === "admin";
+        const isAdmin = user?.role === "consultant";
         const isConsultant = user?.role === "consultant";
         if (project.owner_id !== userId && !isAdmin && !isConsultant) {
             throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can assign tasks");

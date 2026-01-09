@@ -22,10 +22,21 @@ export class ConsultantController {
     private readonly commentsService: CommentsService
   ) {}
 
-  // GET /consultant/projects — List all projects (summary info)
+  // GET /consultant/projects — List all projects (summary info) with pagination
   @Get("projects")
-  async getAllProjects(@Request() req: RequestWithUser) {
-    return this.projectsService.getAllConsultantProjects();
+  async getAllProjects(
+    @Request() req: RequestWithUser,
+    @Query("page") page: number = 1,
+    @Query("limit") limit: number = 10,
+    @Query("search") search?: string,
+    @Query("status") status?: string
+  ) {
+    return this.projectsService.getAllConsultantProjectsPaginated(
+      page,
+      limit,
+      search,
+      status
+    );
   }
 
   // GET /consultant/projects/:id — Project details

@@ -16,7 +16,14 @@ const user_entity_1 = require("../../entities/user.entity");
 const project_transaction_entity_1 = require("./project-transaction.entity");
 let BudgetCategory = class BudgetCategory {
     get remainingAmount() {
-        return this.budgetedAmount - this.spentAmount;
+        const budgeted = typeof this.budgetedAmount === 'number'
+            ? this.budgetedAmount
+            : parseFloat(String(this.budgetedAmount || 0)) || 0;
+        const spent = typeof this.spentAmount === 'number'
+            ? this.spentAmount
+            : parseFloat(String(this.spentAmount || 0)) || 0;
+        const remaining = budgeted - spent;
+        return Math.max(Math.min(remaining, 9999999999999.99), -9999999999999.99);
     }
     get utilizationPercentage() {
         return this.budgetedAmount > 0

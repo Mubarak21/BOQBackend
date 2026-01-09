@@ -25,6 +25,9 @@ export declare class ActivitiesService {
     logTaskCompleted(user: User, project: Project, task: Task): Promise<Activity>;
     logCommentAdded(user: User, project: Project, task: Task): Promise<Activity>;
     logCollaboratorAdded(user: User, project: Project, collaborator: User): Promise<Activity>;
+    logInventoryAdded(user: User, project: Project, inventoryName: string, metadata?: any): Promise<Activity>;
+    logInventoryUpdated(user: User, project: Project, inventoryName: string, metadata?: any): Promise<Activity>;
+    logInventoryDeleted(user: User, project: Project, inventoryName: string, metadata?: any): Promise<Activity>;
     getPhaseActivities(phaseId: string, limit?: number, offset?: number): Promise<Activity[]>;
     logJoinRequest(owner: User, project: Project, requester: User): Promise<Activity>;
     getUserProjectActivities(userId: string, limit?: number, offset?: number): Promise<Activity[]>;

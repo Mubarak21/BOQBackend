@@ -77,8 +77,24 @@ __decorate([
         scale: 2,
         default: 0,
         transformer: {
-            to: (value) => value,
-            from: (value) => parseFloat(value),
+            to: (value) => {
+                if (value === null || value === undefined)
+                    return "0";
+                const numValue = typeof value === "number" ? value : parseFloat(String(value));
+                if (isNaN(numValue))
+                    return "0";
+                const MAX_VALUE = 999999999999999999.99;
+                const clampedValue = Math.min(Math.max(numValue, -MAX_VALUE), MAX_VALUE);
+                return clampedValue.toFixed(2);
+            },
+            from: (value) => {
+                if (typeof value === "number")
+                    return value;
+                if (!value)
+                    return 0;
+                const parsed = parseFloat(String(value));
+                return isNaN(parsed) ? 0 : parsed;
+            },
         },
     }),
     __metadata("design:type", Number)

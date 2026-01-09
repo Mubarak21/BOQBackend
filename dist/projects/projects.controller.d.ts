@@ -1,3 +1,4 @@
+import { Repository } from "typeorm";
 import { ProjectsService, ProcessBoqResult } from "./projects.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
@@ -11,6 +12,7 @@ import { PenaltiesService } from "../complaints-penalties/penalties.service";
 import { EvidenceService } from "./evidence.service";
 import { BoqParserService } from "./boq-parser.service";
 import { BoqProgressGateway } from "./boq-progress.gateway";
+import { CollaborationRequest } from "../entities/collaboration-request.entity";
 export declare class ProjectsController {
     private readonly projectsService;
     private readonly usersService;
@@ -19,7 +21,8 @@ export declare class ProjectsController {
     private readonly evidenceService;
     private readonly boqParserService;
     private readonly boqProgressGateway;
-    constructor(projectsService: ProjectsService, usersService: UsersService, complaintsService: ComplaintsService, penaltiesService: PenaltiesService, evidenceService: EvidenceService, boqParserService: BoqParserService, boqProgressGateway: BoqProgressGateway);
+    private readonly collaborationRequestRepository;
+    constructor(projectsService: ProjectsService, usersService: UsersService, complaintsService: ComplaintsService, penaltiesService: PenaltiesService, evidenceService: EvidenceService, boqParserService: BoqParserService, boqProgressGateway: BoqProgressGateway, collaborationRequestRepository: Repository<CollaborationRequest>);
     create(createProjectDto: CreateProjectDto, req: any): Promise<import("../entities/project.entity").Project>;
     findAll(req: RequestWithUser, page?: number, limit?: number, search?: string, status?: string): Promise<{
         items: any[];
@@ -28,9 +31,15 @@ export declare class ProjectsController {
         limit: any;
         totalPages: any;
     }>;
+    getAvailableAssignees(req: any): Promise<import("../entities/user.entity").User[]>;
     findOne(id: string, req: RequestWithUser): Promise<any>;
     update(id: string, updateProjectDto: UpdateProjectDto, req: any): Promise<import("../entities/project.entity").Project>;
     remove(id: string, req: any): Promise<void>;
+    inviteCollaborator(id: string, body: {
+        userId: string;
+    }, req: any): Promise<{
+        message: string;
+    }>;
     addCollaborator(id: string, userId: string, req: any): Promise<import("../entities/project.entity").Project>;
     removeCollaborator(id: string, userId: string, req: any): Promise<import("../entities/project.entity").Project>;
     previewBoq(file: Express.Multer.File, req: RequestWithUser, roomId?: string): Promise<{
@@ -72,7 +81,6 @@ export declare class ProjectsController {
         limit: number;
         totalPages: number;
     }>;
-    getAvailableAssignees(req: any): Promise<import("../entities/user.entity").User[]>;
     updatePhase(projectId: string, phaseId: string, updatePhaseDto: UpdatePhaseDto, req: RequestWithUser): Promise<Phase>;
     deletePhase(projectId: string, phaseId: string, req: RequestWithUser): Promise<{
         message: string;
@@ -92,16 +100,37 @@ export declare class ProjectsController {
         type: string;
         notes?: string;
     }, req: RequestWithUser): Promise<import("../entities/phase-evidence.entity").PhaseEvidence>;
-    getProjectInventory(id: string, page: number, limit: number, category?: string, search?: string, req: RequestWithUser): Promise<{
+    getProjectInventory(id: string, req: RequestWithUser, page?: number, limit?: number, category?: string, search?: string): Promise<{
         items: import("../entities/inventory.entity").Inventory[];
         total: number;
         page: number;
         limit: number;
         totalPages: number;
     }>;
-    addProjectInventoryItem(id: string, pictureFile: Express.Multer.File | undefined, createInventoryDto: any, req: RequestWithUser): Promise<import("../entities/inventory.entity").Inventory[]>;
+    addProjectInventoryItem(id: string, createInventoryDto: any, pictureFile: Express.Multer.File, req: RequestWithUser): Promise<import("../entities/inventory.entity").Inventory>;
     updateProjectInventoryItem(id: string, inventoryId: string, updateData: any, req: RequestWithUser): Promise<import("../entities/inventory.entity").Inventory>;
     deleteProjectInventoryItem(id: string, inventoryId: string, req: RequestWithUser): Promise<{
         message: string;
     }>;
+    recordInventoryUsage(id: string, inventoryId: string, body: {
+        quantity: number;
+        phase_id?: string;
+        notes?: string;
+    }, req: RequestWithUser): Promise<import("../entities/inventory-usage.entity").InventoryUsage>;
+    getInventoryUsageHistory(id: string, inventoryId: string, page: number, limit: number, req: RequestWithUser): Promise<{
+        items: import("../entities/inventory-usage.entity").InventoryUsage[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }>;
+    getProjectInventoryUsage(id: string, page: number, limit: number, req: RequestWithUser): Promise<{
+        items: import("../entities/inventory-usage.entity").InventoryUsage[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }>;
+    linkInventoryToProject(projectId: string, inventoryId: string, req: RequestWithUser): Promise<import("../entities/inventory.entity").Inventory>;
+    unlinkInventoryFromProject(projectId: string, inventoryId: string, req: RequestWithUser): Promise<import("../entities/inventory.entity").Inventory>;
 }

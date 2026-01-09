@@ -6,8 +6,12 @@ const app_module_1 = require("./app.module");
 const typeorm_1 = require("@nestjs/typeorm");
 const seed_command_1 = require("./commands/seed.command");
 const cookieParser = require("cookie-parser");
+const path_1 = require("path");
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
+    app.useStaticAssets((0, path_1.join)(process.cwd(), "uploads"), {
+        prefix: "/uploads",
+    });
     const seedService = app.get(seed_command_1.SeedService);
     await seedService.seed();
     app.use(cookieParser());

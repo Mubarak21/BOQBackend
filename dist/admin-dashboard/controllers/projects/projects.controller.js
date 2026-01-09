@@ -98,7 +98,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminProjectsController.prototype, "deleteProject", null);
 exports.AdminProjectsController = AdminProjectsController = __decorate([
-    (0, common_1.Controller)("admin/projects"),
+    (0, common_1.Controller)("consultant/projects"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [projects_service_1.ProjectsService])
 ], AdminProjectsController);

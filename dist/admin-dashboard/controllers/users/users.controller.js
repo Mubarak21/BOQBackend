@@ -78,7 +78,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminUsersController.prototype, "deleteUser", null);
 exports.AdminUsersController = AdminUsersController = __decorate([
-    (0, common_1.Controller)("admin/users"),
+    (0, common_1.Controller)("consultant/users"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [users_service_1.UsersService])
 ], AdminUsersController);

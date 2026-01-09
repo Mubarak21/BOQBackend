@@ -20,6 +20,7 @@ export declare class Inventory {
     supplier: string;
     supplier_contact: string;
     quantity_available: number;
+    quantity_used: number;
     minimum_stock: number;
     sku: string;
     barcode: string;

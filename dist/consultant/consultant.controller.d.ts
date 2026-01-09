@@ -5,26 +5,16 @@ export declare class ConsultantController {
     private readonly projectsService;
     private readonly commentsService;
     constructor(projectsService: ProjectsService, commentsService: CommentsService);
-    getAllProjects(req: RequestWithUser): Promise<any[]>;
+    getAllProjects(req: RequestWithUser, page?: number, limit?: number, search?: string, status?: string): Promise<{
+        items: any[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }>;
     getProjectDetails(id: string, req: RequestWithUser): Promise<any>;
     getProjectPhases(id: string, page: number, limit: number, req: RequestWithUser): Promise<{
-        items: {
-            id: string;
-            title: string;
-            description: string;
-            start_date: Date;
-            end_date: Date;
-            progress: number;
-            status: import("../entities/phase.entity").PhaseStatus;
-            created_at: Date;
-            updated_at: Date;
-            subPhases: {
-                id: string;
-                title: string;
-                description: string;
-                isCompleted: boolean;
-            }[];
-        }[];
+        items: any[];
         total: number;
         page: number;
         limit: number;

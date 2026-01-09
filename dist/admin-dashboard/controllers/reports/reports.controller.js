@@ -107,7 +107,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminReportsController.prototype, "cleanupOldReports", null);
 exports.AdminReportsController = AdminReportsController = __decorate([
-    (0, common_1.Controller)("admin/reports"),
+    (0, common_1.Controller)("consultant/reports"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [reports_service_1.ReportsService])
 ], AdminReportsController);

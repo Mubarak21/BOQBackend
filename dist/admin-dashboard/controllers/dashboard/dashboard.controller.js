@@ -15,14 +15,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminDashboardController = void 0;
 const common_1 = require("@nestjs/common");
 const projects_service_1 = require("../../../projects/projects.service");
+const project_dashboard_service_1 = require("../../../projects/services/project-dashboard.service");
 const users_service_1 = require("../../../users/users.service");
 const activities_service_1 = require("../../../activities/activities.service");
 const jwt_auth_guard_1 = require("../../../auth/guards/jwt-auth.guard");
-const project_entity_1 = require("../../../entities/project.entity");
-const phase_entity_1 = require("../../../entities/phase.entity");
 let AdminDashboardController = class AdminDashboardController {
-    constructor(projectsService, usersService, activitiesService) {
+    constructor(projectsService, projectDashboardService, usersService, activitiesService) {
         this.projectsService = projectsService;
+        this.projectDashboardService = projectDashboardService;
         this.usersService = usersService;
         this.activitiesService = activitiesService;
     }
@@ -41,60 +41,32 @@ let AdminDashboardController = class AdminDashboardController {
         console.log("📊 Admin Dashboard Metrics:", metrics);
         return metrics;
     }
-    async getStats() {
-        console.log("🔍 Admin Dashboard - Fetching comprehensive stats...");
-        const projects = await this.projectsService.findAllForAdmin();
-        const totalProjects = projects.length;
-        const activeProjects = projects.filter((p) => p.status === project_entity_1.ProjectStatus.IN_PROGRESS || p.status === project_entity_1.ProjectStatus.PLANNING).length;
-        const completedProjects = projects.filter((p) => p.status === project_entity_1.ProjectStatus.COMPLETED).length;
-        const totalValue = projects.reduce((sum, project) => {
-            const budget = project.totalBudget != null ? Number(project.totalBudget) : null;
-            const amount = project.totalAmount != null ? Number(project.totalAmount) : null;
-            const value = (budget != null && !isNaN(budget)) ? budget :
-                (amount != null && !isNaN(amount)) ? amount : 0;
-            return sum + value;
-        }, 0);
-        const now = new Date();
-        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const lastMonthProjects = projects.filter((p) => p.created_at >= lastMonth && p.created_at < thisMonth).length;
-        const thisMonthProjects = projects.filter((p) => p.created_at >= thisMonth && p.created_at <= now).length;
-        const monthlyGrowth = lastMonthProjects === 0
-            ? (thisMonthProjects > 0 ? 100 : 0)
-            : ((thisMonthProjects - lastMonthProjects) / lastMonthProjects) * 100;
-        const uniqueTeamMembers = new Set();
-        projects.forEach((project) => {
-            project.collaborators?.forEach((collaborator) => {
-                uniqueTeamMembers.add(collaborator.id);
-            });
-            if (project.owner_id) {
-                uniqueTeamMembers.add(project.owner_id);
-            }
-        });
-        const teamMembers = uniqueTeamMembers.size;
-        const phaseStats = {
-            totalPhases: 0,
-            completedPhases: 0,
-            inProgressPhases: 0,
-            totalBudget: 0,
-        };
-        projects.forEach((project) => {
-            const projectPhases = project.phases || [];
-            phaseStats.totalPhases += projectPhases.length;
-            phaseStats.completedPhases += projectPhases.filter((phase) => phase.status === phase_entity_1.PhaseStatus.COMPLETED).length;
-            phaseStats.inProgressPhases += projectPhases.filter((phase) => phase.status === phase_entity_1.PhaseStatus.IN_PROGRESS).length;
-            phaseStats.totalBudget += projectPhases.reduce((sum, phase) => sum + (Number(phase.budget) || 0), 0);
-        });
+    async getStats(req) {
+        console.log("🔍 Consultant Dashboard - Fetching comprehensive stats...");
+        const startTime = Date.now();
+        const [projectStats, phaseStats, teamMembersCount, monthlyGrowth] = await Promise.all([
+            this.projectDashboardService.getDashboardProjectStats(),
+            this.projectDashboardService.getDashboardPhaseStats(),
+            this.projectDashboardService.getDashboardTeamMembersCount(),
+            this.projectDashboardService.getDashboardMonthlyGrowth()
+        ]);
         const stats = {
-            totalProjects,
-            activeProjects,
-            completedProjects,
-            totalValue,
-            monthlyGrowth: Math.round(monthlyGrowth * 100) / 100,
-            teamMembers,
-            phaseStats,
+            totalProjects: projectStats.total,
+            activeProjects: projectStats.active,
+            completedProjects: projectStats.completed,
+            totalValue: projectStats.totalValue,
+            monthlyGrowth: monthlyGrowth,
+            teamMembers: teamMembersCount,
+            phaseStats: {
+                totalPhases: phaseStats.total,
+                completedPhases: phaseStats.completed,
+                inProgressPhases: phaseStats.inProgress,
+                totalBudget: phaseStats.totalBudget,
+                completionRate: phaseStats.completionRate,
+            },
         };
-        console.log("📊 Admin Dashboard Stats:", stats);
+        const duration = Date.now() - startTime;
+        console.log(`📊 Consultant Dashboard Stats (${duration}ms):`, stats);
         return stats;
     }
     async getRecentActivities(limit = 10) {
@@ -134,8 +106,9 @@ __decorate([
 ], AdminDashboardController.prototype, "getMetrics", null);
 __decorate([
     (0, common_1.Get)("stats"),
+    __param(0, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], AdminDashboardController.prototype, "getStats", null);
 __decorate([
@@ -170,9 +143,10 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminDashboardController.prototype, "getTopProjects", null);
 exports.AdminDashboardController = AdminDashboardController = __decorate([
-    (0, common_1.Controller)("admin/dashboard"),
+    (0, common_1.Controller)("consultant/dashboard"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [projects_service_1.ProjectsService,
+        project_dashboard_service_1.ProjectDashboardService,
         users_service_1.UsersService,
         activities_service_1.ActivitiesService])
 ], AdminDashboardController);

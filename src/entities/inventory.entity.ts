@@ -63,6 +63,9 @@ export class Inventory {
   quantity_available: number;
 
   @Column({ type: "int", default: 0 })
+  quantity_used: number; // Total quantity used for the project
+
+  @Column({ type: "int", default: 0 })
   minimum_stock: number;
 
   @Column({ nullable: true })

@@ -14,10 +14,12 @@ export class DashboardController {
 
   /**
    * Get user-specific dashboard statistics
+   * Contractors and sub-contractors see stats for ALL projects
+   * Other users see stats only for projects they own or collaborate on
    */
   @Get("stats")
   async getStats(@Request() req: RequestWithUser) {
-    return this.dashboardService.getStats(req.user.id);
+    return this.dashboardService.getStats(req.user.id, req.user.role);
   }
 
   /**
@@ -63,7 +65,7 @@ export class DashboardController {
   @Get("summary")
   async getDashboardSummary(@Request() req: RequestWithUser) {
     const [stats, recentProjects] = await Promise.all([
-      this.dashboardService.getUserStatsForDashboard(req.user.id),
+      this.dashboardService.getUserStatsForDashboard(req.user.id, req.user.role),
       this.getMyProjects(req),
     ]);
 

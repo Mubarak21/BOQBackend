@@ -117,9 +117,24 @@ export class FinanceMetricsDto {
   projectsUnderBudget: number;
 }
 
+export class FinanceTotalsDto {
+  budget: {
+    total: number;
+    remaining: number;
+  };
+  spending: {
+    total: number;
+  };
+  savings: {
+    total: number;
+    percentage: number;
+  };
+}
+
 export class ProjectFinanceListResponseDto {
   projects: ProjectFinanceDto[];
   metrics: FinanceMetricsDto;
+  totals?: FinanceTotalsDto;
   total: number;
   page: number;
   limit: number;

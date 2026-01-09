@@ -11,10 +11,13 @@ import { UpdatePhaseDto } from "./dto/update-phase.dto";
 import { Phase } from "../entities/phase.entity";
 import { TasksService } from "../tasks/tasks.service";
 import { ProjectAccessRequest } from "../entities/project-access-request.entity";
-import { PhaseStatus } from "../entities/phase.entity";
 import { DashboardService } from "../dashboard/dashboard.service";
 import { BoqParserService } from "./boq-parser.service";
 import { Inventory } from "../entities/inventory.entity";
+import { InventoryUsage } from "../entities/inventory-usage.entity";
+import { ProjectDashboardService } from "./services/project-dashboard.service";
+import { ProjectConsultantService } from "./services/project-consultant.service";
+import { ProjectContractorService } from "./services/project-contractor.service";
 export interface ProcessBoqResult {
     message: string;
     totalAmount: number;
@@ -26,12 +29,16 @@ export declare class ProjectsService {
     private readonly phasesRepository;
     private readonly accessRequestRepository;
     private readonly inventoryRepository;
+    private readonly inventoryUsageRepository;
     private readonly usersService;
     private readonly activitiesService;
     private readonly tasksService;
     private readonly dashboardService;
     private readonly boqParserService;
-    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, accessRequestRepository: Repository<ProjectAccessRequest>, inventoryRepository: Repository<Inventory>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService, dashboardService: DashboardService, boqParserService: BoqParserService);
+    private readonly projectDashboardService;
+    private readonly projectConsultantService;
+    private readonly projectContractorService;
+    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, accessRequestRepository: Repository<ProjectAccessRequest>, inventoryRepository: Repository<Inventory>, inventoryUsageRepository: Repository<InventoryUsage>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService, dashboardService: DashboardService, boqParserService: BoqParserService, projectDashboardService: ProjectDashboardService, projectConsultantService: ProjectConsultantService, projectContractorService: ProjectContractorService);
     findAll(): Promise<Project[]>;
     findAllPaginated({ page, limit, search, status, }: {
         page?: number;
@@ -152,7 +159,8 @@ export declare class ProjectsService {
     }[]>;
     private hasProjectAccess;
     private getValidatedCollaborators;
-    private parseAmount;
+    private parseAmountValue;
+    private validateAndNormalizeProjectAmount;
     private parseBoqFile;
     private parseCsvLine;
     private detectHierarchicalStructure;
@@ -195,29 +203,20 @@ export declare class ProjectsService {
         };
     };
     getAllConsultantProjects(): Promise<any[]>;
+    getAllConsultantProjectsPaginated(page?: number, limit?: number, search?: string, status?: string): Promise<{
+        items: any[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }>;
     getConsultantProjectDetails(id: string): Promise<any>;
     getConsultantProjectPhases(projectId: string): Promise<any[]>;
     getConsultantProjectPhasesPaginated(projectId: string, { page, limit }: {
         page?: number;
         limit?: number;
     }): Promise<{
-        items: {
-            id: string;
-            title: string;
-            description: string;
-            start_date: Date;
-            end_date: Date;
-            progress: number;
-            status: PhaseStatus;
-            created_at: Date;
-            updated_at: Date;
-            subPhases: {
-                id: string;
-                title: string;
-                description: string;
-                isCompleted: boolean;
-            }[];
-        }[];
+        items: any[];
         total: number;
         page: number;
         limit: number;
@@ -247,9 +246,47 @@ export declare class ProjectsService {
         limit: number;
         totalPages: number;
     }>;
-    addProjectInventoryItem(projectId: string, createInventoryDto: any, userId: string, pictureFile?: Express.Multer.File): Promise<Inventory[]>;
+    addProjectInventoryItem(projectId: string, createInventoryDto: any, userId: string, pictureFile?: Express.Multer.File): Promise<Inventory>;
     updateProjectInventoryItem(projectId: string, inventoryId: string, updateData: any, userId: string): Promise<Inventory>;
     deleteProjectInventoryItem(projectId: string, inventoryId: string, userId: string): Promise<{
         message: string;
     }>;
+    recordInventoryUsage(projectId: string, inventoryId: string, quantity: number, userId: string, phaseId?: string, notes?: string): Promise<InventoryUsage>;
+    getInventoryUsageHistory(projectId: string, inventoryId: string, userId: string, options: {
+        page?: number;
+        limit?: number;
+    }): Promise<{
+        items: InventoryUsage[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }>;
+    getProjectInventoryUsage(projectId: string, userId: string, options: {
+        page?: number;
+        limit?: number;
+    }): Promise<{
+        items: InventoryUsage[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }>;
+    linkInventoryToProject(inventoryId: string, projectId: string, userId: string): Promise<Inventory>;
+    unlinkInventoryFromProject(inventoryId: string, projectId: string, userId: string): Promise<Inventory>;
+    getDashboardProjectStats(): Promise<{
+        total: number;
+        active: number;
+        completed: number;
+        totalValue: number;
+    }>;
+    getDashboardPhaseStats(): Promise<{
+        total: number;
+        completed: number;
+        inProgress: number;
+        totalBudget: number;
+        completionRate: number;
+    }>;
+    getDashboardTeamMembersCount(): Promise<number>;
+    getDashboardMonthlyGrowth(): Promise<number>;
 }

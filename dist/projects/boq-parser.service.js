@@ -9,7 +9,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BoqParserService = void 0;
 const common_1 = require("@nestjs/common");
 const ExcelJS = require("exceljs");
+const amount_utils_1 = require("../utils/amount.utils");
 let BoqParserService = class BoqParserService {
+    constructor() {
+        this.parseAmountValue = amount_utils_1.parseAmount;
+    }
     async parseBoqFile(file, progressCallback) {
         const fileExtension = file.originalname
             .toLowerCase()
@@ -30,7 +34,7 @@ let BoqParserService = class BoqParserService {
     }
     isValidPhaseRow(row, rowIndex) {
         const description = row.description?.toString().trim();
-        const quantity = this.parseAmount(row.quantity);
+        const quantity = this.parseAmountValue(row.quantity);
         const unit = row.unit?.toString().trim();
         const isValid = !!(description &&
             description.length > 0 &&
@@ -58,12 +62,36 @@ let BoqParserService = class BoqParserService {
         if (allLines.length < 2) {
             throw new common_1.BadRequestException('CSV file must have at least a header row and one data row');
         }
+        const headerLine = allLines[0];
+        const headers = this.parseCsvLine(headerLine);
+        console.log('[BOQ Parser] Detected CSV headers:', headers);
+        const descriptionCol = this.findColumnIndex(headers, ['description', 'desc', 'item description', 'work description']);
+        const quantityCol = this.findColumnIndex(headers, ['quantity', 'qty', 'qty.', 'amount', 'qnt']);
+        const unitCol = this.findColumnIndex(headers, ['unit', 'units', 'uom', 'unit of measure']);
+        const priceCol = this.findColumnIndex(headers, ['price', 'rate', 'unit price', 'unit rate', 'cost per unit']);
+        const totalAmountCol = this.findColumnIndex(headers, ['total price', 'total amount', 'total', 'amount', 'total cost', 'totalprice', 'totalamount']);
+        console.log('[BOQ Parser] CSV Column mapping:', {
+            description: descriptionCol,
+            quantity: quantityCol,
+            unit: unitCol,
+            price: priceCol,
+            totalAmount: totalAmountCol,
+        });
+        if (!descriptionCol) {
+            throw new common_1.BadRequestException('Could not find DESCRIPTION column in the file. Please ensure your file has a "Description" or "Item Description" column.');
+        }
+        if (!quantityCol) {
+            throw new common_1.BadRequestException('Could not find QUANTITY column in the file. Please ensure your file has a "Quantity" or "Qty" column.');
+        }
+        if (!unitCol) {
+            throw new common_1.BadRequestException('Could not find UNIT column in the file. Please ensure your file has a "Unit" or "Units" column.');
+        }
         const COLUMN_INDEXES = {
-            DESCRIPTION: 1,
-            QUANTITY: 2,
-            UNIT: 3,
-            PRICE: 4,
-            TOTAL_AMOUNT: 5,
+            DESCRIPTION: descriptionCol - 1,
+            QUANTITY: quantityCol - 1,
+            UNIT: unitCol - 1,
+            PRICE: priceCol ? priceCol - 1 : null,
+            TOTAL_AMOUNT: totalAmountCol ? totalAmountCol - 1 : null,
         };
         const items = [];
         const sections = new Set();
@@ -82,15 +110,17 @@ let BoqParserService = class BoqParserService {
                 });
             }
             const values = this.parseCsvLine(line);
-            if (values.length < COLUMN_INDEXES.TOTAL_AMOUNT + 1) {
-                skippedCount++;
-                continue;
-            }
+            const rawData = {};
+            headers.forEach((header, index) => {
+                if (header && index < values.length) {
+                    rawData[header] = (values[index] || '').toString().trim();
+                }
+            });
             const description = (values[COLUMN_INDEXES.DESCRIPTION] || '').toString().trim();
             const quantityStr = (values[COLUMN_INDEXES.QUANTITY] || '').toString().trim();
             const unit = (values[COLUMN_INDEXES.UNIT] || '').toString().trim();
-            const priceStr = (values[COLUMN_INDEXES.PRICE] || '').toString().trim();
-            const totalAmountStr = (values[COLUMN_INDEXES.TOTAL_AMOUNT] || '').toString().trim();
+            const priceStr = COLUMN_INDEXES.PRICE !== null ? (values[COLUMN_INDEXES.PRICE] || '').toString().trim() : '';
+            const totalAmountStr = COLUMN_INDEXES.TOTAL_AMOUNT !== null ? (values[COLUMN_INDEXES.TOTAL_AMOUNT] || '').toString().trim() : '';
             const normalizedRow = {
                 description: description || null,
                 quantity: quantityStr || null,
@@ -98,9 +128,9 @@ let BoqParserService = class BoqParserService {
                 price: priceStr || null,
                 totalAmount: totalAmountStr || null,
             };
-            const quantity = this.parseAmount(quantityStr);
-            const rate = this.parseAmount(priceStr);
-            let amount = this.parseAmount(totalAmountStr);
+            const quantity = this.parseAmountValue(quantityStr);
+            const rate = this.parseAmountValue(priceStr);
+            let amount = this.parseAmountValue(totalAmountStr);
             if (description && (!quantityStr || !unit || quantity === 0)) {
                 currentSection = description;
                 sections.add(description);
@@ -124,13 +154,7 @@ let BoqParserService = class BoqParserService {
                 amount,
                 section: currentSection || undefined,
                 rowIndex,
-                rawData: {
-                    description,
-                    quantity: quantityStr,
-                    unit,
-                    price: priceStr,
-                    totalAmount: totalAmountStr,
-                },
+                rawData: rawData,
             };
             items.push(item);
             console.log(`[BOQ Parser] ✅ Row ${rowIndex} added: "${description.substring(0, 40)}" | Qty: ${quantity} | Unit: ${unit}`);
@@ -155,6 +179,45 @@ let BoqParserService = class BoqParserService {
             },
         };
     }
+    findColumnIndex(headers, searchTerms) {
+        const normalizedHeaders = headers.map((h, idx) => ({
+            original: String(h || '').trim(),
+            normalized: String(h || '').trim().toLowerCase(),
+            index: idx
+        }));
+        for (const headerInfo of normalizedHeaders) {
+            const header = headerInfo.normalized;
+            for (const term of searchTerms) {
+                const termLower = term.toLowerCase();
+                if (header === termLower) {
+                    console.log(`[BOQ Parser] Found exact match for "${term}": Column ${headerInfo.index + 1} = "${headerInfo.original}"`);
+                    return headerInfo.index + 1;
+                }
+            }
+        }
+        for (const headerInfo of normalizedHeaders) {
+            const header = headerInfo.normalized;
+            if (header.includes('item no') || header.includes('item number') ||
+                header.includes('item#') || header === 'no' || header === 'number' ||
+                header.startsWith('item no') || header.startsWith('item number') ||
+                header.match(/^item\s*no\.?$/i) || header.match(/^item\s*number$/i)) {
+                continue;
+            }
+            for (const term of searchTerms) {
+                const termLower = term.toLowerCase();
+                if (header.includes(termLower)) {
+                    if (termLower === 'item' && (header.includes(' no') || header.includes(' number') || header.includes('#'))) {
+                        continue;
+                    }
+                    console.log(`[BOQ Parser] Found partial match for "${term}": Column ${headerInfo.index + 1} = "${headerInfo.original}"`);
+                    return headerInfo.index + 1;
+                }
+            }
+        }
+        console.log(`[BOQ Parser] No match found for search terms: ${searchTerms.join(', ')}`);
+        console.log(`[BOQ Parser] Available headers: ${normalizedHeaders.map(h => `"${h.original}"`).join(', ')}`);
+        return null;
+    }
     async parseExcelFile(file, progressCallback) {
         console.log('[BOQ Parser] Starting Excel parsing...');
         try {
@@ -167,12 +230,39 @@ let BoqParserService = class BoqParserService {
             if (worksheet.rowCount < 2) {
                 throw new common_1.BadRequestException('Excel file must have at least a header row and one data row');
             }
+            const headerRow = worksheet.getRow(1);
+            const headers = [];
+            headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                headers[colNumber - 1] = cell.value;
+            });
+            console.log('[BOQ Parser] Detected headers:', headers);
+            const descriptionCol = this.findColumnIndex(headers, ['description', 'desc', 'item description', 'work description']);
+            const quantityCol = this.findColumnIndex(headers, ['quantity', 'qty', 'qty.', 'amount', 'qnt']);
+            const unitCol = this.findColumnIndex(headers, ['unit', 'units', 'uom', 'unit of measure']);
+            const priceCol = this.findColumnIndex(headers, ['price', 'rate', 'unit price', 'unit rate', 'cost per unit']);
+            const totalAmountCol = this.findColumnIndex(headers, ['total price', 'total amount', 'total', 'amount', 'total cost', 'totalprice', 'totalamount']);
+            console.log('[BOQ Parser] Column mapping:', {
+                description: descriptionCol,
+                quantity: quantityCol,
+                unit: unitCol,
+                price: priceCol,
+                totalAmount: totalAmountCol,
+            });
+            if (!descriptionCol) {
+                throw new common_1.BadRequestException('Could not find DESCRIPTION column in the file. Please ensure your file has a "Description" or "Item Description" column.');
+            }
+            if (!quantityCol) {
+                throw new common_1.BadRequestException('Could not find QUANTITY column in the file. Please ensure your file has a "Quantity" or "Qty" column.');
+            }
+            if (!unitCol) {
+                throw new common_1.BadRequestException('Could not find UNIT column in the file. Please ensure your file has a "Unit" or "Units" column.');
+            }
             const COLUMN_INDEXES = {
-                DESCRIPTION: 2,
-                QUANTITY: 3,
-                UNIT: 4,
-                PRICE: 5,
-                TOTAL_AMOUNT: 6,
+                DESCRIPTION: descriptionCol,
+                QUANTITY: quantityCol,
+                UNIT: unitCol,
+                PRICE: priceCol || null,
+                TOTAL_AMOUNT: totalAmountCol || null,
             };
             const items = [];
             const sections = new Set();
@@ -189,11 +279,23 @@ let BoqParserService = class BoqParserService {
                     });
                 }
                 const row = worksheet.getRow(rowIndex);
+                const rawData = {};
+                headers.forEach((header, index) => {
+                    if (header) {
+                        const cell = row.getCell(index + 1);
+                        if (cell && cell.value !== null && cell.value !== undefined) {
+                            rawData[header] = String(cell.value).trim();
+                        }
+                        else {
+                            rawData[header] = '';
+                        }
+                    }
+                });
                 const descriptionCell = row.getCell(COLUMN_INDEXES.DESCRIPTION);
                 const quantityCell = row.getCell(COLUMN_INDEXES.QUANTITY);
                 const unitCell = row.getCell(COLUMN_INDEXES.UNIT);
-                const priceCell = row.getCell(COLUMN_INDEXES.PRICE);
-                const totalAmountCell = row.getCell(COLUMN_INDEXES.TOTAL_AMOUNT);
+                const priceCell = COLUMN_INDEXES.PRICE ? row.getCell(COLUMN_INDEXES.PRICE) : null;
+                const totalAmountCell = COLUMN_INDEXES.TOTAL_AMOUNT ? row.getCell(COLUMN_INDEXES.TOTAL_AMOUNT) : null;
                 const description = descriptionCell.value !== null && descriptionCell.value !== undefined
                     ? String(descriptionCell.value).trim()
                     : null;
@@ -203,10 +305,10 @@ let BoqParserService = class BoqParserService {
                 const unit = unitCell.value !== null && unitCell.value !== undefined
                     ? String(unitCell.value).trim()
                     : null;
-                const priceStr = priceCell.value !== null && priceCell.value !== undefined
+                const priceStr = priceCell && priceCell.value !== null && priceCell.value !== undefined
                     ? String(priceCell.value).trim()
                     : null;
-                const totalAmountStr = totalAmountCell.value !== null && totalAmountCell.value !== undefined
+                const totalAmountStr = totalAmountCell && totalAmountCell.value !== null && totalAmountCell.value !== undefined
                     ? String(totalAmountCell.value).trim()
                     : null;
                 const normalizedRow = {
@@ -220,9 +322,9 @@ let BoqParserService = class BoqParserService {
                     skippedCount++;
                     continue;
                 }
-                const quantity = this.parseAmount(quantityStr);
-                const rate = this.parseAmount(priceStr);
-                let amount = this.parseAmount(totalAmountStr);
+                const quantity = this.parseAmountValue(quantityStr);
+                const rate = this.parseAmountValue(priceStr);
+                let amount = this.parseAmountValue(totalAmountStr);
                 if (description && (!quantityStr || !unit || quantity === 0)) {
                     currentSection = description;
                     sections.add(description);
@@ -246,13 +348,7 @@ let BoqParserService = class BoqParserService {
                     amount,
                     section: currentSection || undefined,
                     rowIndex,
-                    rawData: {
-                        description,
-                        quantity: quantityStr,
-                        unit,
-                        price: priceStr,
-                        totalAmount: totalAmountStr,
-                    },
+                    rawData: rawData,
                 };
                 items.push(item);
                 console.log(`[BOQ Parser] ✅ Row ${rowIndex} added: "${description.substring(0, 40)}" | Qty: ${quantity} | Unit: ${unit}`);
@@ -310,18 +406,6 @@ let BoqParserService = class BoqParserService {
         }
         result.push(current);
         return result;
-    }
-    parseAmount(value) {
-        if (value === null || value === undefined || value === '') {
-            return 0;
-        }
-        const str = String(value).trim();
-        if (str === '' || str === '-' || str === '—' || str === 'N/A') {
-            return 0;
-        }
-        const cleaned = str.replace(/[^\d.-]/g, '').replace(/,/g, '');
-        const parsed = Number(cleaned);
-        return isNaN(parsed) ? 0 : parsed;
     }
 };
 exports.BoqParserService = BoqParserService;

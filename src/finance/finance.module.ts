@@ -12,6 +12,8 @@ import { FinancialReport } from "./entities/financial-report.entity";
 import { FinanceService } from "./services/finance.service";
 import { AnalyticsService } from "./services/analytics.service";
 import { FinanceReportGeneratorService } from "./services/finance-report-generator.service";
+import { TransactionService } from "./services/transaction.service";
+import { BudgetManagementService } from "./services/budget-management.service";
 import { FinanceController } from "./controllers/finance.controller";
 import { FinanceDashboardController } from "./controllers/finance-dashboard.controller";
 
@@ -30,7 +32,19 @@ import { FinanceDashboardController } from "./controllers/finance-dashboard.cont
     ]),
   ],
   controllers: [FinanceController, FinanceDashboardController],
-  providers: [FinanceService, AnalyticsService, FinanceReportGeneratorService],
-  exports: [FinanceService, AnalyticsService, FinanceReportGeneratorService],
+  providers: [
+    FinanceService,
+    AnalyticsService,
+    FinanceReportGeneratorService,
+    TransactionService,
+    BudgetManagementService,
+  ],
+  exports: [
+    FinanceService,
+    AnalyticsService,
+    FinanceReportGeneratorService,
+    TransactionService,
+    BudgetManagementService,
+  ],
 })
 export class FinanceModule {}

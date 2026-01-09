@@ -9,7 +9,7 @@ export declare class DashboardService {
     private tasksRepository;
     private readonly statsRepository;
     constructor(projectsRepository: Repository<Project>, usersRepository: Repository<User>, tasksRepository: Repository<Task>, statsRepository: Repository<Stats>);
-    getStats(userId: string): Promise<{
+    getStats(userId: string, userRole?: string): Promise<{
         totalProjects: number;
         activeProjects: number;
         completedProjects: number;
@@ -34,7 +34,7 @@ export declare class DashboardService {
         team_members: number;
         updated_at: any;
     }>;
-    getUserStatsForDashboard(userId: string): Promise<{
+    getUserStatsForDashboard(userId: string, userRole?: string): Promise<{
         total_projects: number;
         team_members: number;
         completion_rate: string;

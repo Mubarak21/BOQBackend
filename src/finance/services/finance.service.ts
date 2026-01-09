@@ -23,6 +23,9 @@ import {
   TransactionQueryDto,
 } from "../dto/transaction.dto";
 import { UpdateProjectBudgetDto } from "../dto/budget-update.dto";
+import { TransactionService } from "./transaction.service";
+import { BudgetManagementService } from "./budget-management.service";
+import { toNumber } from "../../utils/amount.utils";
 
 @Injectable()
 export class FinanceService {
@@ -38,12 +41,15 @@ export class FinanceService {
     @InjectRepository(ProjectSavings)
     private readonly savingsRepository: Repository<ProjectSavings>,
     @InjectRepository(BudgetAlert)
-    private readonly alertRepository: Repository<BudgetAlert>
+    private readonly alertRepository: Repository<BudgetAlert>,
+    private readonly transactionService: TransactionService,
+    private readonly budgetManagementService: BudgetManagementService
   ) {}
 
   async getProjectsFinance(
     query: ProjectFinanceQueryDto
   ): Promise<ProjectFinanceListResponseDto> {
+    console.log('📄 [Finance Page] Finance list page accessed - starting recalculation...');
     const {
       page = 1,
       limit = 10,
@@ -101,6 +107,23 @@ export class FinanceService {
 
     const [projects, total] = await queryBuilder.getManyAndCount();
 
+    console.log(`📄 [Finance Page] Recalculating ${projects.length} projects before display...`);
+
+    // Recalculate each project's spent amount before transforming to ensure accuracy
+    // This ensures the displayed data is always correct
+    await Promise.all(
+      projects.map(async (project) => {
+        try {
+          await this.budgetManagementService.updateProjectSpentAmount(project.id);
+        } catch (error) {
+          this.logger.warn(`Failed to recalculate project ${project.id}: ${error.message}`);
+          console.error(`❌ [Finance Page] Failed to recalculate project ${project.id}:`, error.message);
+        }
+      })
+    );
+
+    console.log(`✅ [Finance Page] Completed recalculation for ${projects.length} projects`);
+
     // Transform to DTOs
     const projectFinances = await Promise.all(
       projects.map(
@@ -123,6 +146,50 @@ export class FinanceService {
     // Calculate metrics
     const metrics = await this.calculateFinanceMetrics();
 
+    // Calculate totals using database aggregation (optimized)
+    // Use entity property names - TypeORM will map to database columns
+    const totalsQueryBuilder = this.projectRepository
+      .createQueryBuilder("project")
+      .select("SUM(COALESCE(project.totalBudget, 0))", "totalBudget")
+      .addSelect("SUM(COALESCE(project.spentAmount, 0))", "totalSpent");
+
+    // Apply same filters as paginated query
+    if (search) {
+      totalsQueryBuilder.andWhere(
+        "(project.title ILIKE :search OR project.description ILIKE :search)",
+        { search: `%${search}%` }
+      );
+    }
+    if (status) {
+      totalsQueryBuilder.andWhere("project.status = :status", { status });
+    }
+    if (dateFrom) {
+      totalsQueryBuilder.andWhere("project.created_at >= :dateFrom", { dateFrom });
+    }
+    if (dateTo) {
+      totalsQueryBuilder.andWhere("project.created_at <= :dateTo", { dateTo });
+    }
+    if (budgetMin !== undefined) {
+      totalsQueryBuilder.andWhere("project.totalBudget >= :budgetMin", { budgetMin });
+    }
+    if (budgetMax !== undefined) {
+      totalsQueryBuilder.andWhere("project.totalBudget <= :budgetMax", { budgetMax });
+    }
+
+    const totalsResult = await totalsQueryBuilder.getRawOne();
+    
+    console.log('📊 Totals Query Result:', totalsResult);
+    
+    const totalBudget = totalsResult?.totalBudget ? parseFloat(totalsResult.totalBudget) : 0;
+    const totalSpent = totalsResult?.totalSpent ? parseFloat(totalsResult.totalSpent) : 0;
+    
+    // Calculate remaining and validate (can be negative if over budget)
+    const totalRemaining = totalBudget - totalSpent;
+    // Clamp to reasonable range to prevent overflow
+    const normalizedRemaining = Math.max(Math.min(totalRemaining, 9999999999999.99), -9999999999999.99);
+    
+    console.log('💰 Calculated Totals:', { totalBudget, totalSpent, totalRemaining: normalizedRemaining });
+
     return {
       projects: filteredProjects,
       metrics,
@@ -130,10 +197,34 @@ export class FinanceService {
       page: pageNum,
       limit: limitNum,
       totalPages: Math.ceil(total / limitNum),
+      totals: {
+        budget: {
+          total: totalBudget,
+          remaining: normalizedRemaining,
+        },
+        spending: {
+          total: totalSpent,
+        },
+        savings: {
+          total: normalizedRemaining > 0 ? normalizedRemaining : 0,
+          percentage: totalBudget > 0 ? (normalizedRemaining / totalBudget) * 100 : 0,
+        },
+      },
     };
   }
 
-  async getProjectFinanceById(projectId: string): Promise<ProjectFinanceDto> {
+  async getProjectFinanceById(
+    projectId: string,
+    pagination?: { page: number; limit: number }
+  ): Promise<ProjectFinanceDto> {
+    console.log(`📄 [Finance Page] Project finance details accessed for project: ${projectId} - recalculating...`);
+    
+    // Recalculate this project's spent amount before returning data to ensure accuracy
+    const updatedSpentAmount = await this.budgetManagementService.updateProjectSpentAmount(projectId);
+    
+    console.log(`✅ [Finance Page] Completed recalculation for project ${projectId}`);
+
+    // Fetch the project with fresh data after recalculation
     const project = await this.projectRepository.findOne({
       where: { id: projectId },
       relations: ["owner", "collaborators"],
@@ -143,7 +234,12 @@ export class FinanceService {
       throw new NotFoundException("Project not found");
     }
 
-    return await this.transformToProjectFinanceDto(project);
+    // Ensure we use the freshly calculated spent amount
+    if (updatedSpentAmount !== undefined) {
+      project.spentAmount = updatedSpentAmount;
+    }
+
+    return await this.transformToProjectFinanceDto(project, pagination);
   }
 
   async getFinanceMetrics(): Promise<FinanceMetricsDto> {
@@ -151,118 +247,15 @@ export class FinanceService {
   }
 
   async getTransactions(query: TransactionQueryDto) {
-    const { projectId, category, dateFrom, dateTo, type, page = 1, limit = 10 } = query;
-
-    const queryBuilder = this.transactionRepository
-      .createQueryBuilder("transaction")
-      .leftJoinAndSelect("transaction.project", "project")
-      .leftJoinAndSelect("transaction.category", "budgetCategory")
-      .leftJoinAndSelect("transaction.creator", "creator");
-
-    if (projectId) {
-      queryBuilder.andWhere("transaction.projectId = :projectId", {
-        projectId,
-      });
-    }
-
-    if (category) {
-      queryBuilder.andWhere("budgetCategory.name ILIKE :category", {
-        category: `%${category}%`,
-      });
-    }
-
-    if (dateFrom) {
-      queryBuilder.andWhere("transaction.transactionDate >= :dateFrom", {
-        dateFrom,
-      });
-    }
-
-    if (dateTo) {
-      queryBuilder.andWhere("transaction.transactionDate <= :dateTo", {
-        dateTo,
-      });
-    }
-
-    if (type) {
-      queryBuilder.andWhere("transaction.type = :type", { type });
-    }
-
-    const pageNum = Number(page) || 1;
-    const limitNum = Number(limit) || 10;
-    const offset = (pageNum - 1) * limitNum;
-    queryBuilder.skip(offset).take(limitNum);
-
-    const [transactions, total] = await queryBuilder.getManyAndCount();
-
-    return {
-      transactions,
-      total,
-      page: pageNum,
-      limit: limitNum,
-      totalPages: Math.ceil(total / limitNum),
-    };
+    return this.transactionService.getTransactions(query);
   }
 
   async createTransaction(
     createTransactionDto: CreateTransactionDto,
-    userId: string
+    userId: string,
+    invoiceFile?: Express.Multer.File
   ) {
-    const {
-      projectId,
-      categoryId,
-      amount,
-      type,
-      description,
-      vendor,
-      transactionDate,
-      receiptUrl,
-    } = createTransactionDto;
-
-    // Verify project exists
-    const project = await this.projectRepository.findOne({
-      where: { id: projectId },
-    });
-    if (!project) {
-      throw new NotFoundException("Project not found");
-    }
-
-    // Verify category exists
-    const category = await this.budgetCategoryRepository.findOne({
-      where: { id: categoryId },
-    });
-    if (!category) {
-      throw new NotFoundException("Budget category not found");
-    }
-
-    // Generate transaction number
-    const transactionNumber = await this.generateTransactionNumber();
-
-    // Create transaction
-    const transaction = this.transactionRepository.create({
-      projectId,
-      categoryId,
-      transactionNumber,
-      amount,
-      type,
-      description,
-      vendor,
-      transactionDate: new Date(transactionDate),
-      receiptUrl,
-      createdBy: userId,
-    });
-
-    const savedTransaction = await this.transactionRepository.save(transaction);
-
-    // Update category spent amount
-    await this.updateCategorySpentAmount(categoryId);
-
-    // Update project spent amount
-    await this.updateProjectSpentAmount(projectId);
-
-    // Check for budget alerts
-    await this.checkAndCreateBudgetAlerts(projectId);
-
-    return savedTransaction;
+    return this.transactionService.createTransaction(createTransactionDto, userId, invoiceFile);
   }
 
   async updateTransaction(
@@ -270,203 +263,76 @@ export class FinanceService {
     updateTransactionDto: UpdateTransactionDto,
     userId: string
   ) {
-    const transaction = await this.transactionRepository.findOne({
-      where: { id: transactionId },
-    });
-
-    if (!transaction) {
-      throw new NotFoundException("Transaction not found");
-    }
-
-    const oldProjectId = transaction.projectId;
-    const oldCategoryId = transaction.categoryId;
-    const oldAmount = transaction.amount;
-
-    // If project is being changed, verify new project exists
-    if (
-      updateTransactionDto.projectId &&
-      updateTransactionDto.projectId !== transaction.projectId
-    ) {
-      const project = await this.projectRepository.findOne({
-        where: { id: updateTransactionDto.projectId },
-      });
-      if (!project) {
-        throw new NotFoundException("Project not found");
-      }
-    }
-
-    // If category is being changed, verify new category exists
-    if (
-      updateTransactionDto.categoryId &&
-      updateTransactionDto.categoryId !== transaction.categoryId
-    ) {
-      const category = await this.budgetCategoryRepository.findOne({
-        where: { id: updateTransactionDto.categoryId },
-      });
-      if (!category) {
-        throw new NotFoundException("Budget category not found");
-      }
-    }
-
-    // Update transaction fields
-    if (updateTransactionDto.projectId !== undefined) {
-      transaction.projectId = updateTransactionDto.projectId;
-    }
-    if (updateTransactionDto.categoryId !== undefined) {
-      transaction.categoryId = updateTransactionDto.categoryId;
-    }
-    if (updateTransactionDto.amount !== undefined) {
-      transaction.amount = updateTransactionDto.amount;
-    }
-    if (updateTransactionDto.type !== undefined) {
-      transaction.type = updateTransactionDto.type;
-    }
-    if (updateTransactionDto.description !== undefined) {
-      transaction.description = updateTransactionDto.description;
-    }
-    if (updateTransactionDto.vendor !== undefined) {
-      transaction.vendor = updateTransactionDto.vendor;
-    }
-    if (updateTransactionDto.transactionDate !== undefined) {
-      transaction.transactionDate = new Date(
-        updateTransactionDto.transactionDate
-      );
-    }
-    if (updateTransactionDto.invoiceNumber !== undefined) {
-      transaction.invoiceNumber = updateTransactionDto.invoiceNumber;
-    }
-    if (updateTransactionDto.receiptUrl !== undefined) {
-      transaction.receiptUrl = updateTransactionDto.receiptUrl;
-    }
-    if (updateTransactionDto.notes !== undefined) {
-      transaction.notes = updateTransactionDto.notes;
-    }
-
-    const updatedTransaction =
-      await this.transactionRepository.save(transaction);
-
-    // Update spent amounts for old and new categories/projects if changed
-    if (oldCategoryId) {
-      await this.updateCategorySpentAmount(oldCategoryId);
-    }
-    if (oldProjectId) {
-      await this.updateProjectSpentAmount(oldProjectId);
-    }
-
-    if (transaction.categoryId && transaction.categoryId !== oldCategoryId) {
-      await this.updateCategorySpentAmount(transaction.categoryId);
-    }
-    if (transaction.projectId && transaction.projectId !== oldProjectId) {
-      await this.updateProjectSpentAmount(transaction.projectId);
-    } else if (
-      transaction.projectId === oldProjectId &&
-      transaction.amount !== oldAmount
-    ) {
-      // Amount changed but project didn't, still need to update
-      await this.updateProjectSpentAmount(transaction.projectId);
-    }
-
-    // Check for budget alerts
-    if (transaction.projectId) {
-      await this.checkAndCreateBudgetAlerts(transaction.projectId);
-    }
-
-    return updatedTransaction;
+    return this.transactionService.updateTransaction(transactionId, updateTransactionDto, userId);
   }
 
   async deleteTransaction(transactionId: string) {
-    const transaction = await this.transactionRepository.findOne({
-      where: { id: transactionId },
-    });
-
-    if (!transaction) {
-      throw new NotFoundException("Transaction not found");
-    }
-
-    const projectId = transaction.projectId;
-    const categoryId = transaction.categoryId;
-
-    // Delete the transaction
-    await this.transactionRepository.remove(transaction);
-
-    // Update spent amounts
-    if (categoryId) {
-      await this.updateCategorySpentAmount(categoryId);
-    }
-    if (projectId) {
-      await this.updateProjectSpentAmount(projectId);
-      await this.checkAndCreateBudgetAlerts(projectId);
-    }
-
-    return { success: true, message: "Transaction deleted successfully" };
+    return this.transactionService.deleteTransaction(transactionId);
   }
 
   async updateProjectBudget(
     projectId: string,
     updateBudgetDto: UpdateProjectBudgetDto
   ) {
-    const { totalBudget, categories } = updateBudgetDto;
-
-    // Verify project exists
-    const project = await this.projectRepository.findOne({
-      where: { id: projectId },
-    });
-    if (!project) {
-      throw new NotFoundException("Project not found");
-    }
-
-    // Update project total budget
-    project.totalBudget = totalBudget;
-    project.budgetLastUpdated = new Date();
-    await this.projectRepository.save(project);
-
-    // Update category budgets
-    for (const categoryUpdate of categories) {
-      const category = await this.budgetCategoryRepository.findOne({
-        where: { id: categoryUpdate.categoryId },
-      });
-
-      if (category) {
-        category.budgetedAmount = categoryUpdate.budgetedAmount;
-        await this.budgetCategoryRepository.save(category);
-      }
-    }
-
-    // Recalculate allocated budget
-    await this.updateProjectAllocatedBudget(projectId);
-
-    // Update financial status
-    await this.updateProjectFinancialStatus(projectId);
-
-    return { success: true };
+    return this.budgetManagementService.updateProjectBudget(projectId, updateBudgetDto);
   }
 
   private async transformToProjectFinanceDto(
-    project: Project
+    project: Project,
+    pagination?: { page: number; limit: number }
   ): Promise<ProjectFinanceDto> {
     // Get budget categories
     const categories = await this.budgetCategoryRepository.find({
       where: { projectId: project.id, isActive: true },
     });
 
-    // Get transactions
-    const transactions = await this.transactionRepository.find({
-      where: { projectId: project.id },
-      relations: ["category", "creator"],
-      order: { transactionDate: "DESC" },
-      take: 50, // Limit to recent transactions
-    });
+    // Get transactions with pagination if provided
+    let transactions;
+    let totalTransactions = 0;
+    if (pagination) {
+      const page = Number(pagination.page) || 1;
+      const limit = Number(pagination.limit) || 10;
+      const skip = (page - 1) * limit;
+      
+      const [transactionsList, total] = await this.transactionRepository.findAndCount({
+        where: { projectId: project.id },
+        relations: ["category", "creator"],
+        order: { transactionDate: "DESC" },
+        skip,
+        take: limit,
+      });
+      transactions = transactionsList;
+      totalTransactions = total;
+    } else {
+      // Default: get recent 50 transactions
+      transactions = await this.transactionRepository.find({
+        where: { projectId: project.id },
+        relations: ["category", "creator"],
+        order: { transactionDate: "DESC" },
+        take: 50,
+      });
+      totalTransactions = transactions.length;
+    }
 
     // Get savings
     const savings = await this.savingsRepository.find({
       where: { projectId: project.id },
     });
 
-    // Calculate metrics
+    // Calculate metrics - ensure all values are numbers
+    const totalBudget = toNumber(project.totalBudget);
+    const spentAmount = toNumber(project.spentAmount);
+    const allocatedBudget = toNumber(project.allocatedBudget);
+    
+    // Calculate remaining budget and validate
+    const remaining = totalBudget - spentAmount;
+    // Clamp to reasonable range (can be negative if over budget)
+    const normalizedRemaining = Math.max(remaining, -9999999999999.99); // Allow negative for over-budget
+    
     const budgetDto = {
-      total: project.totalBudget,
-      allocated: project.allocatedBudget,
-      remaining: project.totalBudget - project.spentAmount,
+      total: totalBudget,
+      allocated: allocatedBudget,
+      remaining: normalizedRemaining,
       categories: categories.map((cat) => ({
         id: cat.id,
         projectId: cat.projectId,
@@ -553,7 +419,7 @@ export class FinanceService {
         : "",
     };
 
-    return {
+    const result: any = {
       id: project.id,
       projectId: project.id,
       projectName: project.title,
@@ -566,6 +432,18 @@ export class FinanceService {
         ? this.formatDateToISOString(project.budgetLastUpdated)
         : this.formatDateToISOString(project.updated_at),
     };
+
+    // Add pagination metadata if pagination was used
+    if (pagination) {
+      result.transactionsPagination = {
+        page: Number(pagination.page) || 1,
+        limit: Number(pagination.limit) || 10,
+        total: totalTransactions,
+        totalPages: Math.ceil(totalTransactions / (Number(pagination.limit) || 10)),
+      };
+    }
+
+    return result;
   }
 
   /**
@@ -594,44 +472,54 @@ export class FinanceService {
   }
 
   private async calculateFinanceMetrics(): Promise<FinanceMetricsDto> {
-    const projects = await this.projectRepository.find();
+    try {
+      // Use database aggregations instead of loading all projects
+      const result = await this.projectRepository
+        .createQueryBuilder("project")
+        .select("COUNT(project.id)", "totalProjects")
+        .addSelect("SUM(COALESCE(project.total_budget, 0))", "totalBudget")
+        .addSelect("SUM(COALESCE(project.spent_amount, 0))", "totalSpent")
+        .addSelect("SUM(COALESCE(project.estimated_savings, 0))", "totalSaved")
+        .addSelect(
+          `SUM(CASE WHEN COALESCE(project.spent_amount, 0) > COALESCE(project.total_budget, 0) THEN 1 ELSE 0 END)`,
+          "projectsOverBudget"
+        )
+        .addSelect(
+          `SUM(CASE WHEN COALESCE(project.spent_amount, 0) < COALESCE(project.total_budget, 0) AND COALESCE(project.spent_amount, 0) > 0 THEN 1 ELSE 0 END)`,
+          "projectsUnderBudget"
+        )
+        .getRawOne();
 
-    const totalProjects = projects.length;
-    const totalBudget = projects.reduce((sum, p) => {
-      const budget = p.totalBudget != null ? Number(p.totalBudget) : 0;
-      return sum + (isNaN(budget) ? 0 : budget);
-    }, 0);
-    const totalSpent = projects.reduce((sum, p) => {
-      const spent = p.spentAmount != null ? Number(p.spentAmount) : 0;
-      return sum + (isNaN(spent) ? 0 : spent);
-    }, 0);
-    const totalSaved = projects.reduce((sum, p) => {
-      const saved = p.estimatedSavings != null ? Number(p.estimatedSavings) : 0;
-      return sum + (isNaN(saved) ? 0 : saved);
-    }, 0);
-    const avgSavingsPercentage =
-      totalBudget > 0 ? (totalSaved / totalBudget) * 100 : 0;
+      const totalProjects = parseInt(result?.totalProjects) || 0;
+      const totalBudget = parseFloat(result?.totalBudget) || 0;
+      const totalSpent = parseFloat(result?.totalSpent) || 0;
+      const totalSaved = parseFloat(result?.totalSaved) || 0;
+      const avgSavingsPercentage = totalBudget > 0 ? (totalSaved / totalBudget) * 100 : 0;
+      const projectsOverBudget = parseInt(result?.projectsOverBudget) || 0;
+      const projectsUnderBudget = parseInt(result?.projectsUnderBudget) || 0;
 
-    const projectsOverBudget = projects.filter((p) => {
-      const spent = p.spentAmount != null ? Number(p.spentAmount) : 0;
-      const budget = p.totalBudget != null ? Number(p.totalBudget) : 0;
-      return !isNaN(spent) && !isNaN(budget) && spent > budget;
-    }).length;
-    const projectsUnderBudget = projects.filter((p) => {
-      const spent = p.spentAmount != null ? Number(p.spentAmount) : 0;
-      const budget = p.totalBudget != null ? Number(p.totalBudget) : 0;
-      return !isNaN(spent) && !isNaN(budget) && spent < budget;
-    }).length;
-
-    return {
-      totalProjects,
-      totalBudget,
-      totalSpent,
-      totalSaved,
-      avgSavingsPercentage,
-      projectsOverBudget,
-      projectsUnderBudget,
-    };
+      return {
+        totalProjects,
+        totalBudget,
+        totalSpent,
+        totalSaved,
+        avgSavingsPercentage,
+        projectsOverBudget,
+        projectsUnderBudget,
+      };
+    } catch (error) {
+      console.error("Error in calculateFinanceMetrics:", error);
+      // Return safe defaults
+      return {
+        totalProjects: 0,
+        totalBudget: 0,
+        totalSpent: 0,
+        totalSaved: 0,
+        avgSavingsPercentage: 0,
+        projectsOverBudget: 0,
+        projectsUnderBudget: 0,
+      };
+    }
   }
 
   private async calculateMonthlySpending(projectId: string) {
@@ -648,151 +536,16 @@ export class FinanceService {
     ];
   }
 
-  private async generateTransactionNumber(): Promise<string> {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
+  // Budget management methods moved to BudgetManagementService
 
-    const prefix = `TXN${year}${month}${day}`;
-
-    // Find the last transaction number for today
-    const lastTransaction = await this.transactionRepository
-      .createQueryBuilder("transaction")
-      .where("transaction.transactionNumber LIKE :prefix", {
-        prefix: `${prefix}%`,
-      })
-      .orderBy("transaction.transactionNumber", "DESC")
-      .getOne();
-
-    let sequence = 1;
-    if (lastTransaction) {
-      const lastSequence = parseInt(
-        lastTransaction.transactionNumber.substr(-4)
-      );
-      sequence = lastSequence + 1;
-    }
-
-    return `${prefix}${String(sequence).padStart(4, "0")}`;
+  /**
+   * Recalculate all projects' spent amounts from transactions
+   * This fixes any incorrect calculations
+   */
+  async recalculateAllProjectsSpentAmounts() {
+    return await this.budgetManagementService.recalculateAllProjectsSpentAmounts();
   }
-
-  private async updateCategorySpentAmount(categoryId: string) {
-    const transactions = await this.transactionRepository.find({
-      where: { categoryId },
-    });
-
-    const totalSpent = transactions.reduce((sum, t) => {
-      return t.type === "expense" ? sum + t.amount : sum - t.amount;
-    }, 0);
-
-    await this.budgetCategoryRepository.update(categoryId, {
-      spentAmount: totalSpent,
-    });
-  }
-
-  private async updateProjectSpentAmount(projectId: string) {
-    const categories = await this.budgetCategoryRepository.find({
-      where: { projectId },
-    });
-
-    const totalSpent = categories.reduce((sum, c) => sum + c.spentAmount, 0);
-
-    await this.projectRepository.update(projectId, {
-      spentAmount: totalSpent,
-    });
-  }
-
-  private async updateProjectAllocatedBudget(projectId: string) {
-    const categories = await this.budgetCategoryRepository.find({
-      where: { projectId, isActive: true },
-    });
-
-    const totalAllocated = categories.reduce(
-      (sum, c) => sum + c.budgetedAmount,
-      0
-    );
-
-    await this.projectRepository.update(projectId, {
-      allocatedBudget: totalAllocated,
-    });
-  }
-
-  private async updateProjectFinancialStatus(projectId: string) {
-    const project = await this.projectRepository.findOne({
-      where: { id: projectId },
-    });
-    if (!project) return;
-
-    let financialStatus: "on_track" | "warning" | "over_budget" | "excellent";
-
-    if (project.spentAmount > project.totalBudget) {
-      financialStatus = "over_budget";
-    } else if (project.spentAmount > project.totalBudget * 0.9) {
-      financialStatus = "warning";
-    } else if (project.estimatedSavings > project.totalBudget * 0.1) {
-      financialStatus = "excellent";
-    } else {
-      financialStatus = "on_track";
-    }
-
-    await this.projectRepository.update(projectId, {
-      financialStatus,
-    });
-  }
-
-  private async checkAndCreateBudgetAlerts(projectId: string) {
-    const project = await this.projectRepository.findOne({
-      where: { id: projectId },
-    });
-    if (!project) return;
-
-    const utilizationPercentage =
-      project.totalBudget > 0
-        ? (project.spentAmount / project.totalBudget) * 100
-        : 0;
-
-    // Check for different alert thresholds
-    if (utilizationPercentage >= 95) {
-      await this.createBudgetAlert(
-        projectId,
-        AlertType.CRITICAL,
-        95,
-        utilizationPercentage
-      );
-    } else if (utilizationPercentage >= 85) {
-      await this.createBudgetAlert(
-        projectId,
-        AlertType.WARNING,
-        85,
-        utilizationPercentage
-      );
-    }
-
-    if (project.spentAmount > project.totalBudget) {
-      await this.createBudgetAlert(
-        projectId,
-        AlertType.OVER_BUDGET,
-        100,
-        utilizationPercentage
-      );
-    }
-  }
-
-  private async createBudgetAlert(
-    projectId: string,
-    alertType: AlertType,
-    thresholdPercentage: number,
-    currentPercentage: number
-  ) {
-    const alert = this.alertRepository.create({
-      projectId,
-      alertType,
-      thresholdPercentage,
-      currentPercentage,
-    });
-
-    await this.alertRepository.save(alert);
-  }
+  // Transaction methods moved to TransactionService
 
   // Admin Finance Methods
   async getAdminFinancialMetrics() {

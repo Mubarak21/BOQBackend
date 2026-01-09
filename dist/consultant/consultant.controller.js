@@ -22,8 +22,8 @@ let ConsultantController = class ConsultantController {
         this.projectsService = projectsService;
         this.commentsService = commentsService;
     }
-    async getAllProjects(req) {
-        return this.projectsService.getAllConsultantProjects();
+    async getAllProjects(req, page = 1, limit = 10, search, status) {
+        return this.projectsService.getAllConsultantProjectsPaginated(page, limit, search, status);
     }
     async getProjectDetails(id, req) {
         return this.projectsService.getConsultantProjectDetails(id);
@@ -60,8 +60,12 @@ exports.ConsultantController = ConsultantController;
 __decorate([
     (0, common_1.Get)("projects"),
     __param(0, (0, common_1.Request)()),
+    __param(1, (0, common_1.Query)("page")),
+    __param(2, (0, common_1.Query)("limit")),
+    __param(3, (0, common_1.Query)("search")),
+    __param(4, (0, common_1.Query)("status")),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, Number, Number, String, String]),
     __metadata("design:returntype", Promise)
 ], ConsultantController.prototype, "getAllProjects", null);
 __decorate([

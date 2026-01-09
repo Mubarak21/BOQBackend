@@ -297,6 +297,54 @@ export class ActivitiesService {
     );
   }
 
+  async logInventoryAdded(
+    user: User,
+    project: Project,
+    inventoryName: string,
+    metadata?: any
+  ): Promise<Activity> {
+    return this.createActivity(
+      ActivityType.INVENTORY_ADDED,
+      `${user.display_name} added inventory item "${inventoryName}" to ${project.title}`,
+      user,
+      project,
+      null,
+      metadata
+    );
+  }
+
+  async logInventoryUpdated(
+    user: User,
+    project: Project,
+    inventoryName: string,
+    metadata?: any
+  ): Promise<Activity> {
+    return this.createActivity(
+      ActivityType.INVENTORY_UPDATED,
+      `${user.display_name} updated inventory item "${inventoryName}" in ${project.title}`,
+      user,
+      project,
+      null,
+      metadata
+    );
+  }
+
+  async logInventoryDeleted(
+    user: User,
+    project: Project,
+    inventoryName: string,
+    metadata?: any
+  ): Promise<Activity> {
+    return this.createActivity(
+      ActivityType.INVENTORY_DELETED,
+      `${user.display_name} removed inventory item "${inventoryName}" from ${project.title}`,
+      user,
+      project,
+      null,
+      metadata
+    );
+  }
+
   async getPhaseActivities(
     phaseId: string,
     limit: number = 10,

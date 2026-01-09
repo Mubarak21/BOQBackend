@@ -57,7 +57,7 @@ let SubPhasesService = class SubPhasesService {
         const userWithRole = await this.usersService.findOne(user.id);
         const isSubContractor = userWithRole?.role === user_entity_1.UserRole.SUB_CONTRACTOR;
         const isContractor = userWithRole?.role === user_entity_1.UserRole.CONTRACTOR;
-        const isAdmin = userWithRole?.role === user_entity_1.UserRole.ADMIN;
+        const isAdmin = userWithRole?.role === user_entity_1.UserRole.CONSULTANT;
         const isConsultant = userWithRole?.role === user_entity_1.UserRole.CONSULTANT;
         const isOwner = phase.project?.owner_id === user.id;
         const isCollaborator = phase.project?.collaborators?.some((c) => c.id === user.id);
@@ -108,7 +108,7 @@ let SubPhasesService = class SubPhasesService {
         const userWithRole = await this.usersService.findOne(user.id);
         const isSubContractor = userWithRole?.role === user_entity_1.UserRole.SUB_CONTRACTOR;
         const isContractor = userWithRole?.role === user_entity_1.UserRole.CONTRACTOR;
-        const isAdmin = userWithRole?.role === user_entity_1.UserRole.ADMIN;
+        const isAdmin = userWithRole?.role === user_entity_1.UserRole.CONSULTANT;
         const isConsultant = userWithRole?.role === user_entity_1.UserRole.CONSULTANT;
         const isOwner = subPhase.phase?.project?.owner_id === user.id;
         const isCollaborator = subPhase.phase?.project?.collaborators?.some((c) => c.id === user.id);

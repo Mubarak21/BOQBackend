@@ -2,7 +2,7 @@ import { Controller, Get, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
 import { FinanceService } from "../../../finance/services/finance.service";
 
-@Controller("admin/finance")
+@Controller("consultant/finance")
 @UseGuards(JwtAuthGuard)
 export class AdminFinanceController {
   constructor(private readonly financeService: FinanceService) {}

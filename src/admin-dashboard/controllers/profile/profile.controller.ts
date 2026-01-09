@@ -13,7 +13,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
 import { AdminService } from "../../services/admin.service";
 
-@Controller("admin/profile")
+@Controller("consultant/profile")
 @UseGuards(JwtAuthGuard)
 export class AdminProfileController {
   constructor(private readonly adminService: AdminService) {}

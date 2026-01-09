@@ -2,7 +2,7 @@ import { Controller, Get, Param, Query, UseGuards } from "@nestjs/common";
 import { ActivitiesService } from "../../../activities/activities.service";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
 
-@Controller("admin/activities")
+@Controller("consultant/activities")
 @UseGuards(JwtAuthGuard)
 export class AdminActivitiesController {
   constructor(private readonly activitiesService: ActivitiesService) {}

@@ -91,7 +91,6 @@ let AuthService = class AuthService {
                 throw new common_1.UnauthorizedException("Token has been invalidated");
             }
             const payload = this.jwtService.verify(token);
-            console.log("JWT payload:", payload);
             if (payload.exp && payload.exp * 1000 < Date.now()) {
                 throw new common_1.UnauthorizedException("Token has expired");
             }
@@ -105,7 +104,6 @@ let AuthService = class AuthService {
             });
             if (admin) {
                 admin.role = payload.role;
-                console.log("Admin object with role:", admin);
                 return admin;
             }
             throw new common_1.UnauthorizedException("User or admin not found");

@@ -14,6 +14,8 @@ import {
   Req,
   Query,
 } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ProjectsService, ProcessBoqResult } from "./projects.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
@@ -32,6 +34,7 @@ import { UserRole } from "../entities/user.entity";
 import { BoqParserService } from "./boq-parser.service";
 import { BoqProgressGateway } from "./boq-progress.gateway";
 import { FileValidationPipe } from "./pipes/file-validation.pipe";
+import { CollaborationRequest, CollaborationRequestStatus } from "../entities/collaboration-request.entity";
 
 @Controller("projects")
 @UseGuards(JwtAuthGuard)
@@ -43,7 +46,9 @@ export class ProjectsController {
     private readonly penaltiesService: PenaltiesService,
     private readonly evidenceService: EvidenceService,
     private readonly boqParserService: BoqParserService,
-    private readonly boqProgressGateway: BoqProgressGateway
+    private readonly boqProgressGateway: BoqProgressGateway,
+    @InjectRepository(CollaborationRequest)
+    private readonly collaborationRequestRepository: Repository<CollaborationRequest>
   ) {}
 
   @Post()
@@ -70,9 +75,14 @@ export class ProjectsController {
       limit
     );
 
-    // Use paginated methods
+    // Contractors and sub-contractors can see ALL projects
+    // Other users only see projects they're part of (owner or collaborator)
+    const isContractor = req.user.role?.toLowerCase() === 'contractor';
+    const isSubContractor = req.user.role?.toLowerCase() === 'sub_contractor';
+    
     let result;
-    if (req.user.role === UserRole.CONTRACTOR || req.user.role === UserRole.SUB_CONTRACTOR) {
+    if (isContractor || isSubContractor) {
+      // Contractors can see all projects
       result = await this.projectsService.findAllPaginated({
         page,
         limit,
@@ -80,6 +90,7 @@ export class ProjectsController {
         status,
       });
     } else {
+      // Regular users only see projects they're part of
       result = await this.projectsService.findUserProjectsPaginated(
         req.user.id,
         {
@@ -112,6 +123,15 @@ export class ProjectsController {
     };
   }
 
+  @Get("available-assignees")
+  async getAvailableAssignees(@Request() req) {
+    const projectId = req.query.projectId;
+    if (!projectId) {
+      throw new BadRequestException("projectId query parameter is required");
+    }
+    return this.projectsService.getAvailableAssignees(projectId);
+  }
+
   @Get(":id")
   async findOne(@Param("id") id: string, @Req() req: RequestWithUser) {
     const project = await this.projectsService.findOne(id, req.user.id);
@@ -130,6 +150,58 @@ export class ProjectsController {
   @Delete(":id")
   remove(@Param("id") id: string, @Request() req) {
     return this.projectsService.remove(id, req.user.id);
+  }
+
+  @Post(":id/collaborators/invite")
+  async inviteCollaborator(
+    @Param("id") id: string,
+    @Body() body: { userId: string },
+    @Request() req
+  ) {
+    const project = await this.projectsService.findOne(id, req.user.id);
+    const user = await this.usersService.findOne(req.user.id);
+    const isConsultant = user?.role === "consultant";
+
+    // Check if user has permission (owner or consultant)
+    if (project.owner_id !== req.user.id && !isConsultant) {
+      throw new BadRequestException(
+        "Only the project owner or consultant can invite collaborators"
+      );
+    }
+
+    // Check if user is already a collaborator
+    if (project.collaborators?.some((c) => c.id === body.userId)) {
+      throw new BadRequestException("User is already a collaborator");
+    }
+
+    // Check if user is the owner
+    if (project.owner_id === body.userId) {
+      throw new BadRequestException("Owner cannot be invited as collaborator");
+    }
+
+    // Check if invitation already exists
+    const existingRequest = await this.collaborationRequestRepository.findOne({
+      where: {
+        projectId: id,
+        userId: body.userId,
+        status: CollaborationRequestStatus.PENDING,
+      },
+    });
+
+    if (existingRequest) {
+      throw new BadRequestException("Invitation already sent to this user");
+    }
+
+    // Create collaboration request
+    const collaborationRequest = this.collaborationRequestRepository.create({
+      projectId: id,
+      userId: body.userId,
+      inviterId: req.user.id,
+      status: CollaborationRequestStatus.PENDING,
+    });
+
+    await this.collaborationRequestRepository.save(collaborationRequest);
+    return { message: "Invitation sent successfully" };
   }
 
   @Post(":id/collaborators/:userId")
@@ -291,15 +363,6 @@ export class ProjectsController {
     });
   }
 
-  @Get("available-assignees")
-  async getAvailableAssignees(@Request() req) {
-    const projectId = req.query.projectId;
-    if (!projectId) {
-      throw new BadRequestException("projectId query parameter is required");
-    }
-    return this.projectsService.getAvailableAssignees(projectId);
-  }
-
   @Patch(":projectId/phases/:phaseId")
   async updatePhase(
     @Param("projectId") projectId: string,
@@ -428,11 +491,11 @@ export class ProjectsController {
   @Get(":id/inventory")
   async getProjectInventory(
     @Param("id") id: string,
+    @Req() req: RequestWithUser,
     @Query("page") page: number = 1,
     @Query("limit") limit: number = 10,
     @Query("category") category?: string,
-    @Query("search") search?: string,
-    @Req() req: RequestWithUser
+    @Query("search") search?: string
   ) {
     return this.projectsService.getProjectInventory(id, req.user.id, {
       page,
@@ -450,8 +513,8 @@ export class ProjectsController {
   )
   async addProjectInventoryItem(
     @Param("id") id: string,
-    @UploadedFile() pictureFile: Express.Multer.File | undefined,
     @Body() createInventoryDto: any,
+    @UploadedFile() pictureFile: Express.Multer.File,
     @Req() req: RequestWithUser
   ) {
     return this.projectsService.addProjectInventoryItem(
@@ -486,6 +549,81 @@ export class ProjectsController {
     return this.projectsService.deleteProjectInventoryItem(
       id,
       inventoryId,
+      req.user.id
+    );
+  }
+
+  // Inventory Usage Tracking Endpoints
+  @Post(":id/inventory/:inventoryId/usage")
+  async recordInventoryUsage(
+    @Param("id") id: string,
+    @Param("inventoryId") inventoryId: string,
+    @Body() body: { quantity: number; phase_id?: string; notes?: string },
+    @Req() req: RequestWithUser
+  ) {
+    return this.projectsService.recordInventoryUsage(
+      id,
+      inventoryId,
+      body.quantity,
+      req.user.id,
+      body.phase_id,
+      body.notes
+    );
+  }
+
+  @Get(":id/inventory/:inventoryId/usage")
+  async getInventoryUsageHistory(
+    @Param("id") id: string,
+    @Param("inventoryId") inventoryId: string,
+    @Query("page") page: number = 1,
+    @Query("limit") limit: number = 10,
+    @Req() req: RequestWithUser
+  ) {
+    return this.projectsService.getInventoryUsageHistory(
+      id,
+      inventoryId,
+      req.user.id,
+      { page, limit }
+    );
+  }
+
+  @Get(":id/inventory/usage")
+  async getProjectInventoryUsage(
+    @Param("id") id: string,
+    @Query("page") page: number = 1,
+    @Query("limit") limit: number = 10,
+    @Req() req: RequestWithUser
+  ) {
+    return this.projectsService.getProjectInventoryUsage(
+      id,
+      req.user.id,
+      { page, limit }
+    );
+  }
+
+  // Link/Unlink inventory to project endpoints
+  @Post(":id/inventory/:inventoryId/link")
+  async linkInventoryToProject(
+    @Param("id") projectId: string,
+    @Param("inventoryId") inventoryId: string,
+    @Req() req: RequestWithUser
+  ) {
+    return this.projectsService.linkInventoryToProject(
+      inventoryId,
+      projectId,
+      req.user.id
+    );
+  }
+
+  @Post(":id/inventory/:inventoryId/unlink")
+  async unlinkInventoryFromProject(
+    @Param("id") projectId: string,
+    @Param("inventoryId") inventoryId: string,
+    @Req() req: RequestWithUser
+  ) {
+    return this.projectsService.unlinkInventoryFromProject(
+      inventoryId,
+      projectId,
       req.user.id
     );
   }

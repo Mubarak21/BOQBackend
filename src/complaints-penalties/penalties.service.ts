@@ -12,6 +12,8 @@ import { Project } from "../entities/project.entity";
 import { Complaint } from "../entities/complaint.entity";
 import { CreatePenaltyDto } from "./dto/create-penalty.dto";
 import { AppealPenaltyDto } from "./dto/appeal-penalty.dto";
+import * as path from "path";
+import * as fs from "fs";
 
 @Injectable()
 export class PenaltiesService {
@@ -24,9 +26,13 @@ export class PenaltiesService {
     private complaintsRepository: Repository<Complaint>
   ) {}
 
-  async create(createPenaltyDto: CreatePenaltyDto, user: User): Promise<Penalty> {
+  async create(
+    createPenaltyDto: CreatePenaltyDto,
+    user: User,
+    evidenceFile?: Express.Multer.File
+  ): Promise<Penalty> {
     // Only consultants and admins can assign penalties
-    if (user.role !== UserRole.CONSULTANT && user.role !== UserRole.ADMIN) {
+    if (user.role !== UserRole.CONSULTANT) {
       throw new ForbiddenException("Only consultants and admins can assign penalties");
     }
 
@@ -48,10 +54,35 @@ export class PenaltiesService {
       }
     }
 
+    // Handle evidence image upload (optional)
+    let evidenceImageUrl: string | null = null;
+    if (evidenceFile) {
+      // Validate it's an image
+      if (!evidenceFile.mimetype.startsWith("image/")) {
+        throw new BadRequestException("Evidence file must be an image (JPEG, PNG, etc.)");
+      }
+
+      const uploadDir = path.join(
+        process.cwd(),
+        "uploads",
+        "penalties",
+        "evidence"
+      );
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+
+      const fileName = `${Date.now()}-${evidenceFile.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      const filePath = path.join(uploadDir, fileName);
+      fs.writeFileSync(filePath, evidenceFile.buffer);
+      evidenceImageUrl = `/uploads/penalties/evidence/${fileName}`;
+    }
+
     const penalty = this.penaltiesRepository.create({
       ...createPenaltyDto,
       assigned_by: user.id,
       status: PenaltyStatus.PENDING,
+      evidence_image_url: evidenceImageUrl,
     });
 
     return this.penaltiesRepository.save(penalty);
@@ -74,6 +105,7 @@ export class PenaltiesService {
       status: penalty.status,
       createdAt: penalty.created_at,
       appealReason: penalty.appeal_reason,
+      evidenceImageUrl: penalty.evidence_image_url,
     }));
   }
 
@@ -125,7 +157,7 @@ export class PenaltiesService {
     const penalty = await this.findOne(id);
 
     // Only admins can mark penalties as paid
-    if (user.role !== UserRole.ADMIN) {
+    if (user.role !== UserRole.CONSULTANT) {
       throw new ForbiddenException("Only admins can mark penalties as paid");
     }
 

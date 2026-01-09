@@ -21,6 +21,8 @@ const financial_report_entity_1 = require("./entities/financial-report.entity");
 const finance_service_1 = require("./services/finance.service");
 const analytics_service_1 = require("./services/analytics.service");
 const finance_report_generator_service_1 = require("./services/finance-report-generator.service");
+const transaction_service_1 = require("./services/transaction.service");
+const budget_management_service_1 = require("./services/budget-management.service");
 const finance_controller_1 = require("./controllers/finance.controller");
 const finance_dashboard_controller_1 = require("./controllers/finance-dashboard.controller");
 let FinanceModule = class FinanceModule {
@@ -42,8 +44,20 @@ exports.FinanceModule = FinanceModule = __decorate([
             ]),
         ],
         controllers: [finance_controller_1.FinanceController, finance_dashboard_controller_1.FinanceDashboardController],
-        providers: [finance_service_1.FinanceService, analytics_service_1.AnalyticsService, finance_report_generator_service_1.FinanceReportGeneratorService],
-        exports: [finance_service_1.FinanceService, analytics_service_1.AnalyticsService, finance_report_generator_service_1.FinanceReportGeneratorService],
+        providers: [
+            finance_service_1.FinanceService,
+            analytics_service_1.AnalyticsService,
+            finance_report_generator_service_1.FinanceReportGeneratorService,
+            transaction_service_1.TransactionService,
+            budget_management_service_1.BudgetManagementService,
+        ],
+        exports: [
+            finance_service_1.FinanceService,
+            analytics_service_1.AnalyticsService,
+            finance_report_generator_service_1.FinanceReportGeneratorService,
+            transaction_service_1.TransactionService,
+            budget_management_service_1.BudgetManagementService,
+        ],
     })
 ], FinanceModule);
 //# sourceMappingURL=finance.module.js.map

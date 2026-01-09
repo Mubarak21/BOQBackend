@@ -1,7 +1,7 @@
 import { TransactionType } from "../entities/project-transaction.entity";
 export declare class CreateTransactionDto {
     projectId: string;
-    categoryId: string;
+    categoryId?: string;
     amount: number;
     type: TransactionType;
     description: string;

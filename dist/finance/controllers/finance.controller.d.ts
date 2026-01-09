@@ -12,7 +12,7 @@ export declare class FinanceController {
     private readonly reportGeneratorService;
     constructor(financeService: FinanceService, analyticsService: AnalyticsService, reportGeneratorService: FinanceReportGeneratorService);
     getProjectsFinance(query: ProjectFinanceQueryDto): Promise<import("../dto/project-finance-response.dto").ProjectFinanceListResponseDto>;
-    getProjectFinance(id: string): Promise<import("../dto/project-finance-response.dto").ProjectFinanceDto>;
+    getProjectFinance(id: string, page?: number, limit?: number): Promise<import("../dto/project-finance-response.dto").ProjectFinanceDto>;
     getFinanceMetrics(): Promise<import("../dto/project-finance-response.dto").FinanceMetricsDto>;
     getTransactions(query: TransactionQueryDto): Promise<{
         transactions: import("../entities/project-transaction.entity").ProjectTransaction[];
@@ -21,7 +21,7 @@ export declare class FinanceController {
         limit: number;
         totalPages: number;
     }>;
-    createTransaction(createTransactionDto: CreateTransactionDto, req: any): Promise<import("../entities/project-transaction.entity").ProjectTransaction>;
+    createTransaction(createTransactionDto: CreateTransactionDto, invoiceFile: Express.Multer.File, req: any): Promise<import("../entities/project-transaction.entity").ProjectTransaction>;
     updateTransaction(id: string, updateTransactionDto: UpdateTransactionDto, req: any): Promise<import("../entities/project-transaction.entity").ProjectTransaction>;
     patchTransaction(id: string, updateTransactionDto: UpdateTransactionDto, req: any): Promise<import("../entities/project-transaction.entity").ProjectTransaction>;
     deleteTransaction(id: string): Promise<{
@@ -57,4 +57,8 @@ export declare class FinanceController {
         }[];
     }>;
     configureBudgetAlerts(alertConfig: BudgetAlertConfigDto): Promise<void>;
+    recalculateAllProjects(): Promise<{
+        fixed: number;
+        errors: string[];
+    }>;
 }

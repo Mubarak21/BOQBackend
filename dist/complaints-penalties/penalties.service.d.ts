@@ -10,7 +10,7 @@ export declare class PenaltiesService {
     private projectsRepository;
     private complaintsRepository;
     constructor(penaltiesRepository: Repository<Penalty>, projectsRepository: Repository<Project>, complaintsRepository: Repository<Complaint>);
-    create(createPenaltyDto: CreatePenaltyDto, user: User): Promise<Penalty>;
+    create(createPenaltyDto: CreatePenaltyDto, user: User, evidenceFile?: Express.Multer.File): Promise<Penalty>;
     findByProject(projectId: string): Promise<any[]>;
     findOne(id: string): Promise<Penalty>;
     appeal(id: string, appealDto: AppealPenaltyDto, user: User): Promise<Penalty>;

@@ -59,7 +59,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminActivitiesController.prototype, "getActivity", null);
 exports.AdminActivitiesController = AdminActivitiesController = __decorate([
-    (0, common_1.Controller)("admin/activities"),
+    (0, common_1.Controller)("consultant/activities"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [activities_service_1.ActivitiesService])
 ], AdminActivitiesController);

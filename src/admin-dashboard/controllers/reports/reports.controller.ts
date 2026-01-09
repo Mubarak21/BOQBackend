@@ -24,7 +24,7 @@ import {
 } from "../../dto/reports/report-response.dto";
 import { Response } from "express";
 
-@Controller("admin/reports")
+@Controller("consultant/reports")
 @UseGuards(JwtAuthGuard)
 export class AdminReportsController {
   constructor(private readonly reportsService: ReportsService) {}

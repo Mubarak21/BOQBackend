@@ -4,7 +4,7 @@ import { UsersService } from "../../../users/users.service";
 import { ActivitiesService } from "../../../activities/activities.service";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
 
-@Controller("admin/analytics")
+@Controller("consultant/analytics")
 @UseGuards(JwtAuthGuard)
 export class AdminAnalyticsController {
   constructor(

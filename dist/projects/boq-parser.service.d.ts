@@ -31,7 +31,8 @@ export declare class BoqParserService {
     }) => void): Promise<BOQParseResult>;
     private isValidPhaseRow;
     private parseCsvFile;
+    private findColumnIndex;
     private parseExcelFile;
     private parseCsvLine;
-    private parseAmount;
+    private parseAmountValue;
 }

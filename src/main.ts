@@ -5,9 +5,16 @@ import { getDataSourceToken } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 import { SeedService } from "./commands/seed.command";
 import * as cookieParser from "cookie-parser";
+import { NestExpressApplication } from "@nestjs/platform-express";
+import { join } from "path";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Serve static files from uploads directory
+  app.useStaticAssets(join(process.cwd(), "uploads"), {
+    prefix: "/uploads",
+  });
 
   // Run seeding before starting the server
   const seedService = app.get(SeedService);

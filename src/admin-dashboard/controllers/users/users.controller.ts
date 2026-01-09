@@ -13,7 +13,7 @@ import {
 import { UsersService } from "../../../users/users.service";
 import { JwtAuthGuard } from "../../../auth/guards/jwt-auth.guard";
 
-@Controller("admin/users")
+@Controller("consultant/users")
 @UseGuards(JwtAuthGuard)
 export class AdminUsersController {
   constructor(private readonly usersService: UsersService) {}

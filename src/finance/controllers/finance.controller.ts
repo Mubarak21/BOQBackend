@@ -12,10 +12,14 @@ import {
   Request,
   HttpStatus,
   HttpException,
+  SetMetadata,
+  UseInterceptors,
+  UploadedFile,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../../auth/guards/roles.guard";
-import { Roles } from "../../auth/decorators/roles.decorator";
+import { Roles, ROLES_KEY } from "../../auth/decorators/roles.decorator";
 import { UserRole } from "../../entities/user.entity";
 import { FinanceService } from "../services/finance.service";
 import { AnalyticsService } from "../services/analytics.service";
@@ -36,9 +40,9 @@ import { Response } from "express";
 import * as fs from "fs";
 import * as path from "path";
 
-@Controller("admin/finance")
+@Controller("consultant/finance")
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.FINANCE)
+@Roles(UserRole.CONSULTANT, UserRole.FINANCE)
 export class FinanceController {
   constructor(
     private readonly financeService: FinanceService,
@@ -54,8 +58,13 @@ export class FinanceController {
 
   // 1.2 GET /api/admin/finance/projects/:id
   @Get("projects/:id")
-  async getProjectFinance(@Param("id") id: string) {
-    return await this.financeService.getProjectFinanceById(id);
+  @SetMetadata(ROLES_KEY, []) // Empty array bypasses role check - allows all authenticated users
+  async getProjectFinance(
+    @Param("id") id: string,
+    @Query("page") page: number = 1,
+    @Query("limit") limit: number = 10
+  ) {
+    return await this.financeService.getProjectFinanceById(id, { page, limit });
   }
 
   // 1.3 GET /api/admin/finance/metrics
@@ -72,14 +81,27 @@ export class FinanceController {
 
   // 1.5 POST /api/admin/finance/transactions
   @Post("transactions")
+  @UseInterceptors(
+    FileInterceptor("invoice", {
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+    })
+  )
+  @SetMetadata(ROLES_KEY, [
+    UserRole.CONSULTANT,
+    UserRole.FINANCE,
+    UserRole.CONTRACTOR,
+    UserRole.SUB_CONTRACTOR
+  ])
   async createTransaction(
     @Body() createTransactionDto: CreateTransactionDto,
+    @UploadedFile() invoiceFile: Express.Multer.File,
     @Request() req
   ) {
     const userId = req.user.id;
     return await this.financeService.createTransaction(
       createTransactionDto,
-      userId
+      userId,
+      invoiceFile
     );
   }
 
@@ -211,5 +233,12 @@ export class FinanceController {
       "Budget alerts configuration will be implemented",
       HttpStatus.NOT_IMPLEMENTED
     );
+  }
+
+  // 1.11 POST /api/admin/finance/recalculate-all
+  @Post("recalculate-all")
+  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  async recalculateAllProjects() {
+    return await this.financeService.recalculateAllProjectsSpentAmounts();
   }
 }

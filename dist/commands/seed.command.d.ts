@@ -42,6 +42,9 @@ export declare class SeedService {
     private seedSubPhasesForPhase;
     private seedTasks;
     private seedFinancialData;
+    private recalculateCategorySpentAmount;
+    private recalculateProjectSpentAmount;
+    private createGeneralProjectTransactions;
     private createTransactionsForCategory;
     private createSavingsRecords;
     private createBudgetAlerts;

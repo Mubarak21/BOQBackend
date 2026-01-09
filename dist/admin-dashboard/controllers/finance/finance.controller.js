@@ -47,7 +47,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminFinanceController.prototype, "getExpenseBreakdown", null);
 exports.AdminFinanceController = AdminFinanceController = __decorate([
-    (0, common_1.Controller)("admin/finance"),
+    (0, common_1.Controller)("consultant/finance"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __metadata("design:paramtypes", [finance_service_1.FinanceService])
 ], AdminFinanceController);

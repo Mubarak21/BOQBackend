@@ -187,7 +187,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminAuthController.prototype, "validatePermissions", null);
 exports.AdminAuthController = AdminAuthController = __decorate([
-    (0, common_1.Controller)("admin/auth"),
+    (0, common_1.Controller)("consultant/auth"),
     __param(1, (0, typeorm_1.InjectRepository)(admin_entity_1.Admin)),
     __metadata("design:paramtypes", [auth_service_1.AuthService,
         typeorm_2.Repository,

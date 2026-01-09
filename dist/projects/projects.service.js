@@ -17,7 +17,6 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const project_entity_1 = require("../entities/project.entity");
-const user_entity_1 = require("../entities/user.entity");
 const task_entity_1 = require("../entities/task.entity");
 const XLSX = require("xlsx");
 const activities_service_1 = require("../activities/activities.service");
@@ -29,24 +28,32 @@ const activity_entity_1 = require("../entities/activity.entity");
 const phase_entity_2 = require("../entities/phase.entity");
 const dashboard_service_1 = require("../dashboard/dashboard.service");
 const boq_parser_service_1 = require("./boq-parser.service");
+const amount_utils_1 = require("../utils/amount.utils");
 const inventory_entity_1 = require("../entities/inventory.entity");
-const path = require("path");
-const fs = require("fs");
+const inventory_usage_entity_1 = require("../entities/inventory-usage.entity");
+const project_dashboard_service_1 = require("./services/project-dashboard.service");
+const project_consultant_service_1 = require("./services/project-consultant.service");
+const project_contractor_service_1 = require("./services/project-contractor.service");
 function normalizeColumnName(name) {
     return name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
 }
 let ProjectsService = class ProjectsService {
-    constructor(projectsRepository, tasksRepository, phasesRepository, accessRequestRepository, inventoryRepository, usersService, activitiesService, tasksService, dashboardService, boqParserService) {
+    constructor(projectsRepository, tasksRepository, phasesRepository, accessRequestRepository, inventoryRepository, inventoryUsageRepository, usersService, activitiesService, tasksService, dashboardService, boqParserService, projectDashboardService, projectConsultantService, projectContractorService) {
         this.projectsRepository = projectsRepository;
         this.tasksRepository = tasksRepository;
         this.phasesRepository = phasesRepository;
         this.accessRequestRepository = accessRequestRepository;
         this.inventoryRepository = inventoryRepository;
+        this.inventoryUsageRepository = inventoryUsageRepository;
         this.usersService = usersService;
         this.activitiesService = activitiesService;
         this.tasksService = tasksService;
         this.dashboardService = dashboardService;
         this.boqParserService = boqParserService;
+        this.projectDashboardService = projectDashboardService;
+        this.projectConsultantService = projectConsultantService;
+        this.projectContractorService = projectContractorService;
+        this.parseAmountValue = amount_utils_1.parseAmount;
     }
     async findAll() {
         return this.projectsRepository.find({
@@ -132,7 +139,7 @@ let ProjectsService = class ProjectsService {
             const user = await this.usersService.findOne(userId);
             const isContractor = user?.role === "contractor";
             const isSubContractor = user?.role === "sub_contractor";
-            const isAdmin = user?.role === "admin";
+            const isAdmin = user?.role === "consultant";
             const isConsultant = user?.role === "consultant";
             if (!isContractor &&
                 !isSubContractor &&
@@ -164,7 +171,8 @@ let ProjectsService = class ProjectsService {
                 : null,
             tags: createProjectDto.tags,
             owner_id: owner.id,
-            totalAmount: createProjectDto.totalAmount ?? 0,
+            totalAmount: this.validateAndNormalizeProjectAmount(createProjectDto.totalAmount ?? 0),
+            totalBudget: this.validateAndNormalizeProjectAmount(createProjectDto.totalAmount ?? 0),
         });
         if (createProjectDto.collaborator_ids?.length) {
             const collaborators = await this.getValidatedCollaborators(createProjectDto.collaborator_ids);
@@ -305,30 +313,23 @@ let ProjectsService = class ProjectsService {
         console.log(`\nProcessing BOQ for Project: ${project.title} (ID: ${project.id})`);
         try {
             const dataWithUnits = data.filter((row) => {
-                if (row.unit && row.quantity) {
-                    const unit = (row.unit || "").toString().trim();
-                    const quantity = row.quantity;
-                    const hasUnit = unit && unit !== "" && unit !== "No";
-                    const hasQuantity = quantity && quantity > 0;
-                    return hasUnit && hasQuantity;
-                }
-                const rowKeys = Object.keys(row);
-                const unitCol = rowKeys.find((key) => {
-                    const normalized = normalizeColumnName(key);
-                    return normalized.includes('unit') || normalized.includes('unt');
-                });
-                const quantityCol = rowKeys.find((key) => {
-                    const normalized = normalizeColumnName(key);
-                    return normalized.includes('quantity') || normalized.includes('qty');
-                });
-                if (unitCol && quantityCol) {
-                    const unit = (row[unitCol] || "").toString().trim();
-                    const quantityStr = (row[quantityCol] || "").toString().trim();
-                    const hasUnit = unit && unit !== "";
-                    const hasQuantity = quantityStr && quantityStr !== "" && parseFloat(quantityStr) > 0;
-                    return hasUnit && hasQuantity;
-                }
-                return false;
+                const unit = row.unit ||
+                    row.Unit ||
+                    row._extractedUnit ||
+                    (row.rawData && (row.rawData.unit || row.rawData.Unit)) ||
+                    '';
+                const quantity = row.quantity !== undefined ? row.quantity :
+                    row.Quantity !== undefined ? row.Quantity :
+                        row._extractedQuantity !== undefined ? row._extractedQuantity :
+                            (row.rawData && (row.rawData.quantity || row.rawData.Quantity)) ?
+                                (typeof row.rawData.quantity === 'number' ? row.rawData.quantity :
+                                    typeof row.rawData.Quantity === 'number' ? row.rawData.Quantity :
+                                        parseFloat(String(row.rawData.quantity || row.rawData.Quantity || 0))) :
+                                0;
+                const unitStr = String(unit || "").trim();
+                const hasUnit = unitStr && unitStr !== "" && unitStr !== "No";
+                const hasQuantity = quantity && quantity > 0;
+                return hasUnit && hasQuantity;
             });
             console.log(`Filtered ${data.length} rows to ${dataWithUnits.length} rows with BOTH Unit and Quantity filled`);
             console.log(`[DEBUG processBoqFileFromParsedData] About to create phases - projectId: ${projectId}, project.id: ${project.id}`);
@@ -553,25 +554,7 @@ let ProjectsService = class ProjectsService {
         await this.activitiesService.createActivity(activity_entity_1.ActivityType.TASK_DELETED, `Phase "${phase.title}" was deleted`, user, project, phase, { phaseId: phase.id });
     }
     async getProjectPhases(projectId, userId) {
-        const user = await this.usersService.findOne(userId);
-        const isContractor = user?.role === "contractor";
-        const isSubContractor = user?.role === "sub_contractor";
-        if (!isContractor && !isSubContractor) {
-            await this.findOne(projectId, userId);
-        }
-        else {
-            const project = await this.projectsRepository.findOne({
-                where: { id: projectId },
-            });
-            if (!project) {
-                throw new common_1.NotFoundException(`Project with ID ${projectId} not found`);
-            }
-        }
-        return this.phasesRepository.find({
-            where: { project_id: projectId, is_active: true },
-            relations: ["subPhases", "subPhases.subPhases"],
-            order: { created_at: "ASC" },
-        });
+        return this.projectContractorService.getProjectPhases(projectId, userId);
     }
     async getProjectPhasesPaginated(projectId, userId, { page = 1, limit = 10 }) {
         const user = await this.usersService.findOne(userId);
@@ -617,11 +600,26 @@ let ProjectsService = class ProjectsService {
     }
     async getProjectResponse(project) {
         const calculatePhaseCompletion = (phase) => {
-            if (!phase.subPhases || phase.subPhases.length === 0) {
-                return phase.progress || 0;
+            if (phase.subPhases && phase.subPhases.length > 0) {
+                const completed = phase.subPhases.filter((sp) => sp.isCompleted).length;
+                return Math.round((completed / phase.subPhases.length) * 100);
             }
-            const completed = phase.subPhases.filter((sp) => sp.isCompleted).length;
-            return Math.round((completed / phase.subPhases.length) * 100);
+            if (phase.progress != null && phase.progress !== undefined) {
+                const progress = Number(phase.progress);
+                if (!Number.isNaN(progress) && Number.isFinite(progress)) {
+                    return Math.max(0, Math.min(100, Math.round(progress)));
+                }
+            }
+            if (phase.status === 'completed') {
+                return 100;
+            }
+            else if (phase.status === 'in_progress') {
+                return 50;
+            }
+            else if (phase.status === 'not_started') {
+                return 0;
+            }
+            return 0;
         };
         const phases = project.phases || [];
         const projectProgress = phases.length > 0
@@ -637,7 +635,7 @@ let ProjectsService = class ProjectsService {
             progress: projectProgress,
             completedPhases,
             totalPhases,
-            totalAmount: project.totalAmount,
+            totalAmount: project.totalAmount ?? project.totalBudget ?? 0,
             startDate: project.start_date,
             estimatedCompletion: project.end_date,
             owner: project.owner?.display_name || project.owner_id,
@@ -948,21 +946,8 @@ let ProjectsService = class ProjectsService {
         }));
         return collaborators;
     }
-    parseAmount(value) {
-        if (typeof value === "number")
-            return value;
-        if (!value)
-            return 0;
-        const str = value.toString().trim();
-        if (str === "" ||
-            str === "-" ||
-            str === " - " ||
-            str.toLowerCase() === "n/a") {
-            return 0;
-        }
-        const numStr = str.replace(/[^0-9.-]+/g, "");
-        const parsed = Number(numStr);
-        return isNaN(parsed) ? 0 : parsed;
+    validateAndNormalizeProjectAmount(value) {
+        return (0, amount_utils_1.validateAndNormalizeAmount)(value, 999999999999999999.99, 2);
     }
     async parseBoqFile(file) {
         console.log("[DEBUG] Reading CSV file buffer...");
@@ -1105,8 +1090,8 @@ let ProjectsService = class ProjectsService {
             }
             const desc = row[descriptionCol];
             const hasDescription = desc && typeof desc === "string" && desc.trim() !== "";
-            const hasQuantity = quantityCol && row[quantityCol] && this.parseAmount(row[quantityCol]) > 0;
-            const hasPrice = priceCol && row[priceCol] && this.parseAmount(row[priceCol]) > 0;
+            const hasQuantity = quantityCol && row[quantityCol] && this.parseAmountValue(row[quantityCol]) > 0;
+            const hasPrice = priceCol && row[priceCol] && this.parseAmountValue(row[priceCol]) > 0;
             if (hasDescription || hasQuantity || hasPrice) {
                 return true;
             }
@@ -1117,7 +1102,7 @@ let ProjectsService = class ProjectsService {
         let totalAmount = 0;
         if (totalPriceCol) {
             totalAmount = validData.reduce((sum, row) => {
-                const amount = this.parseAmount(row[totalPriceCol]) || 0;
+                const amount = this.parseAmountValue(row[totalPriceCol]) || 0;
                 return sum + amount;
             }, 0);
             console.log(`Calculated total amount from TOTAL PRICE column: ${totalAmount}`);
@@ -1126,11 +1111,11 @@ let ProjectsService = class ProjectsService {
             totalAmount = validData.reduce((sum, row) => {
                 let amount = 0;
                 if (totalPriceCol && row[totalPriceCol]) {
-                    amount = this.parseAmount(row[totalPriceCol]) || 0;
+                    amount = this.parseAmountValue(row[totalPriceCol]) || 0;
                 }
                 else {
-                    const qty = this.parseAmount(row[quantityCol]) || 0;
-                    const price = this.parseAmount(row[priceCol]) || 0;
+                    const qty = this.parseAmountValue(row[quantityCol]) || 0;
+                    const price = this.parseAmountValue(row[priceCol]) || 0;
                     amount = qty * price;
                 }
                 return sum + amount;
@@ -1176,8 +1161,8 @@ let ProjectsService = class ProjectsService {
         let currentSubSection = null;
         return data.map((row, index) => {
             const description = (row[descriptionCol] || "").toString().trim();
-            const hasQuantity = quantityCol && row[quantityCol] && this.parseAmount(row[quantityCol]) > 0;
-            const hasPrice = priceCol && row[priceCol] && this.parseAmount(row[priceCol]) > 0;
+            const hasQuantity = quantityCol && row[quantityCol] && this.parseAmountValue(row[quantityCol]) > 0;
+            const hasPrice = priceCol && row[priceCol] && this.parseAmountValue(row[priceCol]) > 0;
             if (hasQuantity || hasPrice) {
                 row.isMainSection = false;
                 row.mainSection = currentMainSection;
@@ -1346,20 +1331,72 @@ let ProjectsService = class ProjectsService {
         console.log(`[Phase Creation] Creating ${data.length} phases from BOQ items`);
         for (let i = 0; i < data.length; i++) {
             const item = data[i];
+            if (!item) {
+                console.warn(`[Phase Creation] Skipping item ${i + 1}: item is null or undefined`);
+                continue;
+            }
+            const itemDescription = item.description ||
+                item.Description ||
+                item._extractedDescription ||
+                item.title ||
+                item.Title ||
+                (item.rawData && (item.rawData.description || item.rawData.Description)) ||
+                '';
+            if (!itemDescription || itemDescription.trim() === '') {
+                console.warn(`[Phase Creation] Skipping item ${i + 1}: no description found. Item data:`, JSON.stringify(item, null, 2));
+                continue;
+            }
             const phaseStartDate = new Date(projectStartDate);
             phaseStartDate.setDate(phaseStartDate.getDate() + i * daysPerPhase);
             const phaseEndDate = new Date(phaseStartDate);
             phaseEndDate.setDate(phaseEndDate.getDate() + daysPerPhase);
+            const itemUnit = item.unit ||
+                item.Unit ||
+                item._extractedUnit ||
+                (item.rawData && (item.rawData.unit || item.rawData.Unit)) ||
+                '';
+            const itemQuantity = item.quantity !== undefined && item.quantity !== null ?
+                (typeof item.quantity === 'number' ? item.quantity : parseFloat(String(item.quantity)) || 0) :
+                item.Quantity !== undefined && item.Quantity !== null ?
+                    (typeof item.Quantity === 'number' ? item.Quantity : parseFloat(String(item.Quantity)) || 0) :
+                    item._extractedQuantity !== undefined && item._extractedQuantity !== null ?
+                        (typeof item._extractedQuantity === 'number' ? item._extractedQuantity : parseFloat(String(item._extractedQuantity)) || 0) :
+                        (item.rawData && (item.rawData.quantity || item.rawData.Quantity)) ?
+                            (typeof item.rawData.quantity === 'number' ? item.rawData.quantity :
+                                typeof item.rawData.Quantity === 'number' ? item.rawData.Quantity :
+                                    parseFloat(String(item.rawData.quantity || item.rawData.Quantity || 0))) :
+                            0;
+            const itemRate = item.rate !== undefined && item.rate !== null ?
+                (typeof item.rate === 'number' ? item.rate : parseFloat(String(item.rate)) || 0) :
+                item.Rate !== undefined && item.Rate !== null ?
+                    (typeof item.Rate === 'number' ? item.Rate : parseFloat(String(item.Rate)) || 0) :
+                    (item.rawData && (item.rawData.rate || item.rawData['Rate ($)'] || item.rawData.Rate)) ?
+                        (typeof item.rawData.rate === 'number' ? item.rawData.rate :
+                            typeof item.rawData['Rate ($)'] === 'number' ? item.rawData['Rate ($)'] :
+                                typeof item.rawData.Rate === 'number' ? item.rawData.Rate :
+                                    parseFloat(String(item.rawData.rate || item.rawData['Rate ($)'] || item.rawData.Rate || 0))) :
+                        0;
+            const itemAmount = item.amount !== undefined && item.amount !== null ?
+                (typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount)) || 0) :
+                item.Amount !== undefined && item.Amount !== null ?
+                    (typeof item.Amount === 'number' ? item.Amount : parseFloat(String(item.Amount)) || 0) :
+                    (item.rawData && (item.rawData.amount || item.rawData['Amount ($)'] || item.rawData.Amount)) ?
+                        (typeof item.rawData.amount === 'number' ? item.rawData.amount :
+                            typeof item.rawData['Amount ($)'] === 'number' ? item.rawData['Amount ($)'] :
+                                typeof item.rawData.Amount === 'number' ? item.rawData.Amount :
+                                    parseFloat(String(item.rawData.amount || item.rawData['Amount ($)'] || item.rawData.Amount || 0))) :
+                        0;
+            const itemSection = item.section || item.Section || '';
             const phaseDescription = [
-                item.section ? `Section: ${item.section}` : null,
-                `Unit: ${item.unit}`,
-                `Quantity: ${item.quantity}`,
-                item.rate > 0 ? `Rate: ${item.rate}` : null,
+                itemSection ? `Section: ${itemSection}` : null,
+                itemUnit ? `Unit: ${itemUnit}` : null,
+                itemQuantity ? `Quantity: ${itemQuantity}` : null,
+                itemRate > 0 ? `Rate: ${itemRate}` : null,
             ].filter(Boolean).join(' | ');
             const phaseData = {
-                title: item.description,
+                title: itemDescription.trim(),
                 description: phaseDescription,
-                budget: item.amount || 0,
+                budget: itemAmount || 0,
                 start_date: phaseStartDate,
                 end_date: phaseEndDate,
                 due_date: phaseEndDate,
@@ -1370,11 +1407,11 @@ let ProjectsService = class ProjectsService {
                 from_boq: true,
             };
             if (!phaseData.project_id || phaseData.project_id.trim() === '') {
-                const error = `❌ CRITICAL: Phase "${item.description}" has no projectId`;
+                const error = `❌ CRITICAL: Phase "${itemDescription}" has no projectId`;
                 console.error(`[Phase Creation] ${error}`);
                 throw new Error(error);
             }
-            console.log(`[Phase Creation] Creating phase ${i + 1}/${data.length}: "${item.description.substring(0, 50)}..."`);
+            console.log(`[Phase Creation] Creating phase ${i + 1}/${data.length}: "${itemDescription.substring(0, 50)}..."`);
             const insertQuery = `
         INSERT INTO phase (
           title, description, budget, start_date, end_date, due_date, 
@@ -1398,14 +1435,14 @@ let ProjectsService = class ProjectsService {
                     phaseData.from_boq,
                 ]);
                 if (!result || result.length === 0) {
-                    throw new Error(`Failed to create phase: ${item.description}`);
+                    throw new Error(`Failed to create phase: ${itemDescription}`);
                 }
                 const savedPhase = await this.phasesRepository.findOne({
                     where: { id: result[0].id },
                     relations: ['project'],
                 });
                 if (!savedPhase) {
-                    throw new Error(`Failed to retrieve created phase: ${item.description}`);
+                    throw new Error(`Failed to retrieve created phase: ${itemDescription}`);
                 }
                 if (savedPhase.project_id !== projectId) {
                     const error = `❌ CRITICAL: Phase "${savedPhase.title}" has incorrect project_id: ${savedPhase.project_id}, expected: ${projectId}`;
@@ -1413,10 +1450,10 @@ let ProjectsService = class ProjectsService {
                     throw new Error(error);
                 }
                 phases.push(savedPhase);
-                console.log(`[Phase Creation] ✅ Created phase ${i + 1}: "${item.description.substring(0, 40)}" | Budget: ${item.amount} | Qty: ${item.quantity} ${item.unit}`);
+                console.log(`[Phase Creation] ✅ Created phase ${i + 1}: "${itemDescription.substring(0, 40)}" | Budget: ${itemAmount} | Qty: ${itemQuantity} ${itemUnit}`);
             }
             catch (error) {
-                console.error(`[Phase Creation] ❌ Failed to create phase "${item.description}":`, error);
+                console.error(`[Phase Creation] ❌ Failed to create phase "${itemDescription}":`, error);
                 throw error;
             }
         }
@@ -1446,32 +1483,20 @@ let ProjectsService = class ProjectsService {
                 return acc;
             }, {}) : null
         });
-        if (!descriptionCol && data.length > 0) {
-            const firstFewRows = data.slice(0, Math.min(5, data.length));
-            const columnLengths = {};
-            rowKeys.forEach(key => {
-                let totalLength = 0;
-                firstFewRows.forEach(row => {
-                    const value = String(row[key] || "").trim();
-                    totalLength += value.length;
-                });
-                columnLengths[key] = totalLength;
-            });
-            const longestCol = Object.entries(columnLengths)
-                .sort((a, b) => b[1] - a[1])
-                .find(([key]) => {
-                const keyLower = key.toLowerCase();
-                return !keyLower.includes('qty') &&
-                    !keyLower.includes('quantity') &&
-                    !keyLower.includes('unit') &&
-                    !keyLower.includes('price') &&
-                    !keyLower.includes('amount') &&
-                    !keyLower.includes('total');
-            });
-            if (longestCol && longestCol[1] > 10) {
-                descriptionCol = longestCol[0];
-                console.log(`[DEBUG] Auto-detected description column: ${descriptionCol} (avg length: ${longestCol[1] / firstFewRows.length})`);
-            }
+        if (!descriptionCol) {
+            throw new common_1.BadRequestException('Could not find DESCRIPTION column in the file. ' +
+                'Please ensure your file has a "Description", "Desc", "Item Description", or "Work Description" column. ' +
+                `Available columns: ${rowKeys.join(', ')}`);
+        }
+        if (!quantityCol) {
+            throw new common_1.BadRequestException('Could not find QUANTITY column in the file. ' +
+                'Please ensure your file has a "Quantity", "Qty", or "Qty." column. ' +
+                `Available columns: ${rowKeys.join(', ')}`);
+        }
+        if (!unitCol) {
+            throw new common_1.BadRequestException('Could not find UNIT column in the file. ' +
+                'Please ensure your file has a "Unit", "Units", or "UOM" column. ' +
+                `Available columns: ${rowKeys.join(', ')}`);
         }
         let totalPriceCol;
         if (data.length > 0) {
@@ -1501,9 +1526,9 @@ let ProjectsService = class ProjectsService {
             const row = data[i];
             const description = (row[descriptionCol] || "").toString().trim();
             const unit = unitCol ? (row[unitCol] || "").toString().trim() : "";
-            const quantity = this.parseAmount(quantityCol ? row[quantityCol] : undefined) || 0;
-            const price = this.parseAmount(priceCol ? row[priceCol] : undefined) || 0;
-            const totalPrice = totalPriceCol ? this.parseAmount(row[totalPriceCol]) || 0 : 0;
+            const quantity = this.parseAmountValue(quantityCol ? row[quantityCol] : undefined) || 0;
+            const price = this.parseAmountValue(priceCol ? row[priceCol] : undefined) || 0;
+            const totalPrice = totalPriceCol ? this.parseAmountValue(row[totalPriceCol]) || 0 : 0;
             if (!unit || unit.trim() === "") {
                 if (currentGroup.length > 0) {
                     groupedRows.push([...currentGroup]);
@@ -1525,7 +1550,7 @@ let ProjectsService = class ProjectsService {
                 if (currentGroup.length > 0) {
                     const lastRow = currentGroup[currentGroup.length - 1];
                     const lastUnit = unitCol ? (lastRow[unitCol] || "").toString().trim() : "";
-                    const lastHasQuantity = this.parseAmount(quantityCol ? lastRow[quantityCol] : undefined) || 0;
+                    const lastHasQuantity = this.parseAmountValue(quantityCol ? lastRow[quantityCol] : undefined) || 0;
                     if ((lastUnit && unit && lastUnit !== unit) ||
                         (lastHasQuantity > 0 && quantity === 0 && unit)) {
                         groupedRows.push([...currentGroup]);
@@ -1581,49 +1606,17 @@ let ProjectsService = class ProjectsService {
                     }
                 }
                 if (!description || description === "") {
-                    const possibleDescCols = Object.keys(row).filter(key => !key.startsWith('_') &&
-                        (key.toLowerCase().includes('desc') ||
-                            key.toLowerCase().includes('description') ||
-                            key.toLowerCase().includes('item') ||
-                            key.toLowerCase().includes('work')));
-                    if (possibleDescCols.length > 0) {
-                        description = (row[possibleDescCols[0]] || "").toString().trim();
-                        if (description) {
-                            console.log(`[DEBUG] Using fallback description column "${possibleDescCols[0]}": "${description.substring(0, 50)}"`);
-                        }
-                    }
-                }
-                if (!description || description === "") {
-                    const allKeys = Object.keys(row).filter(key => !key.startsWith('_'));
-                    let longestText = "";
-                    let longestLength = 0;
-                    for (const key of allKeys) {
-                        const value = String(row[key] || "").trim();
-                        if (value.length > longestLength &&
-                            !value.match(/^\d+$/) &&
-                            !value.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i) &&
-                            value.length > 5) {
-                            longestText = value;
-                            longestLength = value.length;
-                        }
-                    }
-                    if (longestText) {
-                        description = longestText;
-                        console.log(`[FIX] Found description by longest text method from column: "${description.substring(0, 50)}"`);
-                    }
-                    else {
-                        console.warn(`[WARN] No description found for row. Available keys:`, Object.keys(row));
-                        console.warn(`[WARN] Row values:`, Object.entries(row).map(([k, v]) => `${k}: ${String(v).substring(0, 30)}`));
-                    }
+                    console.warn(`[WARN] Skipping row in group ${groupIndex + 1}: No description found in mapped column "${descriptionCol}". Available keys:`, Object.keys(row));
+                    continue;
                 }
                 const unit = row._extractedUnit || (unitCol ? (row[unitCol] || "").toString().trim() : "") || "";
                 const quantity = row._extractedQuantity !== undefined
                     ? row._extractedQuantity
-                    : (this.parseAmount(quantityCol ? row[quantityCol] : undefined) || 0);
-                const price = this.parseAmount(priceCol ? row[priceCol] : undefined) || 0;
+                    : (this.parseAmountValue(quantityCol ? row[quantityCol] : undefined) || 0);
+                const price = this.parseAmountValue(priceCol ? row[priceCol] : undefined) || 0;
                 let rowTotalPrice = 0;
                 if (totalPriceCol && row[totalPriceCol]) {
-                    rowTotalPrice = this.parseAmount(row[totalPriceCol]) || 0;
+                    rowTotalPrice = this.parseAmountValue(row[totalPriceCol]) || 0;
                 }
                 if (!rowTotalPrice && quantity > 0 && price > 0) {
                     rowTotalPrice = quantity * price;
@@ -1689,61 +1682,28 @@ let ProjectsService = class ProjectsService {
                         console.log(`[DEBUG] Phase ${groupIndex + 1} using found column "${descKey}": "${firstDesc.substring(0, 50)}"`);
                     }
                 }
-                if (!firstDesc || firstDesc === "") {
-                    const allKeys = Object.keys(firstRow).filter(key => !key.startsWith('_'));
-                    let longestText = "";
-                    let longestLength = 0;
-                    for (const key of allKeys) {
-                        const value = String(firstRow[key] || "").trim();
-                        if (value.length > longestLength &&
-                            !value.match(/^\d+$/) &&
-                            !value.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i) &&
-                            value.length > 5) {
-                            longestText = value;
-                            longestLength = value.length;
-                        }
-                    }
-                    if (longestText) {
-                        firstDesc = longestText;
-                        console.log(`[FIX] Phase ${groupIndex + 1} using longest text: "${firstDesc.substring(0, 50)}"`);
-                    }
-                }
-                if (firstDesc && firstDesc.trim() !== "") {
-                    phaseTitle = firstDesc.trim();
-                }
-                else {
-                    console.error(`[ERROR] Phase ${groupIndex + 1} has no description. Row keys:`, Object.keys(firstRow));
+                if (!firstDesc || firstDesc.trim() === "") {
+                    console.error(`[ERROR] Phase ${groupIndex + 1} has no description in mapped column "${descriptionCol}". Row keys:`, Object.keys(firstRow));
                     console.error(`[ERROR] Row values:`, Object.entries(firstRow).map(([k, v]) => `${k}: ${String(v).substring(0, 50)}`));
-                    phaseTitle = `Phase ${groupIndex + 1}`;
+                    throw new common_1.BadRequestException(`Phase ${groupIndex + 1} has no description. ` +
+                        `Expected description in column "${descriptionCol}" but found empty value. ` +
+                        `Please ensure your BOQ file has valid descriptions in the description column.`);
                 }
+                phaseTitle = firstDesc.trim();
             }
             else {
-                phaseTitle = `Phase ${groupIndex + 1}`;
+                throw new common_1.BadRequestException(`Phase ${groupIndex + 1} has no description. ` +
+                    `Please ensure your BOQ file has a valid description column with data.`);
             }
             if (phaseTitle === `${combinedUnit} ${totalQuantity}`.trim() ||
                 phaseTitle.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i)) {
-                console.error(`[ERROR] Phase title is unit/qty only: "${phaseTitle}". Descriptions found:`, descriptions);
+                console.error(`[ERROR] Phase title is unit/qty only: "${phaseTitle}". This indicates the description column was not properly mapped.`);
+                console.error(`[ERROR] Expected description column: "${descriptionCol}"`);
                 console.error(`[ERROR] Row data sample:`, group[0]);
                 console.error(`[ERROR] Available columns:`, Object.keys(group[0]));
-                if (group.length > 0) {
-                    const firstRow = group[0];
-                    const allKeys = Object.keys(firstRow);
-                    const descCandidate = allKeys.find(key => {
-                        const value = String(firstRow[key] || "").trim();
-                        return value.length > 10 &&
-                            !value.match(/^\d+$/) &&
-                            !value.match(/^(No|EA|Rolls|Sets|LM)\s*\d+$/i) &&
-                            value.length > (combinedUnit?.length || 0) + 5;
-                    });
-                    if (descCandidate && firstRow[descCandidate]) {
-                        const foundDesc = String(firstRow[descCandidate]).trim();
-                        if (foundDesc) {
-                            console.log(`[FIX] Found description in column "${descCandidate}": "${foundDesc}"`);
-                            phaseTitle = foundDesc;
-                            combinedDescription = foundDesc;
-                        }
-                    }
-                }
+                throw new common_1.BadRequestException(`Phase ${groupIndex + 1} has invalid description. ` +
+                    `The description column "${descriptionCol}" appears to contain unit/quantity data instead of descriptions. ` +
+                    `Please verify your BOQ file has the correct column headers.`);
             }
             const phaseStartDate = new Date(projectStartDate);
             phaseStartDate.setDate(phaseStartDate.getDate() + groupIndex * daysPerPhase);
@@ -1863,8 +1823,8 @@ let ProjectsService = class ProjectsService {
         for (const row of data) {
             const description = row[descriptionCol] || "";
             const unit = unitCol ? row[unitCol] || "" : "";
-            const quantity = this.parseAmount(quantityCol ? row[quantityCol] : undefined);
-            const price = this.parseAmount(priceCol ? row[priceCol] : undefined);
+            const quantity = this.parseAmountValue(quantityCol ? row[quantityCol] : undefined);
+            const price = this.parseAmountValue(priceCol ? row[priceCol] : undefined);
             if (description.trim()) {
                 const task = this.tasksRepository.create({
                     description: description.trim(),
@@ -1952,168 +1912,22 @@ let ProjectsService = class ProjectsService {
         };
     }
     async getAllConsultantProjects() {
-        const projects = await this.projectsRepository.find({
-            relations: ["phases", "phases.subPhases", "owner", "collaborators"],
-        });
-        const calculatePhaseCompletion = (phase) => {
-            if (!phase.subPhases || phase.subPhases.length === 0) {
-                return phase.progress || 0;
-            }
-            const completed = phase.subPhases.filter((sp) => sp.isCompleted).length;
-            return Math.round((completed / phase.subPhases.length) * 100);
-        };
-        return projects.map((project) => {
-            const phases = project.phases || [];
-            const projectProgress = phases.length > 0
-                ? Math.round(phases.reduce((sum, p) => sum + calculatePhaseCompletion(p), 0) /
-                    phases.length)
-                : 0;
-            const completedPhases = phases.filter((p) => p.status === "completed").length;
-            return {
-                id: project.id,
-                name: project.title,
-                description: project.description,
-                progress: projectProgress,
-                completedPhases,
-                totalPhases: phases.length,
-                totalAmount: project.totalAmount,
-                totalBudget: project.totalAmount,
-                startDate: project.start_date,
-                estimatedCompletion: project.end_date,
-                owner: project.owner?.display_name || project.owner_id,
-                collaborators: (project.collaborators || []).map((c) => c.display_name || c.id),
-                tags: project.tags || [],
-                phases: phases.map((phase) => ({
-                    id: phase.id,
-                    name: phase.title,
-                    title: phase.title,
-                    status: phase.status,
-                    startDate: phase.start_date,
-                    endDate: phase.end_date,
-                    subPhases: (phase.subPhases || []).map((sub) => ({
-                        id: sub.id,
-                        title: sub.title,
-                        description: sub.description,
-                        isCompleted: sub.isCompleted,
-                    })),
-                })),
-                isOwner: false,
-                isCollaborator: true,
-                hasPendingInvite: false,
-            };
-        });
+        return this.projectConsultantService.getAllConsultantProjects();
+    }
+    async getAllConsultantProjectsPaginated(page = 1, limit = 10, search, status) {
+        return this.projectConsultantService.getAllConsultantProjectsPaginated(page, limit, search, status);
     }
     async getConsultantProjectDetails(id) {
-        const project = await this.projectsRepository.findOne({
-            where: { id },
-            relations: ["phases", "phases.subPhases", "owner", "collaborators"],
-        });
-        if (!project)
-            throw new common_1.NotFoundException("Project not found");
-        return {
-            id: project.id,
-            name: project.title,
-            description: project.description,
-            owner: project.owner?.display_name || project.owner_id,
-            collaborators: (project.collaborators || []).map((c) => c.display_name || c.id),
-            startDate: project.start_date,
-            estimatedCompletion: project.end_date,
-            totalAmount: project.totalAmount,
-            tags: project.tags || [],
-            phases: (project.phases || []).map((phase) => ({
-                id: phase.id,
-                name: phase.title,
-                title: phase.title,
-                status: phase.status,
-                startDate: phase.start_date,
-                start_date: phase.start_date,
-                endDate: phase.end_date,
-                end_date: phase.end_date,
-                progress: phase.progress || 0,
-                sub_phases: (phase.subPhases || []).map((sub) => ({
-                    id: sub.id,
-                    title: sub.title,
-                    description: sub.description,
-                    isCompleted: sub.isCompleted,
-                })),
-                subPhases: (phase.subPhases || []).map((sub) => ({
-                    id: sub.id,
-                    title: sub.title,
-                    description: sub.description,
-                    isCompleted: sub.isCompleted,
-                })),
-            })),
-        };
+        return this.projectConsultantService.getConsultantProjectDetails(id);
     }
     async getConsultantProjectPhases(projectId) {
-        const phases = await this.phasesRepository.find({
-            where: { project_id: projectId, is_active: true },
-            relations: ["subPhases", "subPhases.subPhases"],
-        });
-        return phases.map((phase) => ({
-            id: phase.id,
-            title: phase.title,
-            description: phase.description,
-            start_date: phase.start_date,
-            end_date: phase.end_date,
-            progress: phase.progress,
-            status: phase.status,
-            created_at: phase.created_at,
-            updated_at: phase.updated_at,
-            subPhases: (phase.subPhases || []).map((sub) => ({
-                id: sub.id,
-                title: sub.title,
-                description: sub.description,
-                isCompleted: sub.isCompleted,
-            })),
-        }));
+        return this.projectConsultantService.getConsultantProjectPhases(projectId);
     }
     async getConsultantProjectPhasesPaginated(projectId, { page = 1, limit = 10 }) {
-        const pageNum = Number(page) || 1;
-        const limitNum = Number(limit) || 10;
-        const [phases, total] = await this.phasesRepository.findAndCount({
-            where: { project_id: projectId, is_active: true },
-            relations: ["subPhases", "subPhases.subPhases"],
-            order: { created_at: "ASC" },
-            skip: (pageNum - 1) * limitNum,
-            take: limitNum,
-        });
-        const items = phases.map((phase) => ({
-            id: phase.id,
-            title: phase.title,
-            description: phase.description,
-            start_date: phase.start_date,
-            end_date: phase.end_date,
-            progress: phase.progress,
-            status: phase.status,
-            created_at: phase.created_at,
-            updated_at: phase.updated_at,
-            subPhases: (phase.subPhases || []).map((sub) => ({
-                id: sub.id,
-                title: sub.title,
-                description: sub.description,
-                isCompleted: sub.isCompleted,
-            })),
-        }));
-        return {
-            items,
-            total,
-            page: pageNum,
-            limit: limitNum,
-            totalPages: Math.ceil(total / limitNum),
-        };
+        return this.projectConsultantService.getConsultantProjectPhasesPaginated(projectId, page, limit);
     }
     async getBoqDraftPhases(projectId, userId) {
-        await this.findOne(projectId, userId);
-        return this.phasesRepository.find({
-            where: {
-                project_id: projectId,
-                is_active: false,
-                from_boq: true
-            },
-            relations: ["subPhases"],
-            order: { created_at: "ASC" },
-        });
+        return this.projectConsultantService.getBoqDraftPhases(projectId, userId);
     }
     async activateBoqPhases(projectId, phaseIds, userId) {
         const project = await this.findOne(projectId, userId);
@@ -2163,27 +1977,7 @@ let ProjectsService = class ProjectsService {
         };
     }
     async getConsultantProjectTasks(projectId) {
-        const project = await this.projectsRepository.findOne({
-            where: { id: projectId },
-        });
-        if (!project) {
-            throw new common_1.NotFoundException("Project not found");
-        }
-        const phases = await this.phasesRepository.find({
-            where: { project_id: projectId },
-            relations: ["tasks"],
-        });
-        const allTasks = phases.flatMap((phase) => phase.tasks.map((task) => ({
-            id: task.id,
-            description: task.description,
-            unit: task.unit,
-            quantity: task.quantity,
-            price: task.price,
-            phase_id: phase.id,
-            phase_title: phase.title,
-            created_at: task.created_at,
-        })));
-        return allTasks;
+        return this.projectConsultantService.getConsultantProjectTasks(projectId);
     }
     async getProjectCompletionTrends(period = "daily", from, to) {
         let startDate = undefined;
@@ -2228,118 +2022,43 @@ let ProjectsService = class ProjectsService {
         }));
     }
     async getProjectInventory(projectId, userId, options) {
-        const user = await this.usersService.findOne(userId);
-        const isContractor = user?.role === user_entity_1.UserRole.CONTRACTOR;
-        const isSubContractor = user?.role === user_entity_1.UserRole.SUB_CONTRACTOR;
-        if (!isContractor && !isSubContractor) {
-            await this.findOne(projectId, userId);
-        }
-        else {
-            const project = await this.projectsRepository.findOne({
-                where: { id: projectId },
-            });
-            if (!project) {
-                throw new common_1.NotFoundException(`Project with ID ${projectId} not found`);
-            }
-        }
-        const { page = 1, limit = 10, category, search } = options;
-        const skip = (page - 1) * limit;
-        const where = { project_id: projectId, is_active: true };
-        if (category) {
-            where.category = category;
-        }
-        const queryBuilder = this.inventoryRepository.createQueryBuilder("inventory")
-            .leftJoinAndSelect("inventory.creator", "creator")
-            .where("inventory.project_id = :projectId", { projectId })
-            .andWhere("inventory.is_active = :is_active", { is_active: true });
-        if (category) {
-            queryBuilder.andWhere("inventory.category = :category", { category });
-        }
-        if (search) {
-            queryBuilder.andWhere("(inventory.name ILIKE :search OR inventory.description ILIKE :search OR inventory.sku ILIKE :search)", { search: `%${search}%` });
-        }
-        const [items, total] = await queryBuilder
-            .orderBy("inventory.created_at", "DESC")
-            .skip(skip)
-            .take(limit)
-            .getManyAndCount();
-        return {
-            items,
-            total,
-            page,
-            limit,
-            totalPages: Math.ceil(total / limit),
-        };
+        return this.projectContractorService.getProjectInventory(projectId, userId, options);
     }
     async addProjectInventoryItem(projectId, createInventoryDto, userId, pictureFile) {
-        const user = await this.usersService.findOne(userId);
-        if (user?.role !== user_entity_1.UserRole.CONTRACTOR && user?.role !== user_entity_1.UserRole.SUB_CONTRACTOR) {
-            throw new common_1.ForbiddenException("Only contractors and sub-contractors can add inventory items to projects");
-        }
-        const project = await this.projectsRepository.findOne({
-            where: { id: projectId },
-        });
-        if (!project) {
-            throw new common_1.NotFoundException(`Project with ID ${projectId} not found`);
-        }
-        let pictureUrl = null;
-        if (pictureFile) {
-            const uploadDir = path.join(process.cwd(), "uploads", "inventory", "pictures");
-            if (!fs.existsSync(uploadDir)) {
-                fs.mkdirSync(uploadDir, { recursive: true });
-            }
-            const fileName = `${Date.now()}-${pictureFile.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-            const filePath = path.join(uploadDir, fileName);
-            fs.writeFileSync(filePath, pictureFile.buffer);
-            pictureUrl = `/uploads/inventory/pictures/${fileName}`;
-        }
-        else {
-            throw new common_1.BadRequestException("Picture evidence is required");
-        }
-        const inventory = this.inventoryRepository.create({
-            ...createInventoryDto,
-            project_id: projectId,
-            picture_url: pictureUrl,
-            created_by: userId,
-        });
-        const saved = await this.inventoryRepository.save(inventory);
-        await this.activitiesService.logActivity(activity_entity_1.ActivityType.INVENTORY_ADDED, userId, projectId, {
-            inventoryName: saved.name,
-            category: saved.category,
-            quantity: saved.quantity_available
-        });
-        return saved;
+        return this.projectContractorService.addProjectInventoryItem(projectId, createInventoryDto, userId, pictureFile);
     }
     async updateProjectInventoryItem(projectId, inventoryId, updateData, userId) {
-        const user = await this.usersService.findOne(userId);
-        if (user?.role !== user_entity_1.UserRole.CONTRACTOR && user?.role !== user_entity_1.UserRole.SUB_CONTRACTOR) {
-            throw new common_1.ForbiddenException("Only contractors and sub-contractors can update inventory items");
-        }
-        const inventory = await this.inventoryRepository.findOne({
-            where: { id: inventoryId, project_id: projectId },
-        });
-        if (!inventory) {
-            throw new common_1.NotFoundException(`Inventory item not found in this project`);
-        }
-        Object.assign(inventory, updateData);
-        const updated = await this.inventoryRepository.save(inventory);
-        await this.activitiesService.logActivity(activity_entity_1.ActivityType.INVENTORY_UPDATED, userId, projectId, { inventoryName: updated.name });
-        return updated;
+        return this.projectContractorService.updateProjectInventoryItem(projectId, inventoryId, updateData, userId);
     }
     async deleteProjectInventoryItem(projectId, inventoryId, userId) {
-        const user = await this.usersService.findOne(userId);
-        if (user?.role !== user_entity_1.UserRole.CONTRACTOR && user?.role !== user_entity_1.UserRole.SUB_CONTRACTOR) {
-            throw new common_1.ForbiddenException("Only contractors and sub-contractors can delete inventory items");
-        }
-        const inventory = await this.inventoryRepository.findOne({
-            where: { id: inventoryId, project_id: projectId },
-        });
-        if (!inventory) {
-            throw new common_1.NotFoundException(`Inventory item not found in this project`);
-        }
-        await this.inventoryRepository.remove(inventory);
-        await this.activitiesService.logActivity(activity_entity_1.ActivityType.INVENTORY_DELETED, userId, projectId, { inventoryName: inventory.name });
-        return { message: "Inventory item deleted successfully" };
+        return this.projectContractorService.deleteProjectInventoryItem(projectId, inventoryId, userId);
+    }
+    async recordInventoryUsage(projectId, inventoryId, quantity, userId, phaseId, notes) {
+        return this.projectContractorService.recordInventoryUsage(projectId, inventoryId, quantity, userId, phaseId, notes);
+    }
+    async getInventoryUsageHistory(projectId, inventoryId, userId, options) {
+        return this.projectContractorService.getInventoryUsageHistory(projectId, inventoryId, userId, options);
+    }
+    async getProjectInventoryUsage(projectId, userId, options) {
+        return this.projectContractorService.getProjectInventoryUsage(projectId, userId, options);
+    }
+    async linkInventoryToProject(inventoryId, projectId, userId) {
+        return this.projectContractorService.linkInventoryToProject(inventoryId, projectId, userId);
+    }
+    async unlinkInventoryFromProject(inventoryId, projectId, userId) {
+        return this.projectContractorService.unlinkInventoryFromProject(inventoryId, projectId, userId);
+    }
+    async getDashboardProjectStats() {
+        return this.projectDashboardService.getDashboardProjectStats();
+    }
+    async getDashboardPhaseStats() {
+        return this.projectDashboardService.getDashboardPhaseStats();
+    }
+    async getDashboardTeamMembersCount() {
+        return this.projectDashboardService.getDashboardTeamMembersCount();
+    }
+    async getDashboardMonthlyGrowth() {
+        return this.projectDashboardService.getDashboardMonthlyGrowth();
     }
 };
 exports.ProjectsService = ProjectsService;
@@ -2350,9 +2069,11 @@ exports.ProjectsService = ProjectsService = __decorate([
     __param(2, (0, typeorm_1.InjectRepository)(phase_entity_1.Phase)),
     __param(3, (0, typeorm_1.InjectRepository)(project_access_request_entity_1.ProjectAccessRequest)),
     __param(4, (0, typeorm_1.InjectRepository)(inventory_entity_1.Inventory)),
-    __param(6, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
-    __param(8, (0, common_1.Inject)((0, common_1.forwardRef)(() => dashboard_service_1.DashboardService))),
+    __param(5, (0, typeorm_1.InjectRepository)(inventory_usage_entity_1.InventoryUsage)),
+    __param(7, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
+    __param(9, (0, common_1.Inject)((0, common_1.forwardRef)(() => dashboard_service_1.DashboardService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
@@ -2361,6 +2082,9 @@ exports.ProjectsService = ProjectsService = __decorate([
         activities_service_1.ActivitiesService,
         tasks_service_1.TasksService,
         dashboard_service_1.DashboardService,
-        boq_parser_service_1.BoqParserService])
+        boq_parser_service_1.BoqParserService,
+        project_dashboard_service_1.ProjectDashboardService,
+        project_consultant_service_1.ProjectConsultantService,
+        project_contractor_service_1.ProjectContractorService])
 ], ProjectsService);
 //# sourceMappingURL=projects.service.js.map

@@ -23,6 +23,11 @@ import { PhaseEvidence } from "../entities/phase-evidence.entity";
 import { EvidenceService } from "./evidence.service";
 import { BoqParserService } from "./boq-parser.service";
 import { BoqProgressGateway } from "./boq-progress.gateway";
+import { Inventory } from "../entities/inventory.entity";
+import { InventoryUsage } from "../entities/inventory-usage.entity";
+import { ProjectDashboardService } from "./services/project-dashboard.service";
+import { ProjectConsultantService } from "./services/project-consultant.service";
+import { ProjectContractorService } from "./services/project-contractor.service";
 
 @Module({
   imports: [
@@ -34,6 +39,8 @@ import { BoqProgressGateway } from "./boq-progress.gateway";
       CollaborationRequest,
       ProjectAccessRequest,
       PhaseEvidence,
+      Inventory,
+      InventoryUsage,
     ]),
     UsersModule,
     AuthModule,
@@ -50,12 +57,15 @@ import { BoqProgressGateway } from "./boq-progress.gateway";
     EvidenceService,
     BoqParserService,
     BoqProgressGateway,
+    ProjectDashboardService,
+    ProjectConsultantService,
+    ProjectContractorService,
   ],
   controllers: [
     ProjectsController,
     CollaborationRequestsController,
     SubPhasesController,
   ],
-  exports: [ProjectsService, TypeOrmModule],
+  exports: [ProjectsService, ProjectDashboardService, ProjectConsultantService, ProjectContractorService, TypeOrmModule],
 })
 export class ProjectsModule {}

@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, Between } from "typeorm";
 import { Project, ProjectStatus } from "../entities/project.entity";
-import { User } from "../entities/user.entity";
+import { User, UserRole } from "../entities/user.entity";
 import { Task } from "../entities/task.entity";
 import { Phase } from "../entities/phase.entity";
 import { Stats } from "../entities/stats.entity";
@@ -20,7 +20,12 @@ export class DashboardService {
     private readonly statsRepository: Repository<Stats>
   ) {}
 
-  async getStats(userId: string) {
+  async getStats(userId: string, userRole?: string) {
+    // Contractors and sub-contractors can see all projects
+    const isContractor = userRole?.toLowerCase() === UserRole.CONTRACTOR.toLowerCase();
+    const isSubContractor = userRole?.toLowerCase() === UserRole.SUB_CONTRACTOR.toLowerCase();
+    const canSeeAllProjects = isContractor || isSubContractor;
+
     const [
       totalProjects,
       activeProjects,
@@ -32,15 +37,15 @@ export class DashboardService {
       taskStats,
       averagePhaseProgress,
     ] = await Promise.all([
-      this.getTotalProjects(userId),
-      this.getActiveProjects(userId),
-      this.getCompletedProjects(userId),
-      this.getTotalTeamMembers(userId),
-      this.getPhaseStats(userId),
-      this.getMonthlyGrowth(userId),
-      this.getTotalProjectValues(userId),
-      this.getTaskStats(userId),
-      this.getAveragePhaseProgress(userId),
+      this.getTotalProjects(userId, canSeeAllProjects),
+      this.getActiveProjects(userId, canSeeAllProjects),
+      this.getCompletedProjects(userId, canSeeAllProjects),
+      this.getTotalTeamMembers(userId, canSeeAllProjects),
+      this.getPhaseStats(userId, canSeeAllProjects),
+      this.getMonthlyGrowth(userId, canSeeAllProjects),
+      this.getTotalProjectValues(userId, canSeeAllProjects),
+      this.getTaskStats(userId, canSeeAllProjects),
+      this.getAveragePhaseProgress(userId, canSeeAllProjects),
     ]);
 
     return {
@@ -125,14 +130,19 @@ export class DashboardService {
 
   /**
    * Get user-specific dashboard stats in the format expected by frontend
+   * Contractors and sub-contractors see stats for ALL projects
    */
-  async getUserStatsForDashboard(userId: string) {
+  async getUserStatsForDashboard(userId: string, userRole?: string) {
+    const isContractor = userRole?.toLowerCase() === UserRole.CONTRACTOR.toLowerCase();
+    const isSubContractor = userRole?.toLowerCase() === UserRole.SUB_CONTRACTOR.toLowerCase();
+    const canSeeAllProjects = isContractor || isSubContractor;
+
     const [totalProjects, completedProjects, totalTeamMembers, totalValue] =
       await Promise.all([
-        this.getTotalProjects(userId),
-        this.getCompletedProjects(userId),
-        this.getTotalTeamMembers(userId),
-        this.getTotalProjectValues(userId),
+        this.getTotalProjects(userId, canSeeAllProjects),
+        this.getCompletedProjects(userId, canSeeAllProjects),
+        this.getTotalTeamMembers(userId, canSeeAllProjects),
+        this.getTotalProjectValues(userId, canSeeAllProjects),
       ]);
 
     const completion_rate =
@@ -149,8 +159,13 @@ export class DashboardService {
     };
   }
 
-  private async getTotalProjects(userId: string): Promise<number> {
-    console.log("🔍 Dashboard - Getting total projects for user:", userId);
+  private async getTotalProjects(userId: string, canSeeAllProjects: boolean = false): Promise<number> {
+    console.log("🔍 Dashboard - Getting total projects for user:", userId, "canSeeAllProjects:", canSeeAllProjects);
+    if (canSeeAllProjects) {
+      const count = await this.projectsRepository.count();
+      console.log("📊 Dashboard - Total projects (all):", count);
+      return count;
+    }
     const count = await this.projectsRepository.count({
       where: [{ owner_id: userId }, { collaborators: { id: userId } }],
     });
@@ -158,7 +173,12 @@ export class DashboardService {
     return count;
   }
 
-  private async getActiveProjects(userId: string): Promise<number> {
+  private async getActiveProjects(userId: string, canSeeAllProjects: boolean = false): Promise<number> {
+    if (canSeeAllProjects) {
+      return this.projectsRepository.count({
+        where: { status: ProjectStatus.IN_PROGRESS },
+      });
+    }
     return this.projectsRepository.count({
       where: [
         { owner_id: userId, status: ProjectStatus.IN_PROGRESS },
@@ -167,7 +187,12 @@ export class DashboardService {
     });
   }
 
-  private async getCompletedProjects(userId: string): Promise<number> {
+  private async getCompletedProjects(userId: string, canSeeAllProjects: boolean = false): Promise<number> {
+    if (canSeeAllProjects) {
+      return this.projectsRepository.count({
+        where: { status: ProjectStatus.COMPLETED },
+      });
+    }
     return this.projectsRepository.count({
       where: [
         { owner_id: userId, status: ProjectStatus.COMPLETED },
@@ -176,15 +201,19 @@ export class DashboardService {
     });
   }
 
-  private async getTotalTeamMembers(userId: string): Promise<number> {
-    const projects = await this.projectsRepository.find({
-      where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-      relations: ["collaborators"],
-    });
+  private async getTotalTeamMembers(userId: string, canSeeAllProjects: boolean = false): Promise<number> {
+    const projects = canSeeAllProjects
+      ? await this.projectsRepository.find({
+          relations: ["collaborators"],
+        })
+      : await this.projectsRepository.find({
+          where: [{ owner_id: userId }, { collaborators: { id: userId } }],
+          relations: ["collaborators"],
+        });
 
     const uniqueTeamMembers = new Set<string>();
     projects.forEach((project) => {
-      project.collaborators.forEach((collaborator) => {
+      project.collaborators?.forEach((collaborator) => {
         uniqueTeamMembers.add(collaborator.id);
       });
       if (project.owner_id) {
@@ -195,11 +224,15 @@ export class DashboardService {
     return uniqueTeamMembers.size;
   }
 
-  private async getPhaseStats(userId: string): Promise<any> {
-    const projects = await this.projectsRepository.find({
-      where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-      relations: ["phases"],
-    });
+  private async getPhaseStats(userId: string, canSeeAllProjects: boolean = false): Promise<any> {
+    const projects = canSeeAllProjects
+      ? await this.projectsRepository.find({
+          relations: ["phases"],
+        })
+      : await this.projectsRepository.find({
+          where: [{ owner_id: userId }, { collaborators: { id: userId } }],
+          relations: ["phases"],
+        });
 
     const stats = {
       total_phases: 0,
@@ -226,35 +259,43 @@ export class DashboardService {
     return stats;
   }
 
-  private async getMonthlyGrowth(userId: string): Promise<number> {
+  private async getMonthlyGrowth(userId: string, canSeeAllProjects: boolean = false): Promise<number> {
     const now = new Date();
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    const whereCondition = canSeeAllProjects
+      ? { created_at: Between(lastMonth, thisMonth) }
+      : [
+          {
+            owner_id: userId,
+            created_at: Between(lastMonth, thisMonth),
+          },
+          {
+            collaborators: { id: userId },
+            created_at: Between(lastMonth, thisMonth),
+          },
+        ];
+
+    const whereConditionThisMonth = canSeeAllProjects
+      ? { created_at: Between(thisMonth, now) }
+      : [
+          {
+            owner_id: userId,
+            created_at: Between(thisMonth, now),
+          },
+          {
+            collaborators: { id: userId },
+            created_at: Between(thisMonth, now),
+          },
+        ];
+
     const [lastMonthProjects, thisMonthProjects] = await Promise.all([
       this.projectsRepository.count({
-        where: [
-          {
-            owner_id: userId,
-            created_at: Between(lastMonth, thisMonth),
-          },
-          {
-            collaborators: { id: userId },
-            created_at: Between(lastMonth, thisMonth),
-          },
-        ],
+        where: whereCondition,
       }),
       this.projectsRepository.count({
-        where: [
-          {
-            owner_id: userId,
-            created_at: Between(thisMonth, now),
-          },
-          {
-            collaborators: { id: userId },
-            created_at: Between(thisMonth, now),
-          },
-        ],
+        where: whereConditionThisMonth,
       }),
     ]);
 
@@ -262,11 +303,15 @@ export class DashboardService {
     return ((thisMonthProjects - lastMonthProjects) / lastMonthProjects) * 100;
   }
 
-  private async getTotalProjectValues(userId: string): Promise<number> {
-    const projects = await this.projectsRepository.find({
-      where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-      select: ["totalBudget", "totalAmount"],
-    });
+  private async getTotalProjectValues(userId: string, canSeeAllProjects: boolean = false): Promise<number> {
+    const projects = canSeeAllProjects
+      ? await this.projectsRepository.find({
+          select: ["totalBudget", "totalAmount"],
+        })
+      : await this.projectsRepository.find({
+          where: [{ owner_id: userId }, { collaborators: { id: userId } }],
+          select: ["totalBudget", "totalAmount"],
+        });
 
     return projects.reduce(
       (sum, project) => {
@@ -316,12 +361,16 @@ export class DashboardService {
     };
   }
 
-  private async getTaskStats(userId: string) {
+  private async getTaskStats(userId: string, canSeeAllProjects: boolean = false) {
     // Get all projects and their phases/tasks
-    const projects = await this.projectsRepository.find({
-      where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-      relations: ["phases", "phases.tasks"],
-    });
+    const projects = canSeeAllProjects
+      ? await this.projectsRepository.find({
+          relations: ["phases", "phases.tasks"],
+        })
+      : await this.projectsRepository.find({
+          where: [{ owner_id: userId }, { collaborators: { id: userId } }],
+          relations: ["phases", "phases.tasks"],
+        });
     let totalTasks = 0;
     let totalPhases = 0;
     projects.forEach((project) => {
@@ -337,11 +386,15 @@ export class DashboardService {
     };
   }
 
-  private async getAveragePhaseProgress(userId: string) {
-    const projects = await this.projectsRepository.find({
-      where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-      relations: ["phases"],
-    });
+  private async getAveragePhaseProgress(userId: string, canSeeAllProjects: boolean = false) {
+    const projects = canSeeAllProjects
+      ? await this.projectsRepository.find({
+          relations: ["phases"],
+        })
+      : await this.projectsRepository.find({
+          where: [{ owner_id: userId }, { collaborators: { id: userId } }],
+          relations: ["phases"],
+        });
     let totalProgress = 0;
     let count = 0;
     projects.forEach((project) => {

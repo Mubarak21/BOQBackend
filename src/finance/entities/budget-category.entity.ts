@@ -72,7 +72,16 @@ export class BudgetCategory {
 
   // Computed properties
   get remainingAmount(): number {
-    return this.budgetedAmount - this.spentAmount;
+    // Ensure values are numbers before calculation
+    const budgeted = typeof this.budgetedAmount === 'number' 
+      ? this.budgetedAmount 
+      : parseFloat(String(this.budgetedAmount || 0)) || 0;
+    const spent = typeof this.spentAmount === 'number' 
+      ? this.spentAmount 
+      : parseFloat(String(this.spentAmount || 0)) || 0;
+    const remaining = budgeted - spent;
+    // Clamp to reasonable range to prevent overflow
+    return Math.max(Math.min(remaining, 9999999999999.99), -9999999999999.99);
   }
 
   get utilizationPercentage(): number {
