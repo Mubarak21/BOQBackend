@@ -9,10 +9,13 @@ export declare class CollaborationRequest {
     id: string;
     projectId: string;
     project: Project;
-    userId: string;
-    user: User;
+    userId: string | null;
+    user: User | null;
+    inviteEmail: string | null;
     inviterId: string;
     inviter: User;
     status: CollaborationRequestStatus;
+    tokenHash: string;
+    expiresAt: Date;
     createdAt: Date;
 }

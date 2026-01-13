@@ -27,12 +27,15 @@ export class CollaborationRequest {
   @JoinColumn({ name: "projectId" })
   project: Project;
 
-  @Column()
-  userId: string; // The invited user
+  @Column({ nullable: true })
+  userId: string | null; // The invited user (null if invite is by email only)
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: "userId" })
-  user: User;
+  user: User | null;
+
+  @Column({ nullable: true })
+  inviteEmail: string | null; // Email for unregistered users
 
   @Column()
   inviterId: string; // The owner
@@ -47,6 +50,12 @@ export class CollaborationRequest {
     default: CollaborationRequestStatus.PENDING,
   })
   status: CollaborationRequestStatus;
+
+  @Column({ type: "text", nullable: true })
+  tokenHash: string; // Hashed token for secure invite links
+
+  @Column({ type: "timestamp", nullable: true })
+  expiresAt: Date; // Invite expiration date
 
   @CreateDateColumn()
   createdAt: Date;

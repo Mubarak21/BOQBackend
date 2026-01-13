@@ -13,6 +13,7 @@ import { EvidenceService } from "./evidence.service";
 import { BoqParserService } from "./boq-parser.service";
 import { BoqProgressGateway } from "./boq-progress.gateway";
 import { CollaborationRequest } from "../entities/collaboration-request.entity";
+import { EmailService } from "./email.service";
 export declare class ProjectsController {
     private readonly projectsService;
     private readonly usersService;
@@ -21,8 +22,9 @@ export declare class ProjectsController {
     private readonly evidenceService;
     private readonly boqParserService;
     private readonly boqProgressGateway;
+    private readonly emailService;
     private readonly collaborationRequestRepository;
-    constructor(projectsService: ProjectsService, usersService: UsersService, complaintsService: ComplaintsService, penaltiesService: PenaltiesService, evidenceService: EvidenceService, boqParserService: BoqParserService, boqProgressGateway: BoqProgressGateway, collaborationRequestRepository: Repository<CollaborationRequest>);
+    constructor(projectsService: ProjectsService, usersService: UsersService, complaintsService: ComplaintsService, penaltiesService: PenaltiesService, evidenceService: EvidenceService, boqParserService: BoqParserService, boqProgressGateway: BoqProgressGateway, emailService: EmailService, collaborationRequestRepository: Repository<CollaborationRequest>);
     create(createProjectDto: CreateProjectDto, req: any): Promise<import("../entities/project.entity").Project>;
     findAll(req: RequestWithUser, page?: number, limit?: number, search?: string, status?: string): Promise<{
         items: any[];
@@ -36,7 +38,8 @@ export declare class ProjectsController {
     update(id: string, updateProjectDto: UpdateProjectDto, req: any): Promise<import("../entities/project.entity").Project>;
     remove(id: string, req: any): Promise<void>;
     inviteCollaborator(id: string, body: {
-        userId: string;
+        userId?: string;
+        email?: string;
     }, req: any): Promise<{
         message: string;
     }>;

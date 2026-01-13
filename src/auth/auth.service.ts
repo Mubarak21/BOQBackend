@@ -13,6 +13,7 @@ import * as bcrypt from "bcrypt";
 import { ConfigService } from "@nestjs/config";
 import { Department } from "../entities/department.entity";
 import { Admin } from "../entities/admin.entity";
+import { CollaborationRequest, CollaborationRequestStatus } from "../entities/collaboration-request.entity";
 
 @Injectable()
 export class AuthService {
@@ -26,7 +27,9 @@ export class AuthService {
     @InjectRepository(Department)
     private departmentRepository: Repository<Department>,
     @InjectRepository(Admin)
-    private adminRepository: Repository<Admin>
+    private adminRepository: Repository<Admin>,
+    @InjectRepository(CollaborationRequest)
+    private collaborationRequestRepository: Repository<CollaborationRequest>
   ) {}
 
   async register(createUserDto: CreateUserDto): Promise<{
@@ -77,6 +80,26 @@ export class AuthService {
     });
 
     await this.userRepository.save(user);
+
+    // Link any pending invites by email
+    const emailLower = createUserDto.email.toLowerCase().trim();
+    const pendingInvites = await this.collaborationRequestRepository.find({
+      where: {
+        inviteEmail: emailLower,
+        status: CollaborationRequestStatus.PENDING,
+        userId: null, // Only link invites that don't have a userId yet
+      },
+    });
+
+    // Update pending invites to link them to the new user
+    for (const invite of pendingInvites) {
+      // Check if invite hasn't expired
+      if (!invite.expiresAt || new Date() < invite.expiresAt) {
+        invite.userId = user.id;
+        invite.inviteEmail = null; // Clear email since we now have userId
+        await this.collaborationRequestRepository.save(invite);
+      }
+    }
 
     const { password, ...result } = user;
 

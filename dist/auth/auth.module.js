@@ -20,6 +20,7 @@ const department_entity_1 = require("../entities/department.entity");
 const roles_guard_1 = require("./guards/roles.guard");
 const local_strategy_1 = require("./strategies/local.strategy");
 const admin_entity_1 = require("../entities/admin.entity");
+const collaboration_request_entity_1 = require("../entities/collaboration-request.entity");
 let AuthModule = class AuthModule {
 };
 exports.AuthModule = AuthModule;
@@ -37,7 +38,7 @@ exports.AuthModule = AuthModule = __decorate([
                 }),
                 inject: [config_1.ConfigService],
             }),
-            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, department_entity_1.Department, admin_entity_1.Admin]),
+            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, department_entity_1.Department, admin_entity_1.Admin, collaboration_request_entity_1.CollaborationRequest]),
         ],
         controllers: [auth_controller_1.AuthController],
         providers: [

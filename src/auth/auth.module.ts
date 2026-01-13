@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { ConfigModule, ConfigService } from "@nestjs/config";
@@ -11,6 +11,7 @@ import { Department } from "../entities/department.entity";
 import { RolesGuard } from "./guards/roles.guard";
 import { LocalStrategy } from "./strategies/local.strategy";
 import { Admin } from "../entities/admin.entity";
+import { CollaborationRequest } from "../entities/collaboration-request.entity";
 
 @Module({
   imports: [
@@ -25,7 +26,7 @@ import { Admin } from "../entities/admin.entity";
       }),
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([User, Department, Admin]),
+    TypeOrmModule.forFeature([User, Department, Admin, CollaborationRequest]),
   ],
   controllers: [AuthController],
   providers: [

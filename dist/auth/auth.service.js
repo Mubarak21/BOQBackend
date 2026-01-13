@@ -22,13 +22,15 @@ const bcrypt = require("bcrypt");
 const config_1 = require("@nestjs/config");
 const department_entity_1 = require("../entities/department.entity");
 const admin_entity_1 = require("../entities/admin.entity");
+const collaboration_request_entity_1 = require("../entities/collaboration-request.entity");
 let AuthService = class AuthService {
-    constructor(userRepository, jwtService, configService, departmentRepository, adminRepository) {
+    constructor(userRepository, jwtService, configService, departmentRepository, adminRepository, collaborationRequestRepository) {
         this.userRepository = userRepository;
         this.jwtService = jwtService;
         this.configService = configService;
         this.departmentRepository = departmentRepository;
         this.adminRepository = adminRepository;
+        this.collaborationRequestRepository = collaborationRequestRepository;
         this.tokenBlacklist = new Set();
     }
     async register(createUserDto) {
@@ -74,6 +76,21 @@ let AuthService = class AuthService {
             department_id: departmentId,
         });
         await this.userRepository.save(user);
+        const emailLower = createUserDto.email.toLowerCase().trim();
+        const pendingInvites = await this.collaborationRequestRepository.find({
+            where: {
+                inviteEmail: emailLower,
+                status: collaboration_request_entity_1.CollaborationRequestStatus.PENDING,
+                userId: null,
+            },
+        });
+        for (const invite of pendingInvites) {
+            if (!invite.expiresAt || new Date() < invite.expiresAt) {
+                invite.userId = user.id;
+                invite.inviteEmail = null;
+                await this.collaborationRequestRepository.save(invite);
+            }
+        }
         const { password, ...result } = user;
         const [access_token, refresh_token] = await Promise.all([
             this.generateAccessToken(user),
@@ -227,9 +244,11 @@ exports.AuthService = AuthService = __decorate([
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
     __param(3, (0, typeorm_1.InjectRepository)(department_entity_1.Department)),
     __param(4, (0, typeorm_1.InjectRepository)(admin_entity_1.Admin)),
+    __param(5, (0, typeorm_1.InjectRepository)(collaboration_request_entity_1.CollaborationRequest)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         jwt_1.JwtService,
         config_1.ConfigService,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository])
 ], AuthService);

@@ -31,8 +31,12 @@ const boq_parser_service_1 = require("./boq-parser.service");
 const boq_progress_gateway_1 = require("./boq-progress.gateway");
 const file_validation_pipe_1 = require("./pipes/file-validation.pipe");
 const collaboration_request_entity_1 = require("../entities/collaboration-request.entity");
+const email_service_1 = require("./email.service");
+const rate_limit_guard_1 = require("../auth/guards/rate-limit.guard");
+const crypto = require("crypto");
+const bcrypt = require("bcrypt");
 let ProjectsController = class ProjectsController {
-    constructor(projectsService, usersService, complaintsService, penaltiesService, evidenceService, boqParserService, boqProgressGateway, collaborationRequestRepository) {
+    constructor(projectsService, usersService, complaintsService, penaltiesService, evidenceService, boqParserService, boqProgressGateway, emailService, collaborationRequestRepository) {
         this.projectsService = projectsService;
         this.usersService = usersService;
         this.complaintsService = complaintsService;
@@ -40,6 +44,7 @@ let ProjectsController = class ProjectsController {
         this.evidenceService = evidenceService;
         this.boqParserService = boqParserService;
         this.boqProgressGateway = boqProgressGateway;
+        this.emailService = emailService;
         this.collaborationRequestRepository = collaborationRequestRepository;
     }
     create(createProjectDto, req) {
@@ -100,29 +105,105 @@ let ProjectsController = class ProjectsController {
         if (project.owner_id !== req.user.id && !isConsultant) {
             throw new common_1.BadRequestException("Only the project owner or consultant can invite collaborators");
         }
-        if (project.collaborators?.some((c) => c.id === body.userId)) {
-            throw new common_1.BadRequestException("User is already a collaborator");
+        if (!body.userId && !body.email) {
+            throw new common_1.BadRequestException("Either userId or email must be provided");
         }
-        if (project.owner_id === body.userId) {
-            throw new common_1.BadRequestException("Owner cannot be invited as collaborator");
+        let invitedUser = null;
+        let inviteEmail = null;
+        let userId = null;
+        if (body.email) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(body.email)) {
+                throw new common_1.BadRequestException("Invalid email format");
+            }
+            inviteEmail = body.email.toLowerCase().trim();
+            const existingUser = await this.usersService.findByEmail(inviteEmail);
+            if (existingUser) {
+                userId = existingUser.id;
+                if (project.collaborators?.some((c) => c.id === userId)) {
+                    throw new common_1.BadRequestException("User is already a collaborator");
+                }
+                if (project.owner_id === userId) {
+                    throw new common_1.BadRequestException("Owner cannot be invited as collaborator");
+                }
+                invitedUser = existingUser;
+            }
         }
-        const existingRequest = await this.collaborationRequestRepository.findOne({
+        else if (body.userId) {
+            userId = body.userId;
+            invitedUser = await this.usersService.findOne(userId);
+            if (project.collaborators?.some((c) => c.id === userId)) {
+                throw new common_1.BadRequestException("User is already a collaborator");
+            }
+            if (project.owner_id === userId) {
+                throw new common_1.BadRequestException("Owner cannot be invited as collaborator");
+            }
+        }
+        const now = new Date();
+        const allPendingRequests = await this.collaborationRequestRepository.find({
             where: {
                 projectId: id,
-                userId: body.userId,
                 status: collaboration_request_entity_1.CollaborationRequestStatus.PENDING,
             },
         });
-        if (existingRequest) {
-            throw new common_1.BadRequestException("Invitation already sent to this user");
+        for (const req of allPendingRequests) {
+            if (req.expiresAt && req.expiresAt < now) {
+                await this.collaborationRequestRepository.remove(req);
+            }
         }
+        let existingRequest = null;
+        if (userId) {
+            existingRequest = await this.collaborationRequestRepository.findOne({
+                where: {
+                    projectId: id,
+                    userId: userId,
+                    status: collaboration_request_entity_1.CollaborationRequestStatus.PENDING,
+                },
+            });
+            if (existingRequest && existingRequest.expiresAt && existingRequest.expiresAt < now) {
+                await this.collaborationRequestRepository.remove(existingRequest);
+                existingRequest = null;
+            }
+        }
+        if (!existingRequest && inviteEmail) {
+            existingRequest = await this.collaborationRequestRepository.findOne({
+                where: {
+                    projectId: id,
+                    inviteEmail: inviteEmail,
+                    status: collaboration_request_entity_1.CollaborationRequestStatus.PENDING,
+                },
+            });
+            if (existingRequest && existingRequest.expiresAt && existingRequest.expiresAt < now) {
+                await this.collaborationRequestRepository.remove(existingRequest);
+                existingRequest = null;
+            }
+        }
+        if (existingRequest) {
+            throw new common_1.BadRequestException("Invitation already sent to this user/email");
+        }
+        const token = crypto.randomBytes(32).toString('hex');
+        const tokenHash = await bcrypt.hash(token, 10);
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
         const collaborationRequest = this.collaborationRequestRepository.create({
             projectId: id,
-            userId: body.userId,
+            userId: userId,
+            inviteEmail: inviteEmail,
             inviterId: req.user.id,
             status: collaboration_request_entity_1.CollaborationRequestStatus.PENDING,
+            tokenHash,
+            expiresAt,
         });
         await this.collaborationRequestRepository.save(collaborationRequest);
+        try {
+            const inviterName = user?.display_name || user?.email || 'Someone';
+            const projectName = project.title || 'a project';
+            const emailToSend = invitedUser?.email || inviteEmail;
+            await this.emailService.sendProjectInvite(emailToSend, inviterName, projectName, id, token, !invitedUser);
+        }
+        catch (emailError) {
+            console.error('Failed to send invitation email:', emailError);
+        }
         return { message: "Invitation sent successfully" };
     }
     async addCollaborator(id, userId, req) {
@@ -329,6 +410,7 @@ __decorate([
 ], ProjectsController.prototype, "remove", null);
 __decorate([
     (0, common_1.Post)(":id/collaborators/invite"),
+    (0, common_1.UseGuards)(rate_limit_guard_1.RateLimitGuard),
     __param(0, (0, common_1.Param)("id")),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, common_1.Request)()),
@@ -616,7 +698,7 @@ __decorate([
 exports.ProjectsController = ProjectsController = __decorate([
     (0, common_1.Controller)("projects"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
-    __param(7, (0, typeorm_1.InjectRepository)(collaboration_request_entity_1.CollaborationRequest)),
+    __param(8, (0, typeorm_1.InjectRepository)(collaboration_request_entity_1.CollaborationRequest)),
     __metadata("design:paramtypes", [projects_service_1.ProjectsService,
         users_service_1.UsersService,
         complaints_service_1.ComplaintsService,
@@ -624,6 +706,7 @@ exports.ProjectsController = ProjectsController = __decorate([
         evidence_service_1.EvidenceService,
         boq_parser_service_1.BoqParserService,
         boq_progress_gateway_1.BoqProgressGateway,
+        email_service_1.EmailService,
         typeorm_2.Repository])
 ], ProjectsController);
 //# sourceMappingURL=projects.controller.js.map

@@ -36,14 +36,18 @@ __decorate([
     __metadata("design:type", project_entity_1.Project)
 ], CollaborationRequest.prototype, "project", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
 ], CollaborationRequest.prototype, "userId", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => user_entity_1.User),
+    (0, typeorm_1.ManyToOne)(() => user_entity_1.User, { nullable: true }),
     (0, typeorm_1.JoinColumn)({ name: "userId" }),
     __metadata("design:type", user_entity_1.User)
 ], CollaborationRequest.prototype, "user", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", String)
+], CollaborationRequest.prototype, "inviteEmail", void 0);
 __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", String)
@@ -61,6 +65,14 @@ __decorate([
     }),
     __metadata("design:type", String)
 ], CollaborationRequest.prototype, "status", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "text", nullable: true }),
+    __metadata("design:type", String)
+], CollaborationRequest.prototype, "tokenHash", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "timestamp", nullable: true }),
+    __metadata("design:type", Date)
+], CollaborationRequest.prototype, "expiresAt", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)(),
     __metadata("design:type", Date)

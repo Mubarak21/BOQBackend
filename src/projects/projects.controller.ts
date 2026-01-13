@@ -35,6 +35,10 @@ import { BoqParserService } from "./boq-parser.service";
 import { BoqProgressGateway } from "./boq-progress.gateway";
 import { FileValidationPipe } from "./pipes/file-validation.pipe";
 import { CollaborationRequest, CollaborationRequestStatus } from "../entities/collaboration-request.entity";
+import { EmailService } from "./email.service";
+import { RateLimitGuard } from "../auth/guards/rate-limit.guard";
+import * as crypto from "crypto";
+import * as bcrypt from "bcrypt";
 
 @Controller("projects")
 @UseGuards(JwtAuthGuard)
@@ -47,6 +51,7 @@ export class ProjectsController {
     private readonly evidenceService: EvidenceService,
     private readonly boqParserService: BoqParserService,
     private readonly boqProgressGateway: BoqProgressGateway,
+    private readonly emailService: EmailService,
     @InjectRepository(CollaborationRequest)
     private readonly collaborationRequestRepository: Repository<CollaborationRequest>
   ) {}
@@ -153,9 +158,10 @@ export class ProjectsController {
   }
 
   @Post(":id/collaborators/invite")
+  @UseGuards(RateLimitGuard)
   async inviteCollaborator(
     @Param("id") id: string,
-    @Body() body: { userId: string },
+    @Body() body: { userId?: string; email?: string },
     @Request() req
   ) {
     const project = await this.projectsService.findOne(id, req.user.id);
@@ -169,38 +175,154 @@ export class ProjectsController {
       );
     }
 
-    // Check if user is already a collaborator
-    if (project.collaborators?.some((c) => c.id === body.userId)) {
-      throw new BadRequestException("User is already a collaborator");
+    // Validate that either userId or email is provided
+    if (!body.userId && !body.email) {
+      throw new BadRequestException("Either userId or email must be provided");
     }
 
-    // Check if user is the owner
-    if (project.owner_id === body.userId) {
-      throw new BadRequestException("Owner cannot be invited as collaborator");
+    let invitedUser: any = null;
+    let inviteEmail: string | null = null;
+    let userId: string | null = null;
+
+    // Handle email-based invite (for unregistered users)
+    if (body.email) {
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(body.email)) {
+        throw new BadRequestException("Invalid email format");
+      }
+
+      inviteEmail = body.email.toLowerCase().trim();
+      
+      // Check if user exists with this email
+      const existingUser = await this.usersService.findByEmail(inviteEmail);
+      
+      if (existingUser) {
+        userId = existingUser.id;
+        // Check if user is already a collaborator
+        if (project.collaborators?.some((c) => c.id === userId)) {
+          throw new BadRequestException("User is already a collaborator");
+        }
+        // Check if user is the owner
+        if (project.owner_id === userId) {
+          throw new BadRequestException("Owner cannot be invited as collaborator");
+        }
+        invitedUser = existingUser;
+      }
+    } else if (body.userId) {
+      userId = body.userId;
+      invitedUser = await this.usersService.findOne(userId);
+      
+      // Check if user is already a collaborator
+      if (project.collaborators?.some((c) => c.id === userId)) {
+        throw new BadRequestException("User is already a collaborator");
+      }
+      // Check if user is the owner
+      if (project.owner_id === userId) {
+        throw new BadRequestException("Owner cannot be invited as collaborator");
+      }
     }
 
-    // Check if invitation already exists
-    const existingRequest = await this.collaborationRequestRepository.findOne({
+    // Check if invitation already exists (by userId or email)
+    // Only check for non-expired, pending invites
+    const now = new Date();
+    
+    // First, clean up any expired invites for this project
+    const allPendingRequests = await this.collaborationRequestRepository.find({
       where: {
         projectId: id,
-        userId: body.userId,
         status: CollaborationRequestStatus.PENDING,
       },
     });
-
-    if (existingRequest) {
-      throw new BadRequestException("Invitation already sent to this user");
+    
+    for (const req of allPendingRequests) {
+      if (req.expiresAt && req.expiresAt < now) {
+        // Clean up expired invite
+        await this.collaborationRequestRepository.remove(req);
+      }
     }
 
-    // Create collaboration request
+    // Now check for valid pending invites
+    let existingRequest = null;
+
+    if (userId) {
+      // Check by userId - only non-expired pending invites
+      existingRequest = await this.collaborationRequestRepository.findOne({
+        where: {
+          projectId: id,
+          userId: userId,
+          status: CollaborationRequestStatus.PENDING,
+        },
+      });
+      
+      // Double-check it's not expired
+      if (existingRequest && existingRequest.expiresAt && existingRequest.expiresAt < now) {
+        await this.collaborationRequestRepository.remove(existingRequest);
+        existingRequest = null;
+      }
+    }
+    
+    // If not found by userId and we have an email, check by email
+    if (!existingRequest && inviteEmail) {
+      existingRequest = await this.collaborationRequestRepository.findOne({
+        where: {
+          projectId: id,
+          inviteEmail: inviteEmail,
+          status: CollaborationRequestStatus.PENDING,
+        },
+      });
+      
+      // Double-check it's not expired
+      if (existingRequest && existingRequest.expiresAt && existingRequest.expiresAt < now) {
+        await this.collaborationRequestRepository.remove(existingRequest);
+        existingRequest = null;
+      }
+    }
+
+    if (existingRequest) {
+      throw new BadRequestException("Invitation already sent to this user/email");
+    }
+
+    // Generate secure token for invite link
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = await bcrypt.hash(token, 10);
+    
+    // Set expiry to 7 days from now
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    // Create collaboration request with token and expiry
     const collaborationRequest = this.collaborationRequestRepository.create({
       projectId: id,
-      userId: body.userId,
+      userId: userId,
+      inviteEmail: inviteEmail,
       inviterId: req.user.id,
       status: CollaborationRequestStatus.PENDING,
+      tokenHash,
+      expiresAt,
     });
 
     await this.collaborationRequestRepository.save(collaborationRequest);
+
+    // Send invitation email with secure token link
+    try {
+      const inviterName = user?.display_name || user?.email || 'Someone';
+      const projectName = project.title || 'a project';
+      const emailToSend = invitedUser?.email || inviteEmail;
+      
+      await this.emailService.sendProjectInvite(
+        emailToSend!,
+        inviterName,
+        projectName,
+        id,
+        token,
+        !invitedUser // isUnregisteredUser
+      );
+    } catch (emailError) {
+      // Log error but don't fail the invitation - email is optional
+      console.error('Failed to send invitation email:', emailError);
+    }
+
     return { message: "Invitation sent successfully" };
   }
 

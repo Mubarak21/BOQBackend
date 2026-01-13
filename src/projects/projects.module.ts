@@ -1,5 +1,6 @@
 import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
+import { ConfigModule } from "@nestjs/config";
 import { Project } from "../entities/project.entity";
 import { Task } from "../entities/task.entity";
 import { Phase } from "../entities/phase.entity";
@@ -28,9 +29,11 @@ import { InventoryUsage } from "../entities/inventory-usage.entity";
 import { ProjectDashboardService } from "./services/project-dashboard.service";
 import { ProjectConsultantService } from "./services/project-consultant.service";
 import { ProjectContractorService } from "./services/project-contractor.service";
+import { EmailService } from "./email.service";
 
 @Module({
   imports: [
+    ConfigModule,
     TypeOrmModule.forFeature([
       Project,
       Task,
@@ -43,7 +46,7 @@ import { ProjectContractorService } from "./services/project-contractor.service"
       InventoryUsage,
     ]),
     UsersModule,
-    AuthModule,
+    forwardRef(() => AuthModule),
     forwardRef(() => ActivitiesModule),
     TasksModule,
     forwardRef(() => CommentsModule),
@@ -60,6 +63,7 @@ import { ProjectContractorService } from "./services/project-contractor.service"
     ProjectDashboardService,
     ProjectConsultantService,
     ProjectContractorService,
+    EmailService,
   ],
   controllers: [
     ProjectsController,

@@ -5,14 +5,16 @@ import { CreateUserDto } from "./dto/create-user.dto";
 import { ConfigService } from "@nestjs/config";
 import { Department } from "../entities/department.entity";
 import { Admin } from "../entities/admin.entity";
+import { CollaborationRequest } from "../entities/collaboration-request.entity";
 export declare class AuthService {
     private userRepository;
     private jwtService;
     private configService;
     private departmentRepository;
     private adminRepository;
+    private collaborationRequestRepository;
     private readonly tokenBlacklist;
-    constructor(userRepository: Repository<User>, jwtService: JwtService, configService: ConfigService, departmentRepository: Repository<Department>, adminRepository: Repository<Admin>);
+    constructor(userRepository: Repository<User>, jwtService: JwtService, configService: ConfigService, departmentRepository: Repository<Department>, adminRepository: Repository<Admin>, collaborationRequestRepository: Repository<CollaborationRequest>);
     register(createUserDto: CreateUserDto): Promise<{
         access_token: string;
         refresh_token: string;

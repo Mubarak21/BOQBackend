@@ -6,7 +6,7 @@ export declare class CollaborationRequestsController {
     private readonly projectsService;
     constructor(collaborationRequestRepository: Repository<CollaborationRequest>, projectsService: ProjectsService);
     getMyRequests(req: any): Promise<CollaborationRequest[]>;
-    acceptRequest(id: string, req: any): Promise<{
+    acceptRequest(id: string, req: any, token?: string): Promise<{
         message: string;
     }>;
     rejectRequest(id: string, req: any): Promise<{
