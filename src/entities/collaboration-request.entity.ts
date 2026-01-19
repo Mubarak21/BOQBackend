@@ -57,6 +57,9 @@ export class CollaborationRequest {
   @Column({ type: "timestamp", nullable: true })
   expiresAt: Date; // Invite expiration date
 
+  @Column({ nullable: true })
+  invitedRole: string | null; // Role assigned when invited (for consultants to specify)
+
   @CreateDateColumn()
   createdAt: Date;
 }

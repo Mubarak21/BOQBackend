@@ -35,17 +35,13 @@ async function bootstrap() {
     try {
         const dataSource = app.get((0, typeorm_1.getDataSourceToken)());
         if (dataSource.isInitialized) {
-            console.log("✅ Database connection established successfully!");
         }
         else {
             await dataSource.initialize();
-            console.log("✅ Database connection established (after manual init)!");
         }
     }
     catch (err) {
-        console.error("❌ Database connection failed:", err);
     }
-    console.log("✅ Admin and customer (user) modules/routes are connected and server is running on port", port);
 }
 bootstrap();
 //# sourceMappingURL=main.js.map

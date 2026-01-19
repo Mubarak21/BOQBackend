@@ -35,13 +35,10 @@ let AdminProjectsController = class AdminProjectsController {
             page,
             limit,
         });
-        console.log("📊 Admin Projects List:", projects);
         return projects;
     }
     async getProject(id) {
-        console.log("🔍 Admin Projects - Getting project details for ID:", id);
         const project = await this.projectsService.adminGetDetails(id);
-        console.log("📊 Admin Project Details:", project);
         return project;
     }
     async createProject(createProjectDto, req) {

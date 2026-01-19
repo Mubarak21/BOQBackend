@@ -38,11 +38,9 @@ function validateAndNormalizeAmount(value, maxValue = 9999999999999.99, precisio
         return 0;
     const minValue = -maxValue;
     if (numValue > maxValue) {
-        console.warn(`Amount ${numValue} exceeds maximum value ${maxValue}, capping to maximum`);
         return maxValue;
     }
     if (numValue < minValue) {
-        console.warn(`Amount ${numValue} is below minimum value ${minValue}, capping to minimum`);
         return minValue;
     }
     const multiplier = Math.pow(10, precision);

@@ -38,7 +38,7 @@ export class AdminAuthController {
   @Post("register")
   @Public()
   async register(@Body() createAdminDto: AdminRegisterDto) {
-    console.log("Admin registration payload:", createAdminDto);
+
 
     try {
       const admin = await this.adminService.createAdmin({
@@ -47,7 +47,7 @@ export class AdminAuthController {
         display_name: createAdminDto.display_name,
       });
 
-      console.log("Admin created successfully:", admin.email);
+
 
       return {
         success: true,
@@ -97,7 +97,7 @@ export class AdminAuthController {
         role: "admin",
       },
     };
-    console.log("Admin login successful:", admin.email);
+
     return response;
   }
 

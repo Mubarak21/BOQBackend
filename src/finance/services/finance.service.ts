@@ -49,7 +49,7 @@ export class FinanceService {
   async getProjectsFinance(
     query: ProjectFinanceQueryDto
   ): Promise<ProjectFinanceListResponseDto> {
-    console.log('📄 [Finance Page] Finance list page accessed - starting recalculation...');
+
     const {
       page = 1,
       limit = 10,
@@ -107,7 +107,7 @@ export class FinanceService {
 
     const [projects, total] = await queryBuilder.getManyAndCount();
 
-    console.log(`📄 [Finance Page] Recalculating ${projects.length} projects before display...`);
+
 
     // Recalculate each project's spent amount before transforming to ensure accuracy
     // This ensures the displayed data is always correct
@@ -117,12 +117,12 @@ export class FinanceService {
           await this.budgetManagementService.updateProjectSpentAmount(project.id);
         } catch (error) {
           this.logger.warn(`Failed to recalculate project ${project.id}: ${error.message}`);
-          console.error(`❌ [Finance Page] Failed to recalculate project ${project.id}:`, error.message);
+
         }
       })
     );
 
-    console.log(`✅ [Finance Page] Completed recalculation for ${projects.length} projects`);
+
 
     // Transform to DTOs
     const projectFinances = await Promise.all(
@@ -178,7 +178,7 @@ export class FinanceService {
 
     const totalsResult = await totalsQueryBuilder.getRawOne();
     
-    console.log('📊 Totals Query Result:', totalsResult);
+
     
     const totalBudget = totalsResult?.totalBudget ? parseFloat(totalsResult.totalBudget) : 0;
     const totalSpent = totalsResult?.totalSpent ? parseFloat(totalsResult.totalSpent) : 0;
@@ -188,7 +188,7 @@ export class FinanceService {
     // Clamp to reasonable range to prevent overflow
     const normalizedRemaining = Math.max(Math.min(totalRemaining, 9999999999999.99), -9999999999999.99);
     
-    console.log('💰 Calculated Totals:', { totalBudget, totalSpent, totalRemaining: normalizedRemaining });
+
 
     return {
       projects: filteredProjects,
@@ -217,12 +217,12 @@ export class FinanceService {
     projectId: string,
     pagination?: { page: number; limit: number }
   ): Promise<ProjectFinanceDto> {
-    console.log(`📄 [Finance Page] Project finance details accessed for project: ${projectId} - recalculating...`);
+
     
     // Recalculate this project's spent amount before returning data to ensure accuracy
     const updatedSpentAmount = await this.budgetManagementService.updateProjectSpentAmount(projectId);
     
-    console.log(`✅ [Finance Page] Completed recalculation for project ${projectId}`);
+
 
     // Fetch the project with fresh data after recalculation
     const project = await this.projectRepository.findOne({
@@ -508,7 +508,7 @@ export class FinanceService {
         projectsUnderBudget,
       };
     } catch (error) {
-      console.error("Error in calculateFinanceMetrics:", error);
+
       // Return safe defaults
       return {
         totalProjects: 0,

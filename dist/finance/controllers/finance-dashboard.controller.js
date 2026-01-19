@@ -37,15 +37,12 @@ let FinanceDashboardController = class FinanceDashboardController {
                 this.dashboardService
                     .getUserStatsForDashboard(userId)
                     .catch((err) => {
-                    console.warn("Failed to fetch dashboard stats:", err.message);
                     return null;
                 }),
                 this.inventoryService.getStats().catch((err) => {
-                    console.warn("Failed to fetch inventory stats:", err.message);
                     return null;
                 }),
                 this.financeService.getFinanceMetrics().catch((err) => {
-                    console.warn("Failed to fetch finance metrics:", err.message);
                     return null;
                 }),
             ]);
@@ -124,11 +121,9 @@ let FinanceDashboardController = class FinanceDashboardController {
             };
             const [transactions, financeMetrics, projectsFinance] = await Promise.all([
                 this.financeService.getTransactions(transactionParams).catch((err) => {
-                    console.error("Error fetching transactions:", err);
                     return { transactions: [], total: 0, page: 1, limit: 10, totalPages: 0 };
                 }),
                 this.financeService.getFinanceMetrics().catch((err) => {
-                    console.error("Error fetching finance metrics:", err);
                     return {
                         totalProjects: 0,
                         totalBudget: 0,
@@ -140,7 +135,6 @@ let FinanceDashboardController = class FinanceDashboardController {
                     };
                 }),
                 this.financeService.getProjectsFinance({}).catch((err) => {
-                    console.error("Error fetching projects finance:", err);
                     return { projects: [], metrics: null, total: 0, page: 1, limit: 10, totalPages: 0 };
                 }),
             ]);
@@ -182,7 +176,6 @@ let FinanceDashboardController = class FinanceDashboardController {
             const startTime = Date.now();
             const [financeMetrics, projectsFinance, inventoryStats] = await Promise.all([
                 this.financeService.getFinanceMetrics().catch((err) => {
-                    console.error("Error fetching finance metrics in reports:", err);
                     return {
                         totalProjects: 0,
                         totalBudget: 0,
@@ -194,11 +187,9 @@ let FinanceDashboardController = class FinanceDashboardController {
                     };
                 }),
                 this.financeService.getProjectsFinance({}).catch((err) => {
-                    console.error("Error fetching projects finance in reports:", err);
                     return { projects: [], metrics: null, total: 0, page: 1, limit: 10, totalPages: 0 };
                 }),
                 this.inventoryService.getStats().catch((err) => {
-                    console.error("Error fetching inventory stats in reports:", err);
                     return null;
                 }),
             ]);

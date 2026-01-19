@@ -25,8 +25,11 @@ let ComplaintsService = class ComplaintsService {
         this.projectsRepository = projectsRepository;
     }
     async create(createComplaintDto, user) {
-        if (user.role !== user_entity_1.UserRole.CONSULTANT) {
-            throw new common_1.ForbiddenException("Only consultants and admins can raise complaints");
+        if (user.role !== user_entity_1.UserRole.CONSULTANT &&
+            user.role !== user_entity_1.UserRole.ADMIN &&
+            user.role !== user_entity_1.UserRole.CONTRACTOR &&
+            user.role !== user_entity_1.UserRole.SUB_CONTRACTOR) {
+            throw new common_1.ForbiddenException("Only consultants, admins, contractors, and sub-contractors can raise complaints");
         }
         const project = await this.projectsRepository.findOne({
             where: { id: createComplaintDto.project_id },

@@ -27,7 +27,6 @@ let AdminDashboardController = class AdminDashboardController {
         this.activitiesService = activitiesService;
     }
     async getMetrics() {
-        console.log("🔍 Admin Dashboard - Fetching metrics...");
         const [totalProjects, totalUsers, totalActivities] = await Promise.all([
             this.projectsService.countAll(),
             this.usersService.countAll(),
@@ -38,11 +37,9 @@ let AdminDashboardController = class AdminDashboardController {
             totalUsers,
             totalActivities,
         };
-        console.log("📊 Admin Dashboard Metrics:", metrics);
         return metrics;
     }
     async getStats(req) {
-        console.log("🔍 Consultant Dashboard - Fetching comprehensive stats...");
         const startTime = Date.now();
         const [projectStats, phaseStats, teamMembersCount, monthlyGrowth] = await Promise.all([
             this.projectDashboardService.getDashboardProjectStats(),
@@ -66,13 +63,10 @@ let AdminDashboardController = class AdminDashboardController {
             },
         };
         const duration = Date.now() - startTime;
-        console.log(`📊 Consultant Dashboard Stats (${duration}ms):`, stats);
         return stats;
     }
     async getRecentActivities(limit = 10) {
-        console.log("🔍 Admin Dashboard - Fetching recent activities (limit:", limit, ")");
         const activities = await this.activitiesService.getRecentActivities(limit);
-        console.log("📊 Admin Dashboard Recent Activities:", activities);
         return activities;
     }
     async getTrends(metric = "projects", period = "monthly", from, to) {
@@ -91,9 +85,7 @@ let AdminDashboardController = class AdminDashboardController {
         return this.usersService.getTopActiveUsers(limit);
     }
     async getTopProjects(limit = 5) {
-        console.log("🔍 Admin Dashboard - Fetching top projects (limit:", limit, ")");
         const projects = await this.projectsService.getTopActiveProjects(limit);
-        console.log("📊 Admin Dashboard Top Projects:", projects);
         return projects;
     }
 };

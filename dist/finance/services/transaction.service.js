@@ -122,14 +122,11 @@ let TransactionService = class TransactionService {
             createdBy: userId,
         });
         const savedTransaction = await this.transactionRepository.save(transaction);
-        console.log(`💳 [Transaction] New transaction created: ${savedTransaction.transactionNumber} - Amount: ${savedTransaction.amount} TSh - Type: ${savedTransaction.type}`);
-        console.log(`💳 [Transaction] Recalculating finance for project: ${projectId}`);
         if (categoryId) {
             await this.budgetManagementService.updateCategorySpentAmount(categoryId);
         }
         await this.budgetManagementService.updateProjectSpentAmount(projectId);
         await this.budgetManagementService.checkAndCreateBudgetAlerts(projectId);
-        console.log(`✅ [Transaction] Finance recalculation completed for transaction ${savedTransaction.transactionNumber}`);
         return savedTransaction;
     }
     async updateTransaction(transactionId, updateTransactionDto, userId) {
@@ -210,7 +207,6 @@ let TransactionService = class TransactionService {
         if (transaction.projectId) {
             await this.budgetManagementService.checkAndCreateBudgetAlerts(transaction.projectId);
         }
-        console.log(`✅ [Transaction] Finance recalculation completed for transaction ${updatedTransaction.transactionNumber}`);
         return updatedTransaction;
     }
     async deleteTransaction(transactionId) {
@@ -222,8 +218,6 @@ let TransactionService = class TransactionService {
         }
         const projectId = transaction.projectId;
         const categoryId = transaction.categoryId;
-        console.log(`💳 [Transaction] Transaction deleted: ${transaction.transactionNumber} - Amount: ${transaction.amount} TSh`);
-        console.log(`💳 [Transaction] Recalculating finance for project: ${projectId}`);
         await this.transactionRepository.remove(transaction);
         if (categoryId) {
             await this.budgetManagementService.updateCategorySpentAmount(categoryId);
@@ -232,7 +226,6 @@ let TransactionService = class TransactionService {
             await this.budgetManagementService.updateProjectSpentAmount(projectId);
             await this.budgetManagementService.checkAndCreateBudgetAlerts(projectId);
         }
-        console.log(`✅ [Transaction] Finance recalculation completed after deleting transaction ${transaction.transactionNumber}`);
         return { success: true, message: "Transaction deleted successfully" };
     }
     async generateTransactionNumber() {

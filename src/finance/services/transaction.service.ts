@@ -176,8 +176,8 @@ export class TransactionService {
 
     const savedTransaction = await this.transactionRepository.save(transaction);
 
-    console.log(`💳 [Transaction] New transaction created: ${savedTransaction.transactionNumber} - Amount: ${savedTransaction.amount} TSh - Type: ${savedTransaction.type}`);
-    console.log(`💳 [Transaction] Recalculating finance for project: ${projectId}`);
+
+
 
     // Recalculate category spent amount (if category exists)
     if (categoryId) {
@@ -190,7 +190,7 @@ export class TransactionService {
     // Check for budget alerts
     await this.budgetManagementService.checkAndCreateBudgetAlerts(projectId);
 
-    console.log(`✅ [Transaction] Finance recalculation completed for transaction ${savedTransaction.transactionNumber}`);
+
 
     return savedTransaction;
   }
@@ -304,7 +304,7 @@ export class TransactionService {
       await this.budgetManagementService.checkAndCreateBudgetAlerts(transaction.projectId);
     }
 
-    console.log(`✅ [Transaction] Finance recalculation completed for transaction ${updatedTransaction.transactionNumber}`);
+
 
     return updatedTransaction;
   }
@@ -324,8 +324,8 @@ export class TransactionService {
     const projectId = transaction.projectId;
     const categoryId = transaction.categoryId;
 
-    console.log(`💳 [Transaction] Transaction deleted: ${transaction.transactionNumber} - Amount: ${transaction.amount} TSh`);
-    console.log(`💳 [Transaction] Recalculating finance for project: ${projectId}`);
+
+
 
     // Delete the transaction
     await this.transactionRepository.remove(transaction);
@@ -339,7 +339,7 @@ export class TransactionService {
       await this.budgetManagementService.checkAndCreateBudgetAlerts(projectId);
     }
 
-    console.log(`✅ [Transaction] Finance recalculation completed after deleting transaction ${transaction.transactionNumber}`);
+
 
     return { success: true, message: "Transaction deleted successfully" };
   }

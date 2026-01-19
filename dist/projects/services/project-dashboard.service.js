@@ -40,7 +40,6 @@ let ProjectDashboardService = class ProjectDashboardService {
             };
         }
         catch (error) {
-            console.error("Error in getDashboardProjectStats:", error);
             return {
                 total: 0,
                 active: 0,
@@ -70,7 +69,6 @@ let ProjectDashboardService = class ProjectDashboardService {
             };
         }
         catch (error) {
-            console.error("Error in getDashboardPhaseStats:", error);
             return {
                 total: 0,
                 completed: 0,
@@ -97,7 +95,6 @@ let ProjectDashboardService = class ProjectDashboardService {
             return parseInt(result[0]?.count) || 0;
         }
         catch (error) {
-            console.error("Error in getDashboardTeamMembersCount:", error);
             try {
                 const ownerCount = await this.projectsRepository
                     .createQueryBuilder("project")
@@ -141,7 +138,6 @@ let ProjectDashboardService = class ProjectDashboardService {
             return Math.round(monthlyGrowth * 100) / 100;
         }
         catch (error) {
-            console.error("Error in getDashboardMonthlyGrowth:", error);
             return 0;
         }
     }

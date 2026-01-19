@@ -18,6 +18,9 @@ import { InventoryUsage } from "../entities/inventory-usage.entity";
 import { ProjectDashboardService } from "./services/project-dashboard.service";
 import { ProjectConsultantService } from "./services/project-consultant.service";
 import { ProjectContractorService } from "./services/project-contractor.service";
+import { ProjectPhaseService } from "./services/project-phase.service";
+import { ProjectBoqService } from "./services/project-boq.service";
+import { ProjectCollaborationService } from "./services/project-collaboration.service";
 export interface ProcessBoqResult {
     message: string;
     totalAmount: number;
@@ -38,7 +41,10 @@ export declare class ProjectsService {
     private readonly projectDashboardService;
     private readonly projectConsultantService;
     private readonly projectContractorService;
-    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, accessRequestRepository: Repository<ProjectAccessRequest>, inventoryRepository: Repository<Inventory>, inventoryUsageRepository: Repository<InventoryUsage>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService, dashboardService: DashboardService, boqParserService: BoqParserService, projectDashboardService: ProjectDashboardService, projectConsultantService: ProjectConsultantService, projectContractorService: ProjectContractorService);
+    private readonly projectPhaseService;
+    private readonly projectBoqService;
+    private readonly projectCollaborationService;
+    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, accessRequestRepository: Repository<ProjectAccessRequest>, inventoryRepository: Repository<Inventory>, inventoryUsageRepository: Repository<InventoryUsage>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService, dashboardService: DashboardService, boqParserService: BoqParserService, projectDashboardService: ProjectDashboardService, projectConsultantService: ProjectConsultantService, projectContractorService: ProjectContractorService, projectPhaseService: ProjectPhaseService, projectBoqService: ProjectBoqService, projectCollaborationService: ProjectCollaborationService);
     findAll(): Promise<Project[]>;
     findAllPaginated({ page, limit, search, status, }: {
         page?: number;
@@ -168,7 +174,6 @@ export declare class ProjectsService {
     private getColumnMappingsFromHeaders;
     private getColumnMappings;
     private createPhasesFromBoqData;
-    private createPhasesFromBoqData_OLD;
     private createTasksFromBoqData;
     previewBoqFile(file: Express.Multer.File): Promise<{
         phases: Array<{

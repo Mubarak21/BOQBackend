@@ -32,14 +32,12 @@ let AdminAuthController = class AdminAuthController {
         this.adminService = adminService;
     }
     async register(createAdminDto) {
-        console.log("Admin registration payload:", createAdminDto);
         try {
             const admin = await this.adminService.createAdmin({
                 email: createAdminDto.email,
                 password: createAdminDto.password,
                 display_name: createAdminDto.display_name,
             });
-            console.log("Admin created successfully:", admin.email);
             return {
                 success: true,
                 admin: {
@@ -82,7 +80,6 @@ let AdminAuthController = class AdminAuthController {
                 role: "admin",
             },
         };
-        console.log("Admin login successful:", admin.email);
         return response;
     }
     async logout(req) {

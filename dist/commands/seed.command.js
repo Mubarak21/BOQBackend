@@ -54,7 +54,13 @@ let SeedService = class SeedService {
         this.inventoryRepository = inventoryRepository;
     }
     async seed() {
-        console.log("🌱 Starting comprehensive Tanzanian admin dashboard seeding...");
+        const existingUsersCount = await this.userRepository.count();
+        const existingProjectsCount = await this.projectRepository.count();
+        if (existingUsersCount > 0 || existingProjectsCount > 0) {
+            if (process.env.FORCE_SEED !== 'true') {
+                return;
+            }
+        }
         const departments = await this.seedDepartments();
         const users = await this.seedUsers(departments);
         const admins = await this.seedAdmins();
@@ -67,10 +73,8 @@ let SeedService = class SeedService {
         await this.seedComments(users, projects, tasks);
         await this.seedComplaints(users, projects, phases);
         await this.seedInventoryItems(users, projects);
-        console.log("✅ Comprehensive Tanzanian admin dashboard seeding complete!");
     }
     async seedDepartments() {
-        console.log("📂 Seeding Tanzanian departments...");
         const departmentData = [
             {
                 name: "Uhandisi na Majengo",
@@ -96,14 +100,12 @@ let SeedService = class SeedService {
             if (!dept) {
                 dept = this.departmentRepository.create(deptData);
                 await this.departmentRepository.save(dept);
-                console.log(`   ✓ Created department: ${deptData.name}`);
             }
             departments.push(dept);
         }
         return departments;
     }
     async seedUsers(departments) {
-        console.log("👥 Seeding Tanzanian users...");
         const tanzanianUsers = [
             {
                 email: "admin@kipimo.co.tz",
@@ -336,7 +338,6 @@ let SeedService = class SeedService {
         return users;
     }
     async seedAdmins() {
-        console.log("👑 Seeding admin users...");
         const adminUsers = [
             {
                 email: "superadmin@kipimo.co.tz",
@@ -366,14 +367,12 @@ let SeedService = class SeedService {
                     last_login: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000),
                 });
                 await this.adminRepository.save(admin);
-                console.log(`   ✓ Created admin: ${adminData.display_name}`);
             }
             admins.push(admin);
         }
         return admins;
     }
     async seedProjects(users, departments) {
-        console.log("🏗️  Seeding Tanzanian projects with realistic budgets...");
         const tanzanianProjects = [
             {
                 title: "Mradi wa Barabara ya Dar es Salaam - Dodoma",
@@ -569,7 +568,6 @@ let SeedService = class SeedService {
         return projects;
     }
     async seedPhases(projects, users) {
-        console.log("📋 Seeding project phases...");
         const phaseTemplates = [
             {
                 title: "Mipango na Uchunguzi",
@@ -640,7 +638,6 @@ let SeedService = class SeedService {
                 await this.seedSubPhasesForPhase(phase, status);
             }
         }
-        console.log(`   ✓ Created ${phases.length} phases with sub-phases`);
         return phases;
     }
     async seedSubPhasesForPhase(phase, phaseStatus) {
@@ -793,7 +790,6 @@ let SeedService = class SeedService {
         }
     }
     async seedTasks(projects, phases, users) {
-        console.log("✅ Seeding tasks...");
         const taskTemplates = [
             { description: "Ukaguzi wa mazingira", unit: "siku", price: 500000 },
             { description: "Uongozi wa timu", unit: "wiki", price: 2000000 },
@@ -826,14 +822,11 @@ let SeedService = class SeedService {
                 tasks.push(task);
             }
         }
-        console.log(`   ✓ Created ${tasks.length} tasks`);
         return tasks;
     }
     async seedFinancialData(projects, users) {
-        console.log("💰 Seeding comprehensive financial data...");
         const globalUsedTransactionNumbers = new Set();
         for (const project of projects) {
-            console.log(`   📊 Seeding finance for project: ${project.title}`);
             const categories = [
                 { name: "Vifaa na Malighafi", budgetPercentage: 0.35, description: "Ununuzi wa vifaa vya ujenzi, saruji, chuma, na malighafi zingine" },
                 { name: "Ajira na Mishahara", budgetPercentage: 0.25, description: "Mishahara ya wafanyakazi, mafundi, na wataalamu" },
@@ -877,7 +870,6 @@ let SeedService = class SeedService {
             await this.createSavingsRecords(project, users[0]);
             await this.createBudgetAlerts(project);
         }
-        console.log("   ✅ Financial data seeding complete!");
     }
     async recalculateCategorySpentAmount(categoryId) {
         const transactions = await this.transactionRepository.find({
@@ -899,7 +891,6 @@ let SeedService = class SeedService {
         const { extractTransactionAmount } = await Promise.resolve().then(() => require('../utils/amount.utils'));
         const validTransactions = transactions.filter(t => {
             if (t.projectId !== projectId) {
-                console.warn(`⚠️ [Seed] Transaction ${t.id} has mismatched projectId. Expected: ${projectId}, Found: ${t.projectId}`);
                 return false;
             }
             return true;
@@ -1119,7 +1110,6 @@ let SeedService = class SeedService {
         }
     }
     async seedActivities(users, projects, tasks) {
-        console.log("📊 Seeding activities (audit log)...");
         const activityTemplates = [
             {
                 type: activity_entity_1.ActivityType.PROJECT_CREATED,
@@ -1169,11 +1159,9 @@ let SeedService = class SeedService {
             await this.activityRepository.save(activity);
             activities.push(activity);
         }
-        console.log(`   ✓ Created ${activities.length} activities`);
         return activities;
     }
     async seedReports(users) {
-        console.log("📄 Seeding reports...");
         const reportData = [
             {
                 name: "Ripoti ya Fedha - Mwezi wa 12",
@@ -1228,10 +1216,8 @@ let SeedService = class SeedService {
             });
             await this.reportRepository.save(report);
         }
-        console.log("   ✓ Created reports");
     }
     async seedComments(users, projects, tasks) {
-        console.log("💬 Seeding comments...");
         const commentTexts = [
             "Mradi huu unakwenda vizuri. Hongera kwa timu!",
             "Tunahitaji kuongeza haraka katika awamu hii.",
@@ -1258,10 +1244,8 @@ let SeedService = class SeedService {
             });
             await this.commentRepository.save(comment);
         }
-        console.log("   ✓ Created comments");
     }
     async seedComplaints(users, projects, phases) {
-        console.log("📢 Seeding complaints...");
         const complaintTitles = [
             "Ubora wa vifaa haukufikia viwango",
             "Ucheleweshaji wa utoaji wa vifaa",
@@ -1364,7 +1348,6 @@ let SeedService = class SeedService {
             });
             await this.complaintRepository.save(complaint);
         }
-        console.log("   ✓ Created complaints");
     }
     getRandomTransactionDescription(categoryName) {
         const descriptions = {
@@ -1432,7 +1415,6 @@ let SeedService = class SeedService {
         }
     }
     async seedInventoryItems(users, projects) {
-        console.log("📦 Seeding inventory items...");
         const inventoryItems = [
             {
                 name: "Cement (Portland)",
@@ -1745,7 +1727,6 @@ let SeedService = class SeedService {
             const saved = await this.inventoryRepository.save(inventory);
             createdItems.push(saved);
         }
-        console.log(`✅ Created ${createdItems.length} inventory items`);
         return createdItems;
     }
 };

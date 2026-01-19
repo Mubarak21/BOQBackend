@@ -16,7 +16,8 @@ async function bootstrap() {
     prefix: "/uploads",
   });
 
-  // Run seeding before starting the server
+  // Run seeding before starting the server (only if database is empty)
+  // Set FORCE_SEED=true environment variable to force re-seeding
   const seedService = app.get(SeedService);
   await seedService.seed();
 
@@ -53,20 +54,15 @@ async function bootstrap() {
   try {
     const dataSource = app.get<DataSource>(getDataSourceToken());
     if (dataSource.isInitialized) {
-      console.log("✅ Database connection established successfully!");
+      // Data source already initialized
     } else {
       await dataSource.initialize();
-      console.log("✅ Database connection established (after manual init)!");
     }
   } catch (err) {
-    console.error("❌ Database connection failed:", err);
+
   }
 
-  // Indicate both admin and customer sides are available (always show)
-  console.log(
-    "✅ Admin and customer (user) modules/routes are connected and server is running on port",
-    port
-  );
+  // Admin and customer (user) modules/routes are connected and server is running
 }
 
 bootstrap();

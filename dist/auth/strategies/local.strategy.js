@@ -27,12 +27,10 @@ let LocalStrategy = class LocalStrategy extends (0, passport_1.PassportStrategy)
     }
     async validate(email, password) {
         const admin = await this.adminRepository.findOne({ where: { email } });
-        console.log("Admin found:", admin);
         if (!admin) {
             throw new common_1.UnauthorizedException("Invalid credentials");
         }
         const isPasswordValid = await bcrypt.compare(password, admin.password);
-        console.log("Password valid:", isPasswordValid);
         if (!isPasswordValid) {
             throw new common_1.UnauthorizedException("Invalid credentials");
         }

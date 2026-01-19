@@ -53,54 +53,43 @@ let BudgetManagementService = class BudgetManagementService {
         return { success: true };
     }
     async updateCategorySpentAmount(categoryId) {
-        console.log(`🔄 [Finance Recalc] Recalculating spent amount for category: ${categoryId}`);
         const category = await this.budgetCategoryRepository.findOne({
             where: { id: categoryId },
             select: ['id', 'projectId'],
         });
         if (!category) {
-            console.warn(`⚠️ [Finance Recalc] Category ${categoryId} not found`);
             return;
         }
         const transactions = await this.transactionRepository.find({
             where: { categoryId },
         });
-        console.log(`📊 [Finance Recalc] Found ${transactions.length} transactions for category ${categoryId} (project: ${category.projectId})`);
         const validTransactions = transactions.filter(t => {
             if (t.projectId !== category.projectId) {
-                console.warn(`⚠️ [Finance Recalc] Transaction ${t.id} has mismatched projectId. Category project: ${category.projectId}, Transaction project: ${t.projectId}`);
                 return false;
             }
             return true;
         });
         const totalSpent = (0, amount_utils_1.sumAmounts)(validTransactions);
         const normalizedSpent = (0, amount_utils_1.validateAndNormalizeAmount)(totalSpent, 9999999999999.99, 2);
-        console.log(`💰 [Finance Recalc] Category ${categoryId} - Calculated spent: ${normalizedSpent.toLocaleString()} TSh`);
         await this.budgetCategoryRepository.update(categoryId, {
             spentAmount: normalizedSpent,
         });
-        console.log(`✅ [Finance Recalc] Successfully updated spent amount for category ${categoryId}`);
     }
     async updateProjectSpentAmount(projectId) {
-        console.log(`🔄 [Finance Recalc] Recalculating spent amount for project: ${projectId}`);
         const transactions = await this.transactionRepository.find({
             where: { projectId },
         });
-        console.log(`📊 [Finance Recalc] Found ${transactions.length} transactions for project ${projectId}`);
         const validTransactions = transactions.filter(t => {
             if (t.projectId !== projectId) {
-                console.warn(`⚠️ [Finance Recalc] Transaction ${t.id} has mismatched projectId. Expected: ${projectId}, Found: ${t.projectId}`);
                 return false;
             }
             return true;
         });
         const totalSpent = (0, amount_utils_1.sumAmounts)(validTransactions);
         const normalizedSpent = (0, amount_utils_1.validateAndNormalizeAmount)(totalSpent, 9999999999999.99, 2);
-        console.log(`💰 [Finance Recalc] Project ${projectId} - Calculated spent: ${normalizedSpent.toLocaleString()} TSh (from ${transactions.length} transactions)`);
         await this.projectRepository.update(projectId, {
             spentAmount: normalizedSpent,
         });
-        console.log(`✅ [Finance Recalc] Successfully updated spent amount for project ${projectId}`);
         return normalizedSpent;
     }
     async updateProjectAllocatedBudget(projectId) {
@@ -220,7 +209,6 @@ let BudgetManagementService = class BudgetManagementService {
         let fixed = 0;
         try {
             const categoryResult = await this.recalculateAllCategoriesSpentAmounts();
-            console.log(`Recalculated ${categoryResult.fixed} categories`);
             const projects = await this.projectRepository.find({
                 select: ['id'],
             });

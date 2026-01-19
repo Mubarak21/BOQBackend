@@ -52,9 +52,9 @@ export class EmailService {
     token: string,
     isUnregisteredUser: boolean = false
   ): Promise<void> {
+    const fromEmail = this.configService.get<string>('RESEND_FROM_EMAIL');
+    
     try {
-      const fromEmail = this.configService.get<string>('RESEND_FROM_EMAIL');
-      
       if (!fromEmail) {
         throw new BadRequestException(
           'RESEND_FROM_EMAIL must be configured with a custom domain (not gmail.com or other free providers)'
@@ -63,6 +63,15 @@ export class EmailService {
 
       // Validate from email domain
       this.validateFromEmail(fromEmail);
+
+      // Warn if using resend.dev domain (can only send to account owner's email)
+      const fromDomain = fromEmail.split('@')[1]?.toLowerCase();
+      if (fromDomain === 'resend.dev') {
+        console.warn(
+          '⚠️ WARNING: Using resend.dev domain. Emails can only be sent to the email address associated with your Resend account. ' +
+          'To send to other recipients, you must verify your own domain in the Resend dashboard.'
+        );
+      }
 
       // Get frontend URL for invite link
       const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:8080';
@@ -132,14 +141,48 @@ export class EmailService {
         </div>
       `;
 
-      await this.resend.emails.send({
+      console.log('Sending email via Resend:', {
+        from: fromEmail,
+        to: toEmail,
+        subject: `Invitation to collaborate on ${projectName}`,
+      });
+
+      const result = await this.resend.emails.send({
         from: fromEmail,
         to: toEmail,
         subject: `Invitation to collaborate on ${projectName}`,
         html: htmlContent,
       });
+
+      if (result.error) {
+
+        const errorMessage = result.error.message || JSON.stringify(result.error);
+        
+        // Check for common errors
+        if (errorMessage.includes('403') || errorMessage.includes('domain')) {
+          console.error(
+            '⚠️ Domain verification issue. If using resend.dev, you can only send to your account email. ' +
+            'For other recipients, verify your own domain in Resend dashboard.'
+          );
+        }
+        
+        throw new Error(`Failed to send email: ${errorMessage}`);
+      }
+
+      console.log('✅ Email sent successfully:', {
+        id: result.data?.id,
+        to: toEmail,
+      });
     } catch (error) {
-      console.error('Error sending invitation email:', error);
+
+      console.error('Error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        toEmail,
+        fromEmail,
+        hasApiKey: !!this.configService.get<string>('RESEND_API_KEY'),
+        hasFromEmail: !!this.configService.get<string>('RESEND_FROM_EMAIL'),
+      });
       // Don't throw error - we don't want email failures to break the invite process
       // Just log it for debugging
     }

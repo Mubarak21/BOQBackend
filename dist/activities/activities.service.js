@@ -111,6 +111,21 @@ let ActivitiesService = class ActivitiesService {
             new_budget: newBudget,
         });
     }
+    async logPhaseOverdue(user, project, phase, phaseNumber, totalPhases) {
+        const phaseInfo = phaseNumber && totalPhases
+            ? `${phaseNumber}/${totalPhases}: `
+            : '';
+        const overdueDays = phase.end_date
+            ? Math.floor((new Date().getTime() - new Date(phase.end_date).getTime()) / (1000 * 60 * 60 * 24))
+            : 0;
+        return this.createActivity(activity_entity_1.ActivityType.TASK_UPDATED, `Phase ${phaseInfo}"${phase.title}" is overdue${overdueDays > 0 ? ` by ${overdueDays} day${overdueDays > 1 ? 's' : ''}` : ''}`, user, project, phase, {
+            phase_id: phase.id,
+            phase_number: phaseNumber,
+            total_phases: totalPhases,
+            overdue_days: overdueDays,
+            end_date: phase.end_date,
+        });
+    }
     async logPhaseDeleted(user, project, phase, phaseNumber, totalPhases) {
         return this.createActivity(activity_entity_1.ActivityType.TASK_DELETED, `Phase ${phaseNumber}/${totalPhases}: "${phase.title}" was deleted`, user, project, phase, {
             phase_id: phase.id,

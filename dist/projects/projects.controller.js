@@ -51,7 +51,6 @@ let ProjectsController = class ProjectsController {
         return this.projectsService.create(createProjectDto, req.user);
     }
     async findAll(req, page = 1, limit = 10, search, status) {
-        console.log("🔍 User Projects - User ID:", req.user.id, "Role:", req.user.role, "Page:", page, "Limit:", limit);
         const isContractor = req.user.role?.toLowerCase() === 'contractor';
         const isSubContractor = req.user.role?.toLowerCase() === 'sub_contractor';
         let result;
@@ -71,7 +70,6 @@ let ProjectsController = class ProjectsController {
                 status,
             });
         }
-        console.log("📊 User Projects Found:", result.items.length, "of", result.total);
         const items = await Promise.all(result.items.map((p) => this.projectsService.getProjectResponse(p)));
         return {
             items,
@@ -185,6 +183,7 @@ let ProjectsController = class ProjectsController {
         const tokenHash = await bcrypt.hash(token, 10);
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 7);
+        const invitedRole = isConsultant && body.role ? body.role : null;
         const collaborationRequest = this.collaborationRequestRepository.create({
             projectId: id,
             userId: userId,
@@ -193,16 +192,19 @@ let ProjectsController = class ProjectsController {
             status: collaboration_request_entity_1.CollaborationRequestStatus.PENDING,
             tokenHash,
             expiresAt,
+            invitedRole: invitedRole,
         });
         await this.collaborationRequestRepository.save(collaborationRequest);
         try {
             const inviterName = user?.display_name || user?.email || 'Someone';
             const projectName = project.title || 'a project';
             const emailToSend = invitedUser?.email || inviteEmail;
+            if (!emailToSend) {
+                return { message: "Invitation sent successfully (email not sent - no email address)" };
+            }
             await this.emailService.sendProjectInvite(emailToSend, inviterName, projectName, id, token, !invitedUser);
         }
         catch (emailError) {
-            console.error('Failed to send invitation email:', emailError);
         }
         return { message: "Invitation sent successfully" };
     }
@@ -319,6 +321,12 @@ let ProjectsController = class ProjectsController {
     }
     async getProjectPenalties(id) {
         return this.penaltiesService.findByProject(id);
+    }
+    async getPhaseEvidence(projectId, phaseId, subPhaseId) {
+        if (subPhaseId) {
+            return this.evidenceService.findBySubPhase(subPhaseId);
+        }
+        return this.evidenceService.findByPhase(phaseId);
     }
     async uploadEvidence(projectId, phaseId, file, body, req) {
         return this.evidenceService.uploadEvidence(phaseId, file, body.type, body.notes, body.subPhaseId, req.user);
@@ -590,6 +598,15 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], ProjectsController.prototype, "getProjectPenalties", null);
+__decorate([
+    (0, common_1.Get)(":id/phases/:phaseId/evidence"),
+    __param(0, (0, common_1.Param)("id")),
+    __param(1, (0, common_1.Param)("phaseId")),
+    __param(2, (0, common_1.Query)("subPhaseId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", Promise)
+], ProjectsController.prototype, "getPhaseEvidence", null);
 __decorate([
     (0, common_1.Post)(":id/phases/:phaseId/evidence"),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)("file")),

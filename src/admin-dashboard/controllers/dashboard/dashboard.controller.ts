@@ -19,7 +19,7 @@ export class AdminDashboardController {
   // 1. Summary metrics
   @Get("metrics")
   async getMetrics() {
-    console.log("🔍 Admin Dashboard - Fetching metrics...");
+
     const [totalProjects, totalUsers, totalActivities] = await Promise.all([
       this.projectsService.countAll(),
       this.usersService.countAll(),
@@ -32,14 +32,14 @@ export class AdminDashboardController {
       totalActivities,
     };
 
-    console.log("📊 Admin Dashboard Metrics:", metrics);
+
     return metrics;
   }
 
   // Comprehensive stats endpoint for consultant dashboard - Optimized with database aggregations
   @Get("stats")
   async getStats(@Request() req: RequestWithUser) {
-    console.log("🔍 Consultant Dashboard - Fetching comprehensive stats...");
+
     const startTime = Date.now();
     
     // Use optimized aggregation methods instead of loading all projects
@@ -72,20 +72,14 @@ export class AdminDashboardController {
     };
 
     const duration = Date.now() - startTime;
-    console.log(`📊 Consultant Dashboard Stats (${duration}ms):`, stats);
     return stats;
   }
 
   // 2. Recent activities
   @Get("recent-activities")
   async getRecentActivities(@Query("limit") limit: number = 10) {
-    console.log(
-      "🔍 Admin Dashboard - Fetching recent activities (limit:",
-      limit,
-      ")"
-    );
     const activities = await this.activitiesService.getRecentActivities(limit);
-    console.log("📊 Admin Dashboard Recent Activities:", activities);
+
     return activities;
   }
 
@@ -118,13 +112,8 @@ export class AdminDashboardController {
   // 4. Top/active projects
   @Get("top-projects")
   async getTopProjects(@Query("limit") limit: number = 5) {
-    console.log(
-      "🔍 Admin Dashboard - Fetching top projects (limit:",
-      limit,
-      ")"
-    );
     const projects = await this.projectsService.getTopActiveProjects(limit);
-    console.log("📊 Admin Dashboard Top Projects:", projects);
+
     return projects;
   }
 }

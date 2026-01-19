@@ -217,6 +217,36 @@ export class ActivitiesService {
     );
   }
 
+  async logPhaseOverdue(
+    user: User,
+    project: Project,
+    phase: Phase,
+    phaseNumber?: number,
+    totalPhases?: number
+  ): Promise<Activity> {
+    const phaseInfo = phaseNumber && totalPhases 
+      ? `${phaseNumber}/${totalPhases}: `
+      : '';
+    const overdueDays = phase.end_date 
+      ? Math.floor((new Date().getTime() - new Date(phase.end_date).getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+    
+    return this.createActivity(
+      ActivityType.TASK_UPDATED,
+      `Phase ${phaseInfo}"${phase.title}" is overdue${overdueDays > 0 ? ` by ${overdueDays} day${overdueDays > 1 ? 's' : ''}` : ''}`,
+      user,
+      project,
+      phase,
+      {
+        phase_id: phase.id,
+        phase_number: phaseNumber,
+        total_phases: totalPhases,
+        overdue_days: overdueDays,
+        end_date: phase.end_date,
+      }
+    );
+  }
+
   async logPhaseDeleted(
     user: User,
     project: Project,

@@ -21,7 +21,7 @@ export class BoqProgressGateway implements OnGatewayConnection, OnGatewayDisconn
   private clientRooms = new Map<string, string>(); // socketId -> roomId
 
   handleConnection(client: Socket) {
-    console.log(`Client connected: ${client.id}`);
+
   }
 
   handleDisconnect(client: Socket) {
@@ -30,14 +30,14 @@ export class BoqProgressGateway implements OnGatewayConnection, OnGatewayDisconn
       client.leave(roomId);
       this.clientRooms.delete(client.id);
     }
-    console.log(`Client disconnected: ${client.id}`);
+
   }
 
   @SubscribeMessage('join-room')
   handleJoinRoom(client: Socket, roomId: string) {
     client.join(roomId);
     this.clientRooms.set(client.id, roomId);
-    console.log(`Client ${client.id} joined room ${roomId}`);
+
     client.emit('joined-room', { roomId });
   }
 
@@ -45,7 +45,7 @@ export class BoqProgressGateway implements OnGatewayConnection, OnGatewayDisconn
   handleLeaveRoom(client: Socket, roomId: string) {
     client.leave(roomId);
     this.clientRooms.delete(client.id);
-    console.log(`Client ${client.id} left room ${roomId}`);
+
   }
 
   /**

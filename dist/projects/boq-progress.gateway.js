@@ -17,7 +17,6 @@ let BoqProgressGateway = class BoqProgressGateway {
         this.clientRooms = new Map();
     }
     handleConnection(client) {
-        console.log(`Client connected: ${client.id}`);
     }
     handleDisconnect(client) {
         const roomId = this.clientRooms.get(client.id);
@@ -25,18 +24,15 @@ let BoqProgressGateway = class BoqProgressGateway {
             client.leave(roomId);
             this.clientRooms.delete(client.id);
         }
-        console.log(`Client disconnected: ${client.id}`);
     }
     handleJoinRoom(client, roomId) {
         client.join(roomId);
         this.clientRooms.set(client.id, roomId);
-        console.log(`Client ${client.id} joined room ${roomId}`);
         client.emit('joined-room', { roomId });
     }
     handleLeaveRoom(client, roomId) {
         client.leave(roomId);
         this.clientRooms.delete(client.id);
-        console.log(`Client ${client.id} left room ${roomId}`);
     }
     emitProgress(roomId, progress) {
         this.server.to(roomId).emit('boq-progress', progress);

@@ -42,16 +42,16 @@ export class AdminProjectsController {
       page,
       limit,
     });
-    console.log("📊 Admin Projects List:", projects);
+
     return projects;
   }
 
   // 2. Project details with related users/members and activities
   @Get(":id")
   async getProject(@Param("id") id: string) {
-    console.log("🔍 Admin Projects - Getting project details for ID:", id);
+
     const project = await this.projectsService.adminGetDetails(id);
-    console.log("📊 Admin Project Details:", project);
+
     return project;
   }
 

@@ -38,6 +38,9 @@ const inventory_usage_entity_1 = require("../entities/inventory-usage.entity");
 const project_dashboard_service_1 = require("./services/project-dashboard.service");
 const project_consultant_service_1 = require("./services/project-consultant.service");
 const project_contractor_service_1 = require("./services/project-contractor.service");
+const project_phase_service_1 = require("./services/project-phase.service");
+const project_boq_service_1 = require("./services/project-boq.service");
+const project_collaboration_service_1 = require("./services/project-collaboration.service");
 const email_service_1 = require("./email.service");
 let ProjectsModule = class ProjectsModule {
 };
@@ -75,6 +78,9 @@ exports.ProjectsModule = ProjectsModule = __decorate([
             project_dashboard_service_1.ProjectDashboardService,
             project_consultant_service_1.ProjectConsultantService,
             project_contractor_service_1.ProjectContractorService,
+            project_phase_service_1.ProjectPhaseService,
+            project_boq_service_1.ProjectBoqService,
+            project_collaboration_service_1.ProjectCollaborationService,
             email_service_1.EmailService,
         ],
         controllers: [
@@ -82,7 +88,7 @@ exports.ProjectsModule = ProjectsModule = __decorate([
             collaboration_requests_controller_1.CollaborationRequestsController,
             subphases_controller_1.SubPhasesController,
         ],
-        exports: [projects_service_1.ProjectsService, project_dashboard_service_1.ProjectDashboardService, project_consultant_service_1.ProjectConsultantService, project_contractor_service_1.ProjectContractorService, typeorm_1.TypeOrmModule],
+        exports: [projects_service_1.ProjectsService, project_dashboard_service_1.ProjectDashboardService, project_consultant_service_1.ProjectConsultantService, project_contractor_service_1.ProjectContractorService, project_phase_service_1.ProjectPhaseService, project_boq_service_1.ProjectBoqService, project_collaboration_service_1.ProjectCollaborationService, typeorm_1.TypeOrmModule],
     })
 ], ProjectsModule);
 //# sourceMappingURL=projects.module.js.map

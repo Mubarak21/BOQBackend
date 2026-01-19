@@ -40,6 +40,7 @@ export declare class ProjectsController {
     inviteCollaborator(id: string, body: {
         userId?: string;
         email?: string;
+        role?: string;
     }, req: any): Promise<{
         message: string;
     }>;
@@ -98,6 +99,7 @@ export declare class ProjectsController {
     getAvailablePhaseTasks(id: string, req: RequestWithUser): Promise<any[]>;
     getProjectComplaints(id: string): Promise<any[]>;
     getProjectPenalties(id: string): Promise<any[]>;
+    getPhaseEvidence(projectId: string, phaseId: string, subPhaseId?: string): Promise<import("../entities/phase-evidence.entity").PhaseEvidence[]>;
     uploadEvidence(projectId: string, phaseId: string, file: Express.Multer.File | undefined, body: {
         subPhaseId?: string;
         type: string;

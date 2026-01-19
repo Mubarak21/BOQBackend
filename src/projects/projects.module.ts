@@ -29,6 +29,9 @@ import { InventoryUsage } from "../entities/inventory-usage.entity";
 import { ProjectDashboardService } from "./services/project-dashboard.service";
 import { ProjectConsultantService } from "./services/project-consultant.service";
 import { ProjectContractorService } from "./services/project-contractor.service";
+import { ProjectPhaseService } from "./services/project-phase.service";
+import { ProjectBoqService } from "./services/project-boq.service";
+import { ProjectCollaborationService } from "./services/project-collaboration.service";
 import { EmailService } from "./email.service";
 
 @Module({
@@ -63,6 +66,9 @@ import { EmailService } from "./email.service";
     ProjectDashboardService,
     ProjectConsultantService,
     ProjectContractorService,
+    ProjectPhaseService,
+    ProjectBoqService,
+    ProjectCollaborationService,
     EmailService,
   ],
   controllers: [
@@ -70,6 +76,6 @@ import { EmailService } from "./email.service";
     CollaborationRequestsController,
     SubPhasesController,
   ],
-  exports: [ProjectsService, ProjectDashboardService, ProjectConsultantService, ProjectContractorService, TypeOrmModule],
+  exports: [ProjectsService, ProjectDashboardService, ProjectConsultantService, ProjectContractorService, ProjectPhaseService, ProjectBoqService, ProjectCollaborationService, TypeOrmModule],
 })
 export class ProjectsModule {}

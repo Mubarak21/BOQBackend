@@ -37,7 +37,6 @@ let FinanceService = FinanceService_1 = class FinanceService {
         this.logger = new common_1.Logger(FinanceService_1.name);
     }
     async getProjectsFinance(query) {
-        console.log('📄 [Finance Page] Finance list page accessed - starting recalculation...');
         const { page = 1, limit = 10, search, status, dateFrom, dateTo, budgetMin, budgetMax, savingsMin, savingsMax, } = query;
         const queryBuilder = this.projectRepository
             .createQueryBuilder("project")
@@ -68,17 +67,14 @@ let FinanceService = FinanceService_1 = class FinanceService {
         const offset = (pageNum - 1) * limitNum;
         queryBuilder.skip(offset).take(limitNum);
         const [projects, total] = await queryBuilder.getManyAndCount();
-        console.log(`📄 [Finance Page] Recalculating ${projects.length} projects before display...`);
         await Promise.all(projects.map(async (project) => {
             try {
                 await this.budgetManagementService.updateProjectSpentAmount(project.id);
             }
             catch (error) {
                 this.logger.warn(`Failed to recalculate project ${project.id}: ${error.message}`);
-                console.error(`❌ [Finance Page] Failed to recalculate project ${project.id}:`, error.message);
             }
         }));
-        console.log(`✅ [Finance Page] Completed recalculation for ${projects.length} projects`);
         const projectFinances = await Promise.all(projects.map(async (project) => await this.transformToProjectFinanceDto(project)));
         let filteredProjects = projectFinances;
         if (savingsMin !== undefined || savingsMax !== undefined) {
@@ -112,12 +108,10 @@ let FinanceService = FinanceService_1 = class FinanceService {
             totalsQueryBuilder.andWhere("project.totalBudget <= :budgetMax", { budgetMax });
         }
         const totalsResult = await totalsQueryBuilder.getRawOne();
-        console.log('📊 Totals Query Result:', totalsResult);
         const totalBudget = totalsResult?.totalBudget ? parseFloat(totalsResult.totalBudget) : 0;
         const totalSpent = totalsResult?.totalSpent ? parseFloat(totalsResult.totalSpent) : 0;
         const totalRemaining = totalBudget - totalSpent;
         const normalizedRemaining = Math.max(Math.min(totalRemaining, 9999999999999.99), -9999999999999.99);
-        console.log('💰 Calculated Totals:', { totalBudget, totalSpent, totalRemaining: normalizedRemaining });
         return {
             projects: filteredProjects,
             metrics,
@@ -141,9 +135,7 @@ let FinanceService = FinanceService_1 = class FinanceService {
         };
     }
     async getProjectFinanceById(projectId, pagination) {
-        console.log(`📄 [Finance Page] Project finance details accessed for project: ${projectId} - recalculating...`);
         const updatedSpentAmount = await this.budgetManagementService.updateProjectSpentAmount(projectId);
-        console.log(`✅ [Finance Page] Completed recalculation for project ${projectId}`);
         const project = await this.projectRepository.findOne({
             where: { id: projectId },
             relations: ["owner", "collaborators"],
@@ -364,7 +356,6 @@ let FinanceService = FinanceService_1 = class FinanceService {
             };
         }
         catch (error) {
-            console.error("Error in calculateFinanceMetrics:", error);
             return {
                 totalProjects: 0,
                 totalBudget: 0,

@@ -72,9 +72,19 @@ export class SeedService {
   ) {}
 
   async seed() {
-    console.log(
-      "🌱 Starting comprehensive Tanzanian admin dashboard seeding..."
-    );
+    // Check if data already exists - if so, skip seeding
+    // This prevents re-seeding on every server reload
+    const existingUsersCount = await this.userRepository.count();
+    const existingProjectsCount = await this.projectRepository.count();
+    
+    // Only seed if database is empty (no users and no projects)
+    // Allow force re-seed with FORCE_SEED environment variable
+    if (existingUsersCount > 0 || existingProjectsCount > 0) {
+      if (process.env.FORCE_SEED !== 'true') {
+        // Database already has data, skip seeding
+        return;
+      }
+    }
 
     // Seed Departments (6 departments)
     const departments = await this.seedDepartments();
@@ -112,11 +122,11 @@ export class SeedService {
     // Seed Inventory Items
     await this.seedInventoryItems(users, projects);
 
-    console.log("✅ Comprehensive Tanzanian admin dashboard seeding complete!");
+
   }
 
   private async seedDepartments() {
-    console.log("📂 Seeding Tanzanian departments...");
+
     const departmentData = [
       {
         name: "Uhandisi na Majengo",
@@ -143,7 +153,7 @@ export class SeedService {
       if (!dept) {
         dept = this.departmentRepository.create(deptData);
         await this.departmentRepository.save(dept);
-        console.log(`   ✓ Created department: ${deptData.name}`);
+
       }
       departments.push(dept);
     }
@@ -151,7 +161,7 @@ export class SeedService {
   }
 
   private async seedUsers(departments: Department[]) {
-    console.log("👥 Seeding Tanzanian users...");
+
 
     const tanzanianUsers = [
       {
@@ -391,7 +401,7 @@ export class SeedService {
   }
 
   private async seedAdmins() {
-    console.log("👑 Seeding admin users...");
+
     const adminUsers = [
       {
         email: "superadmin@kipimo.co.tz",
@@ -424,7 +434,7 @@ export class SeedService {
           ),
         });
         await this.adminRepository.save(admin);
-        console.log(`   ✓ Created admin: ${adminData.display_name}`);
+
       }
       admins.push(admin);
     }
@@ -432,7 +442,7 @@ export class SeedService {
   }
 
   private async seedProjects(users: User[], departments: Department[]) {
-    console.log("🏗️  Seeding Tanzanian projects with realistic budgets...");
+
 
     const tanzanianProjects = [
       {
@@ -665,7 +675,7 @@ export class SeedService {
   }
 
   private async seedPhases(projects: Project[], users: User[]) {
-    console.log("📋 Seeding project phases...");
+
 
     const phaseTemplates = [
       {
@@ -750,7 +760,7 @@ export class SeedService {
       }
     }
 
-    console.log(`   ✓ Created ${phases.length} phases with sub-phases`);
+
     return phases;
   }
 
@@ -919,7 +929,7 @@ export class SeedService {
   }
 
   private async seedTasks(projects: Project[], phases: Phase[], users: User[]) {
-    console.log("✅ Seeding tasks...");
+
 
     const taskTemplates = [
       { description: "Ukaguzi wa mazingira", unit: "siku", price: 500000 },
@@ -959,18 +969,18 @@ export class SeedService {
       }
     }
 
-    console.log(`   ✓ Created ${tasks.length} tasks`);
+
     return tasks;
   }
 
   private async seedFinancialData(projects: Project[], users: User[]) {
-    console.log("💰 Seeding comprehensive financial data...");
+
 
     // Track all used transaction numbers across all projects to ensure global uniqueness
     const globalUsedTransactionNumbers = new Set<string>();
 
     for (const project of projects) {
-      console.log(`   📊 Seeding finance for project: ${project.title}`);
+
       
       // Create more comprehensive budget categories
       const categories = [
@@ -1039,7 +1049,7 @@ export class SeedService {
       await this.createBudgetAlerts(project);
     }
 
-    console.log("   ✅ Financial data seeding complete!");
+
   }
 
   private async recalculateCategorySpentAmount(categoryId: string) {
@@ -1070,7 +1080,7 @@ export class SeedService {
     const { extractTransactionAmount } = await import('../utils/amount.utils');
     const validTransactions = transactions.filter(t => {
       if (t.projectId !== projectId) {
-        console.warn(`⚠️ [Seed] Transaction ${t.id} has mismatched projectId. Expected: ${projectId}, Found: ${t.projectId}`);
+
         return false; // Skip this transaction to prevent cross-project contamination
       }
       return true;
@@ -1340,8 +1350,6 @@ export class SeedService {
     projects: Project[],
     tasks: Task[]
   ) {
-    console.log("📊 Seeding activities (audit log)...");
-
     const activityTemplates = [
       {
         type: ActivityType.PROJECT_CREATED,
@@ -1405,12 +1413,12 @@ export class SeedService {
       activities.push(activity);
     }
 
-    console.log(`   ✓ Created ${activities.length} activities`);
+
     return activities;
   }
 
   private async seedReports(users: User[]) {
-    console.log("📄 Seeding reports...");
+
 
     const reportData = [
       {
@@ -1470,7 +1478,7 @@ export class SeedService {
       await this.reportRepository.save(report);
     }
 
-    console.log("   ✓ Created reports");
+
   }
 
   private async seedComments(
@@ -1478,7 +1486,7 @@ export class SeedService {
     projects: Project[],
     tasks: Task[]
   ) {
-    console.log("💬 Seeding comments...");
+
 
     const commentTexts = [
       "Mradi huu unakwenda vizuri. Hongera kwa timu!",
@@ -1520,7 +1528,7 @@ export class SeedService {
       await this.commentRepository.save(comment);
     }
 
-    console.log("   ✓ Created comments");
+
   }
 
   private async seedComplaints(
@@ -1528,7 +1536,7 @@ export class SeedService {
     projects: Project[],
     phases: Phase[]
   ) {
-    console.log("📢 Seeding complaints...");
+
 
     const complaintTitles = [
       "Ubora wa vifaa haukufikia viwango",
@@ -1671,7 +1679,7 @@ export class SeedService {
       await this.complaintRepository.save(complaint);
     }
 
-    console.log("   ✓ Created complaints");
+
   }
 
   private getRandomTransactionDescription(categoryName: string): string {
@@ -1752,7 +1760,7 @@ export class SeedService {
   }
 
   private async seedInventoryItems(users: User[], projects: Project[]) {
-    console.log("📦 Seeding inventory items...");
+
 
     const inventoryItems = [
       // Materials
@@ -2078,7 +2086,7 @@ export class SeedService {
       createdItems.push(saved);
     }
 
-    console.log(`✅ Created ${createdItems.length} inventory items`);
+
     return createdItems;
   }
 }

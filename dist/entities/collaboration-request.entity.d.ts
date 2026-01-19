@@ -17,5 +17,6 @@ export declare class CollaborationRequest {
     status: CollaborationRequestStatus;
     tokenHash: string;
     expiresAt: Date;
+    invitedRole: string | null;
     createdAt: Date;
 }

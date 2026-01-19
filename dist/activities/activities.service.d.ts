@@ -20,6 +20,7 @@ export declare class ActivitiesService {
     logPhaseProgress(user: User, project: Project, phase: Phase, phaseNumber: number, totalPhases: number, progress: number): Promise<Activity>;
     logPhaseDelay(user: User, project: Project, phase: Phase, phaseNumber: number, totalPhases: number, delayDays: number): Promise<Activity>;
     logPhaseBudgetUpdate(user: User, project: Project, phase: Phase, phaseNumber: number, totalPhases: number, oldBudget: number, newBudget: number): Promise<Activity>;
+    logPhaseOverdue(user: User, project: Project, phase: Phase, phaseNumber?: number, totalPhases?: number): Promise<Activity>;
     logPhaseDeleted(user: User, project: Project, phase: Phase, phaseNumber: number, totalPhases: number): Promise<Activity>;
     logProjectCreated(user: User, project: Project, task: Task): Promise<Activity>;
     logTaskCompleted(user: User, project: Project, task: Task): Promise<Activity>;

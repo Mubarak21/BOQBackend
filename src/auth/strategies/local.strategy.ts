@@ -17,12 +17,12 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
 
   async validate(email: string, password: string): Promise<any> {
     const admin = await this.adminRepository.findOne({ where: { email } });
-    console.log("Admin found:", admin);
+
     if (!admin) {
       throw new UnauthorizedException("Invalid credentials");
     }
     const isPasswordValid = await bcrypt.compare(password, admin.password);
-    console.log("Password valid:", isPasswordValid);
+
     if (!isPasswordValid) {
       throw new UnauthorizedException("Invalid credentials");
     }

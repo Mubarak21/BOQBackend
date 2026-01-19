@@ -23,9 +23,14 @@ export class ComplaintsService {
   ) {}
 
   async create(createComplaintDto: CreateComplaintDto, user: User): Promise<Complaint> {
-    // Only consultants and admins can raise complaints
-    if (user.role !== UserRole.CONSULTANT) {
-      throw new ForbiddenException("Only consultants and admins can raise complaints");
+    // Consultants, admins, contractors, and sub-contractors can raise complaints
+    if (
+      user.role !== UserRole.CONSULTANT &&
+      user.role !== UserRole.ADMIN &&
+      user.role !== UserRole.CONTRACTOR &&
+      user.role !== UserRole.SUB_CONTRACTOR
+    ) {
+      throw new ForbiddenException("Only consultants, admins, contractors, and sub-contractors can raise complaints");
     }
 
     // Verify project exists

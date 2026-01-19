@@ -63,12 +63,12 @@ export function validateAndNormalizeAmount(
   const minValue = -maxValue;
   
   if (numValue > maxValue) {
-    console.warn(`Amount ${numValue} exceeds maximum value ${maxValue}, capping to maximum`);
+
     return maxValue;
   }
   
   if (numValue < minValue) {
-    console.warn(`Amount ${numValue} is below minimum value ${minValue}, capping to minimum`);
+
     return minValue;
   }
   

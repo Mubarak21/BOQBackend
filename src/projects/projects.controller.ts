@@ -69,17 +69,6 @@ export class ProjectsController {
     @Query("search") search?: string,
     @Query("status") status?: string
   ) {
-    console.log(
-      "🔍 User Projects - User ID:",
-      req.user.id,
-      "Role:",
-      req.user.role,
-      "Page:",
-      page,
-      "Limit:",
-      limit
-    );
-
     // Contractors and sub-contractors can see ALL projects
     // Other users only see projects they're part of (owner or collaborator)
     const isContractor = req.user.role?.toLowerCase() === 'contractor';
@@ -107,12 +96,6 @@ export class ProjectsController {
       );
     }
 
-    console.log(
-      "📊 User Projects Found:",
-      result.items.length,
-      "of",
-      result.total
-    );
 
     // Transform to response format
     const items = await Promise.all(
@@ -161,7 +144,7 @@ export class ProjectsController {
   @UseGuards(RateLimitGuard)
   async inviteCollaborator(
     @Param("id") id: string,
-    @Body() body: { userId?: string; email?: string },
+    @Body() body: { userId?: string; email?: string; role?: string },
     @Request() req
   ) {
     const project = await this.projectsService.findOne(id, req.user.id);
@@ -292,6 +275,9 @@ export class ProjectsController {
     expiresAt.setDate(expiresAt.getDate() + 7);
 
     // Create collaboration request with token and expiry
+    // Only consultants can specify a role when inviting
+    const invitedRole = isConsultant && body.role ? body.role : null;
+    
     const collaborationRequest = this.collaborationRequestRepository.create({
       projectId: id,
       userId: userId,
@@ -300,6 +286,7 @@ export class ProjectsController {
       status: CollaborationRequestStatus.PENDING,
       tokenHash,
       expiresAt,
+      invitedRole: invitedRole,
     });
 
     await this.collaborationRequestRepository.save(collaborationRequest);
@@ -310,17 +297,24 @@ export class ProjectsController {
       const projectName = project.title || 'a project';
       const emailToSend = invitedUser?.email || inviteEmail;
       
+      if (!emailToSend) {
+
+        return { message: "Invitation sent successfully (email not sent - no email address)" };
+      }
+      
+
       await this.emailService.sendProjectInvite(
-        emailToSend!,
+        emailToSend,
         inviterName,
         projectName,
         id,
         token,
         !invitedUser // isUnregisteredUser
       );
-    } catch (emailError) {
+
+    } catch (emailError: any) {
       // Log error but don't fail the invitation - email is optional
-      console.error('Failed to send invitation email:', emailError);
+      // Email sending failed, but invitation was created successfully
     }
 
     return { message: "Invitation sent successfully" };
@@ -588,6 +582,18 @@ export class ProjectsController {
   @Get(":id/penalties")
   async getProjectPenalties(@Param("id") id: string) {
     return this.penaltiesService.findByProject(id);
+  }
+
+  @Get(":id/phases/:phaseId/evidence")
+  async getPhaseEvidence(
+    @Param("id") projectId: string,
+    @Param("phaseId") phaseId: string,
+    @Query("subPhaseId") subPhaseId?: string
+  ) {
+    if (subPhaseId) {
+      return this.evidenceService.findBySubPhase(subPhaseId);
+    }
+    return this.evidenceService.findByPhase(phaseId);
   }
 
   @Post(":id/phases/:phaseId/evidence")

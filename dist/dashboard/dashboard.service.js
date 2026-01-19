@@ -62,18 +62,14 @@ let DashboardService = class DashboardService {
         };
     }
     async updateStats() {
-        console.log("updateStats called");
         const allProjects = await this.projectsRepository.find();
-        console.log("All projects in DB:", allProjects.map((p) => ({ id: p.id, title: p.title })));
         const totalProjects = allProjects.length;
-        console.log("Total projects found:", totalProjects);
         const projects = await this.projectsRepository.find({
             relations: ["collaborators", "owner", "phases"],
         });
         const totalValue = projects
             .reduce((sum, project) => sum + Number(project.totalBudget ?? project.totalAmount ?? 0), 0)
             .toFixed(2);
-        console.log("Total value:", totalValue);
         const uniqueTeamMembers = new Set();
         projects.forEach((project) => {
             project.collaborators?.forEach((collaborator) => uniqueTeamMembers.add(collaborator.id));
@@ -81,20 +77,16 @@ let DashboardService = class DashboardService {
                 uniqueTeamMembers.add(project.owner_id);
         });
         const teamMembers = uniqueTeamMembers.size;
-        console.log("Team members:", teamMembers);
         let stats = await this.statsRepository.findOneBy({});
         if (!stats) {
             stats = this.statsRepository.create();
-            console.log("Creating new stats row");
         }
         else {
-            console.log("Updating existing stats row");
         }
         stats.total_projects = totalProjects;
         stats.total_value = totalValue;
         stats.team_members = teamMembers;
         await this.statsRepository.save(stats);
-        console.log("Stats saved:", stats);
         return stats;
     }
     async getStatsFromTable() {
@@ -130,16 +122,13 @@ let DashboardService = class DashboardService {
         };
     }
     async getTotalProjects(userId, canSeeAllProjects = false) {
-        console.log("🔍 Dashboard - Getting total projects for user:", userId, "canSeeAllProjects:", canSeeAllProjects);
         if (canSeeAllProjects) {
             const count = await this.projectsRepository.count();
-            console.log("📊 Dashboard - Total projects (all):", count);
             return count;
         }
         const count = await this.projectsRepository.count({
             where: [{ owner_id: userId }, { collaborators: { id: userId } }],
         });
-        console.log("📊 Dashboard - Total projects for user:", count);
         return count;
     }
     async getActiveProjects(userId, canSeeAllProjects = false) {

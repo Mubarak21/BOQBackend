@@ -20,7 +20,6 @@ let AdminErrorMiddleware = class AdminErrorMiddleware {
         const originalErrorHandler = res.status;
         res.status = function (code) {
             if (code === 403) {
-                console.log(`🚫 Admin Access Denied: ${req.method} ${req.path}`);
             }
             return originalErrorHandler.call(this, code);
         };

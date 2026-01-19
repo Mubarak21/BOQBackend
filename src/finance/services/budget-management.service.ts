@@ -70,7 +70,7 @@ export class BudgetManagementService {
    * IMPORTANT: Categories are project-specific, so transactions are automatically scoped to the correct project
    */
   async updateCategorySpentAmount(categoryId: string) {
-    console.log(`🔄 [Finance Recalc] Recalculating spent amount for category: ${categoryId}`);
+
     
     // Get category to verify it exists and get its projectId for validation
     const category = await this.budgetCategoryRepository.findOne({
@@ -79,7 +79,7 @@ export class BudgetManagementService {
     });
 
     if (!category) {
-      console.warn(`⚠️ [Finance Recalc] Category ${categoryId} not found`);
+
       return;
     }
 
@@ -88,13 +88,11 @@ export class BudgetManagementService {
       where: { categoryId },
     });
 
-    console.log(`📊 [Finance Recalc] Found ${transactions.length} transactions for category ${categoryId} (project: ${category.projectId})`);
-
     // Sum all transaction amounts (add all transactions regardless of type)
     // Defensive check: Ensure all transactions belong to the category's project
     const validTransactions = transactions.filter(t => {
       if (t.projectId !== category.projectId) {
-        console.warn(`⚠️ [Finance Recalc] Transaction ${t.id} has mismatched projectId. Category project: ${category.projectId}, Transaction project: ${t.projectId}`);
+
         return false; // Skip this transaction to prevent cross-project contamination
       }
       return true;
@@ -105,13 +103,11 @@ export class BudgetManagementService {
     // Validate and normalize the result (decimal(15,2) for category spent amount)
     const normalizedSpent = validateAndNormalizeAmount(totalSpent, 9999999999999.99, 2);
 
-    console.log(`💰 [Finance Recalc] Category ${categoryId} - Calculated spent: ${normalizedSpent.toLocaleString()} TSh`);
-
     await this.budgetCategoryRepository.update(categoryId, {
       spentAmount: normalizedSpent,
     });
 
-    console.log(`✅ [Finance Recalc] Successfully updated spent amount for category ${categoryId}`);
+
   }
 
 
@@ -121,7 +117,7 @@ export class BudgetManagementService {
    * IMPORTANT: Only processes transactions for the specified projectId to avoid mixing projects
    */
   async updateProjectSpentAmount(projectId: string) {
-    console.log(`🔄 [Finance Recalc] Recalculating spent amount for project: ${projectId}`);
+
     
     // Calculate spent amount directly from transactions (more accurate than summing categories)
     // CRITICAL: Filter by projectId to ensure we only get transactions for this specific project
@@ -129,13 +125,13 @@ export class BudgetManagementService {
       where: { projectId },
     });
 
-    console.log(`📊 [Finance Recalc] Found ${transactions.length} transactions for project ${projectId}`);
+
 
     // Sum all transaction amounts (add all transactions regardless of type)
     // Defensive check: Ensure all transactions belong to the specified project
     const validTransactions = transactions.filter(t => {
       if (t.projectId !== projectId) {
-        console.warn(`⚠️ [Finance Recalc] Transaction ${t.id} has mismatched projectId. Expected: ${projectId}, Found: ${t.projectId}`);
+
         return false; // Skip this transaction to prevent cross-project contamination
       }
       return true;
@@ -146,13 +142,11 @@ export class BudgetManagementService {
     // Validate and normalize the result (decimal(15,2) for project spent amount)
     const normalizedSpent = validateAndNormalizeAmount(totalSpent, 9999999999999.99, 2);
 
-    console.log(`💰 [Finance Recalc] Project ${projectId} - Calculated spent: ${normalizedSpent.toLocaleString()} TSh (from ${transactions.length} transactions)`);
-
     await this.projectRepository.update(projectId, {
       spentAmount: normalizedSpent,
     });
 
-    console.log(`✅ [Finance Recalc] Successfully updated spent amount for project ${projectId}`);
+
     
     // Return the updated value for immediate use
     return normalizedSpent;
@@ -347,7 +341,7 @@ export class BudgetManagementService {
     try {
       // First, recalculate all categories
       const categoryResult = await this.recalculateAllCategoriesSpentAmounts();
-      console.log(`Recalculated ${categoryResult.fixed} categories`);
+
 
       // Then, recalculate all projects
       const projects = await this.projectRepository.find({
