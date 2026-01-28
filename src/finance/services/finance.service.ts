@@ -150,8 +150,9 @@ export class FinanceService {
     // Use entity property names - TypeORM will map to database columns
     const totalsQueryBuilder = this.projectRepository
       .createQueryBuilder("project")
-      .select("SUM(COALESCE(project.totalBudget, 0))", "totalBudget")
-      .addSelect("SUM(COALESCE(project.spentAmount, 0))", "totalSpent");
+      .leftJoin("project.financialSummary", "financialSummary")
+      .select("SUM(COALESCE(financialSummary.total_budget, 0))", "totalBudget")
+      .addSelect("SUM(COALESCE(financialSummary.spent_amount, 0))", "totalSpent");
 
     // Apply same filters as paginated query
     if (search) {
@@ -170,10 +171,10 @@ export class FinanceService {
       totalsQueryBuilder.andWhere("project.created_at <= :dateTo", { dateTo });
     }
     if (budgetMin !== undefined) {
-      totalsQueryBuilder.andWhere("project.totalBudget >= :budgetMin", { budgetMin });
+      totalsQueryBuilder.andWhere("financialSummary.total_budget >= :budgetMin", { budgetMin });
     }
     if (budgetMax !== undefined) {
-      totalsQueryBuilder.andWhere("project.totalBudget <= :budgetMax", { budgetMax });
+      totalsQueryBuilder.andWhere("financialSummary.total_budget <= :budgetMax", { budgetMax });
     }
 
     const totalsResult = await totalsQueryBuilder.getRawOne();
@@ -225,7 +226,7 @@ export class FinanceService {
 
 
     // Fetch the project with fresh data after recalculation
-    const project = await this.projectRepository.findOne({
+    let project = await this.projectRepository.findOne({
       where: { id: projectId },
       relations: ["owner", "collaborators"],
     });
@@ -236,7 +237,17 @@ export class FinanceService {
 
     // Ensure we use the freshly calculated spent amount
     if (updatedSpentAmount !== undefined) {
-      project.spentAmount = updatedSpentAmount;
+      // Load financial summary relation if not already loaded
+      if (!project.financialSummary) {
+        project = await this.projectRepository.findOne({
+          where: { id: project.id },
+          relations: ["financialSummary"],
+        });
+      }
+      if (project.financialSummary) {
+        project.financialSummary.spentAmount = updatedSpentAmount;
+        await this.projectRepository.manager.save(project.financialSummary);
+      }
     }
 
     return await this.transformToProjectFinanceDto(project, pagination);
@@ -281,6 +292,14 @@ export class FinanceService {
     project: Project,
     pagination?: { page: number; limit: number }
   ): Promise<ProjectFinanceDto> {
+    // Ensure financial summary is loaded
+    if (!project.financialSummary) {
+      project = await this.projectRepository.findOne({
+        where: { id: project.id },
+        relations: ["financialSummary"],
+      });
+    }
+
     // Get budget categories
     const categories = await this.budgetCategoryRepository.find({
       where: { projectId: project.id, isActive: true },
@@ -320,9 +339,10 @@ export class FinanceService {
     });
 
     // Calculate metrics - ensure all values are numbers
-    const totalBudget = toNumber(project.totalBudget);
-    const spentAmount = toNumber(project.spentAmount);
-    const allocatedBudget = toNumber(project.allocatedBudget);
+    const financialSummary = project.financialSummary;
+    const totalBudget = toNumber(financialSummary?.totalBudget || 0);
+    const spentAmount = toNumber(financialSummary?.spentAmount || 0);
+    const allocatedBudget = toNumber(financialSummary?.allocatedBudget || 0);
     
     // Calculate remaining budget and validate
     const remaining = totalBudget - spentAmount;
@@ -348,7 +368,7 @@ export class FinanceService {
     };
 
     const spendingDto = {
-      total: project.spentAmount,
+      total: spentAmount,
       byCategory: categories.map((cat) => ({
         categoryId: cat.id,
         categoryName: cat.name,
@@ -375,7 +395,7 @@ export class FinanceService {
         approvedAt: t.approvedAt
           ? this.formatDateToISOString(t.approvedAt)
           : undefined,
-        receiptUrl: t.receiptUrl,
+        receiptUrl: t.attachments?.[0]?.file_url || null, // Use first attachment if available
         notes: t.notes,
         createdAt: this.formatDateToISOString(t.createdAt),
         createdBy: t.createdBy,
@@ -383,10 +403,10 @@ export class FinanceService {
     };
 
     const savingsDto = {
-      total: project.estimatedSavings,
+      total: toNumber(financialSummary?.estimatedSavings || 0),
       percentage:
-        project.totalBudget > 0
-          ? (project.estimatedSavings / project.totalBudget) * 100
+        totalBudget > 0
+          ? (toNumber(financialSummary?.estimatedSavings || 0) / totalBudget) * 100
           : 0,
       breakdown: savings.map((s) => ({
         category: s.category,
@@ -428,8 +448,8 @@ export class FinanceService {
       spending: spendingDto,
       savings: savingsDto,
       timeline: timelineDto,
-      lastUpdated: project.budgetLastUpdated
-        ? this.formatDateToISOString(project.budgetLastUpdated)
+      lastUpdated: financialSummary?.budgetLastUpdated
+        ? this.formatDateToISOString(financialSummary.budgetLastUpdated)
         : this.formatDateToISOString(project.updated_at),
     };
 
@@ -477,15 +497,16 @@ export class FinanceService {
       const result = await this.projectRepository
         .createQueryBuilder("project")
         .select("COUNT(project.id)", "totalProjects")
-        .addSelect("SUM(COALESCE(project.total_budget, 0))", "totalBudget")
-        .addSelect("SUM(COALESCE(project.spent_amount, 0))", "totalSpent")
-        .addSelect("SUM(COALESCE(project.estimated_savings, 0))", "totalSaved")
+        .leftJoin("project.financialSummary", "financialSummary")
+        .addSelect("SUM(COALESCE(financialSummary.total_budget, 0))", "totalBudget")
+        .addSelect("SUM(COALESCE(financialSummary.spent_amount, 0))", "totalSpent")
+        .addSelect("SUM(COALESCE(financialSummary.estimated_savings, 0))", "totalSaved")
         .addSelect(
-          `SUM(CASE WHEN COALESCE(project.spent_amount, 0) > COALESCE(project.total_budget, 0) THEN 1 ELSE 0 END)`,
+          `SUM(CASE WHEN COALESCE(financialSummary.spent_amount, 0) > COALESCE(financialSummary.total_budget, 0) THEN 1 ELSE 0 END)`,
           "projectsOverBudget"
         )
         .addSelect(
-          `SUM(CASE WHEN COALESCE(project.spent_amount, 0) < COALESCE(project.total_budget, 0) AND COALESCE(project.spent_amount, 0) > 0 THEN 1 ELSE 0 END)`,
+          `SUM(CASE WHEN COALESCE(financialSummary.spent_amount, 0) < COALESCE(financialSummary.total_budget, 0) AND COALESCE(financialSummary.spent_amount, 0) > 0 THEN 1 ELSE 0 END)`,
           "projectsUnderBudget"
         )
         .getRawOne();
@@ -554,7 +575,8 @@ export class FinanceService {
         this.projectRepository.count(),
         this.projectRepository
           .createQueryBuilder("project")
-          .select("SUM(project.totalBudget)", "total")
+          .leftJoin("project.financialSummary", "financialSummary")
+          .select("SUM(COALESCE(financialSummary.total_budget, 0))", "total")
           .getRawOne()
           .then((result) => parseFloat(result?.total || "0")),
         this.transactionRepository
@@ -566,18 +588,23 @@ export class FinanceService {
         // Calculate savings: use project estimatedSavings as it represents total savings per project
         this.projectRepository
           .createQueryBuilder("project")
-          .select("SUM(project.estimatedSavings)", "total")
+          .leftJoin("project.financialSummary", "financialSummary")
+          .select("SUM(COALESCE(financialSummary.estimated_savings, 0))", "total")
           .getRawOne()
           .then((result) => parseFloat(result?.total || "0")),
       ]);
 
-    const projectsOverBudget = await this.projectRepository.count({
-      where: { financialStatus: "over_budget" },
-    });
+    const projectsOverBudget = await this.projectRepository
+      .createQueryBuilder("project")
+      .leftJoin("project.financialSummary", "financialSummary")
+      .where("financialSummary.financial_status = :status", { status: "over_budget" })
+      .getCount();
 
-    const projectsUnderBudget = await this.projectRepository.count({
-      where: { financialStatus: "on_track" },
-    });
+    const projectsUnderBudget = await this.projectRepository
+      .createQueryBuilder("project")
+      .leftJoin("project.financialSummary", "financialSummary")
+      .where("financialSummary.financial_status = :status", { status: "on_track" })
+      .getCount();
 
     const avgSavingsPercentage =
       totalBudget > 0 ? (totalSaved / totalBudget) * 100 : 0;

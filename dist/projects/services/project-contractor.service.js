@@ -18,6 +18,8 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const project_entity_1 = require("../../entities/project.entity");
 const phase_entity_1 = require("../../entities/phase.entity");
+const contractor_phase_entity_1 = require("../../entities/contractor-phase.entity");
+const sub_contractor_phase_entity_1 = require("../../entities/sub-contractor-phase.entity");
 const inventory_entity_1 = require("../../entities/inventory.entity");
 const inventory_usage_entity_1 = require("../../entities/inventory-usage.entity");
 const user_entity_1 = require("../../entities/user.entity");
@@ -27,9 +29,11 @@ const projects_service_1 = require("../projects.service");
 const path = require("path");
 const fs = require("fs");
 let ProjectContractorService = class ProjectContractorService {
-    constructor(projectsRepository, phasesRepository, inventoryRepository, inventoryUsageRepository, usersService, activitiesService, projectsService) {
+    constructor(projectsRepository, phasesRepository, contractorPhasesRepository, subContractorPhasesRepository, inventoryRepository, inventoryUsageRepository, usersService, activitiesService, projectsService) {
         this.projectsRepository = projectsRepository;
         this.phasesRepository = phasesRepository;
+        this.contractorPhasesRepository = contractorPhasesRepository;
+        this.subContractorPhasesRepository = subContractorPhasesRepository;
         this.inventoryRepository = inventoryRepository;
         this.inventoryUsageRepository = inventoryUsageRepository;
         this.usersService = usersService;
@@ -51,9 +55,7 @@ let ProjectContractorService = class ProjectContractorService {
             return this.projectsService.findOne(projectId, userId);
         }
         else {
-            const project = await this.projectsRepository.findOne({
-                where: { id: projectId },
-            });
+            const project = await this.projectsService.findOne(projectId, userId);
             if (!project) {
                 throw new common_1.NotFoundException(`Project with ID ${projectId} not found`);
             }
@@ -62,25 +64,427 @@ let ProjectContractorService = class ProjectContractorService {
     }
     async getProjectPhases(projectId, userId) {
         await this.verifyProjectAccess(projectId, userId);
-        return this.phasesRepository.find({
-            where: { project_id: projectId, is_active: true },
-            relations: ["subPhases", "subPhases.subPhases"],
+        const user = await this.usersService.findOne(userId);
+        const userRole = user?.role?.toLowerCase();
+        if (userRole === 'contractor') {
+            const contractorPhases = await this.contractorPhasesRepository.find({
+                where: { project_id: projectId, is_active: true },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const contractorPhaseIds = contractorPhases.map(p => p.id);
+            const linkedSubContractorPhases = contractorPhaseIds.length > 0
+                ? await this.subContractorPhasesRepository.find({
+                    where: {
+                        project_id: projectId,
+                        is_active: true,
+                        linkedContractorPhaseId: (0, typeorm_2.In)(contractorPhaseIds),
+                    },
+                    relations: ["subPhases"],
+                    order: { created_at: "ASC" },
+                })
+                : [];
+            const linkedPhasesMap = new Map();
+            linkedSubContractorPhases.forEach(subContractorPhase => {
+                const contractorPhaseId = subContractorPhase.linkedContractorPhaseId;
+                if (contractorPhaseId) {
+                    if (!linkedPhasesMap.has(contractorPhaseId)) {
+                        linkedPhasesMap.set(contractorPhaseId, []);
+                    }
+                    linkedPhasesMap.get(contractorPhaseId).push(subContractorPhase);
+                }
+            });
+            const legacyPhases = await this.phasesRepository.find({
+                where: { project_id: projectId, is_active: true, boqType: 'contractor' },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const legacyContractorPhaseIds = legacyPhases.map(p => p.id);
+            const legacyLinkedSubContractorPhases = legacyContractorPhaseIds.length > 0
+                ? await this.phasesRepository.find({
+                    where: {
+                        project_id: projectId,
+                        is_active: true,
+                        boqType: 'sub_contractor',
+                        linkedContractorPhaseId: (0, typeorm_2.In)(legacyContractorPhaseIds),
+                    },
+                    relations: ["subPhases"],
+                    order: { created_at: "ASC" },
+                })
+                : [];
+            legacyLinkedSubContractorPhases.forEach(legacySubContractorPhase => {
+                const contractorPhaseId = legacySubContractorPhase.linkedContractorPhaseId;
+                if (contractorPhaseId) {
+                    if (!linkedPhasesMap.has(contractorPhaseId)) {
+                        linkedPhasesMap.set(contractorPhaseId, []);
+                    }
+                    linkedPhasesMap.get(contractorPhaseId).push(legacySubContractorPhase);
+                }
+            });
+            const normalizedContractorPhases = contractorPhases.map(phase => {
+                const normalized = this.normalizePhaseResponse(phase);
+                const linkedPhases = linkedPhasesMap.get(phase.id) || [];
+                const linkedAsSubPhases = linkedPhases.map((linkedPhase) => ({
+                    id: linkedPhase.id,
+                    title: linkedPhase.title || linkedPhase.name,
+                    description: linkedPhase.description || '',
+                    isCompleted: linkedPhase.status === 'completed',
+                    completionPercentage: linkedPhase.progress || 0,
+                    phaseId: phase.id,
+                    contractorPhaseId: phase.id,
+                    subContractorPhaseId: linkedPhase.id,
+                    isLinkedSubContractorPhase: true,
+                    created_at: linkedPhase.created_at,
+                    updated_at: linkedPhase.updated_at,
+                }));
+                normalized.subPhases = [...(normalized.subPhases || []), ...linkedAsSubPhases];
+                return normalized;
+            });
+            const normalizedLegacyPhases = legacyPhases.map(phase => {
+                const normalized = this.normalizePhaseResponse(phase);
+                const linkedPhases = linkedPhasesMap.get(phase.id) || [];
+                const linkedAsSubPhases = linkedPhases.map((linkedPhase) => ({
+                    id: linkedPhase.id,
+                    title: linkedPhase.title || linkedPhase.name,
+                    description: linkedPhase.description || '',
+                    isCompleted: linkedPhase.status === 'completed',
+                    completionPercentage: linkedPhase.progress || 0,
+                    phaseId: phase.id,
+                    contractorPhaseId: phase.id,
+                    subContractorPhaseId: linkedPhase.id,
+                    isLinkedSubContractorPhase: true,
+                    created_at: linkedPhase.created_at,
+                    updated_at: linkedPhase.updated_at,
+                }));
+                normalized.subPhases = [...(normalized.subPhases || []), ...linkedAsSubPhases];
+                return normalized;
+            });
+            return [...normalizedContractorPhases, ...normalizedLegacyPhases].sort((a, b) => new Date(a.created_at || a.start_date || 0).getTime() - new Date(b.created_at || b.start_date || 0).getTime());
+        }
+        else if (userRole === 'sub_contractor') {
+            const subContractorPhases = await this.subContractorPhasesRepository.find({
+                where: { project_id: projectId, is_active: true },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const linkedContractorPhaseIds = subContractorPhases
+                .map(p => p.linkedContractorPhaseId)
+                .filter(id => id !== null && id !== undefined);
+            const linkedContractorPhases = linkedContractorPhaseIds.length > 0
+                ? await this.contractorPhasesRepository.find({
+                    where: {
+                        project_id: projectId,
+                        is_active: true,
+                        id: (0, typeorm_2.In)(linkedContractorPhaseIds),
+                    },
+                    relations: ["subPhases"],
+                    order: { created_at: "ASC" },
+                })
+                : [];
+            const contractorPhaseMap = new Map(linkedContractorPhases.map(cp => [cp.id, { id: cp.id, title: cp.title, name: cp.title }]));
+            const legacyPhases = await this.phasesRepository.find({
+                where: { project_id: projectId, is_active: true, boqType: 'sub_contractor' },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const legacyContractorPhases = await this.phasesRepository.find({
+                where: {
+                    project_id: projectId,
+                    is_active: true,
+                    boqType: 'contractor',
+                    id: (0, typeorm_2.In)(linkedContractorPhaseIds),
+                },
+                relations: ["subPhases"],
+            });
+            legacyContractorPhases.forEach(cp => {
+                if (!contractorPhaseMap.has(cp.id)) {
+                    contractorPhaseMap.set(cp.id, { id: cp.id, title: cp.title, name: cp.title });
+                }
+            });
+            const allPhases = [...subContractorPhases, ...linkedContractorPhases, ...legacyPhases];
+            return allPhases.map(phase => {
+                const normalized = this.normalizePhaseResponse(phase);
+                if (normalized.linkedContractorPhaseId) {
+                    const linkedPhase = contractorPhaseMap.get(normalized.linkedContractorPhaseId);
+                    if (linkedPhase) {
+                        normalized.linkedContractorPhase = {
+                            id: linkedPhase.id,
+                            title: linkedPhase.title,
+                            name: linkedPhase.name,
+                        };
+                    }
+                }
+                return normalized;
+            }).sort((a, b) => new Date(a.created_at || a.start_date || 0).getTime() - new Date(b.created_at || b.start_date || 0).getTime());
+        }
+        else {
+            const contractorPhases = await this.contractorPhasesRepository.find({
+                where: { project_id: projectId, is_active: true },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const subContractorPhases = await this.subContractorPhasesRepository.find({
+                where: { project_id: projectId, is_active: true },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const legacyPhases = await this.phasesRepository.find({
+                where: { project_id: projectId, is_active: true },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const allPhases = [...contractorPhases, ...subContractorPhases, ...legacyPhases];
+            return allPhases.map(phase => this.normalizePhaseResponse(phase)).sort((a, b) => new Date(a.created_at || a.start_date || 0).getTime() - new Date(b.created_at || b.start_date || 0).getTime());
+        }
+    }
+    async getContractorPhasesForLinking(projectId, userId) {
+        await this.verifyProjectAccess(projectId, userId);
+        const user = await this.usersService.findOne(userId);
+        const userRole = user?.role?.toLowerCase();
+        if (userRole !== 'sub_contractor') {
+            throw new common_1.ForbiddenException("Only sub-contractors can access contractor phases for linking");
+        }
+        const contractorPhases = await this.contractorPhasesRepository.find({
+            where: {
+                project_id: projectId,
+                is_active: true,
+                status: (0, typeorm_2.In)(['not_started', 'in_progress', 'delayed'])
+            },
+            relations: ["subPhases"],
             order: { created_at: "ASC" },
         });
+        const legacyContractorPhases = await this.phasesRepository.find({
+            where: {
+                project_id: projectId,
+                is_active: true,
+                boqType: 'contractor',
+                status: (0, typeorm_2.In)(['not_started', 'in_progress', 'delayed'])
+            },
+            relations: ["subPhases"],
+            order: { created_at: "ASC" },
+        });
+        const allPhases = [...contractorPhases, ...legacyContractorPhases];
+        return allPhases.map(phase => this.normalizePhaseResponse(phase)).sort((a, b) => new Date(a.created_at || a.start_date || 0).getTime() - new Date(b.created_at || b.start_date || 0).getTime());
+    }
+    normalizePhaseResponse(phase) {
+        return {
+            id: phase.id,
+            name: phase.title,
+            title: phase.title,
+            description: phase.description,
+            status: phase.status,
+            budget: phase.budget,
+            progress: phase.progress,
+            startDate: phase.start_date,
+            start_date: phase.start_date,
+            endDate: phase.end_date,
+            end_date: phase.end_date,
+            subPhases: phase.subPhases || [],
+            created_at: phase.created_at,
+            updated_at: phase.updated_at,
+            linkedContractorPhaseId: phase.linkedContractorPhaseId || phase.linked_contractor_phase_id || null,
+            isLinkedPhase: !!(phase.linkedContractorPhaseId || phase.linked_contractor_phase_id),
+            hasLinkedSubContractorPhases: phase.linkedSubContractorPhases?.length > 0 || false,
+        };
     }
     async getProjectPhasesPaginated(projectId, userId, { page = 1, limit = 10 }) {
         await this.verifyProjectAccess(projectId, userId);
+        const user = await this.usersService.findOne(userId);
+        const userRole = user?.role?.toLowerCase();
         const pageNum = Number(page) || 1;
         const limitNum = Number(limit) || 10;
-        const [phases, total] = await this.phasesRepository.findAndCount({
-            where: { project_id: projectId, is_active: true },
-            relations: ["subPhases", "subPhases.subPhases"],
-            order: { created_at: "ASC" },
-            skip: (pageNum - 1) * limitNum,
-            take: limitNum,
+        let allPhases = [];
+        let contractorPhaseMap = null;
+        if (userRole === 'contractor') {
+            const contractorPhases = await this.contractorPhasesRepository.find({
+                where: { project_id: projectId, is_active: true },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const contractorPhaseIds = contractorPhases.map(p => p.id);
+            const linkedSubContractorPhases = contractorPhaseIds.length > 0
+                ? await this.subContractorPhasesRepository.find({
+                    where: {
+                        project_id: projectId,
+                        is_active: true,
+                        linkedContractorPhaseId: (0, typeorm_2.In)(contractorPhaseIds),
+                    },
+                    relations: ["subPhases"],
+                    order: { created_at: "ASC" },
+                })
+                : [];
+            const linkedPhasesMap = new Map();
+            linkedSubContractorPhases.forEach(subContractorPhase => {
+                const contractorPhaseId = subContractorPhase.linkedContractorPhaseId;
+                if (contractorPhaseId) {
+                    if (!linkedPhasesMap.has(contractorPhaseId)) {
+                        linkedPhasesMap.set(contractorPhaseId, []);
+                    }
+                    linkedPhasesMap.get(contractorPhaseId).push(subContractorPhase);
+                }
+            });
+            contractorPhaseMap = new Map(contractorPhases.map(cp => [cp.id, { id: cp.id, title: cp.title, name: cp.title }]));
+            const legacyPhases = await this.phasesRepository.find({
+                where: { project_id: projectId, is_active: true, boqType: 'contractor' },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const legacyContractorPhaseIds = legacyPhases.map(p => p.id);
+            const legacyLinkedSubContractorPhases = legacyContractorPhaseIds.length > 0
+                ? await this.phasesRepository.find({
+                    where: {
+                        project_id: projectId,
+                        is_active: true,
+                        boqType: 'sub_contractor',
+                        linkedContractorPhaseId: (0, typeorm_2.In)(legacyContractorPhaseIds),
+                    },
+                    relations: ["subPhases"],
+                    order: { created_at: "ASC" },
+                })
+                : [];
+            legacyLinkedSubContractorPhases.forEach(legacySubContractorPhase => {
+                const contractorPhaseId = legacySubContractorPhase.linkedContractorPhaseId;
+                if (contractorPhaseId) {
+                    if (!linkedPhasesMap.has(contractorPhaseId)) {
+                        linkedPhasesMap.set(contractorPhaseId, []);
+                    }
+                    linkedPhasesMap.get(contractorPhaseId).push(legacySubContractorPhase);
+                }
+            });
+            legacyPhases.forEach(cp => {
+                if (!contractorPhaseMap.has(cp.id)) {
+                    contractorPhaseMap.set(cp.id, { id: cp.id, title: cp.title, name: cp.title });
+                }
+            });
+            const normalizedContractorPhases = contractorPhases.map(phase => {
+                const normalized = this.normalizePhaseResponse(phase);
+                const linkedPhases = linkedPhasesMap.get(phase.id) || [];
+                const linkedAsSubPhases = linkedPhases.map((linkedPhase) => ({
+                    id: linkedPhase.id,
+                    title: linkedPhase.title || linkedPhase.name,
+                    description: linkedPhase.description || '',
+                    isCompleted: linkedPhase.status === 'completed',
+                    completionPercentage: linkedPhase.progress || 0,
+                    phaseId: phase.id,
+                    contractorPhaseId: phase.id,
+                    subContractorPhaseId: linkedPhase.id,
+                    isLinkedSubContractorPhase: true,
+                    created_at: linkedPhase.created_at,
+                    updated_at: linkedPhase.updated_at,
+                }));
+                normalized.subPhases = [...(normalized.subPhases || []), ...linkedAsSubPhases];
+                return normalized;
+            });
+            const normalizedLegacyPhases = legacyPhases.map(phase => {
+                const normalized = this.normalizePhaseResponse(phase);
+                const linkedPhases = linkedPhasesMap.get(phase.id) || [];
+                const linkedAsSubPhases = linkedPhases.map((linkedPhase) => ({
+                    id: linkedPhase.id,
+                    title: linkedPhase.title || linkedPhase.name,
+                    description: linkedPhase.description || '',
+                    isCompleted: linkedPhase.status === 'completed',
+                    completionPercentage: linkedPhase.progress || 0,
+                    phaseId: phase.id,
+                    contractorPhaseId: phase.id,
+                    subContractorPhaseId: linkedPhase.id,
+                    isLinkedSubContractorPhase: true,
+                    created_at: linkedPhase.created_at,
+                    updated_at: linkedPhase.updated_at,
+                }));
+                normalized.subPhases = [...(normalized.subPhases || []), ...linkedAsSubPhases];
+                return normalized;
+            });
+            allPhases = [...normalizedContractorPhases, ...normalizedLegacyPhases];
+        }
+        else if (userRole === 'sub_contractor') {
+            const subContractorPhases = await this.subContractorPhasesRepository.find({
+                where: { project_id: projectId, is_active: true },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const linkedContractorPhaseIds = subContractorPhases
+                .map(p => p.linkedContractorPhaseId)
+                .filter(id => id !== null && id !== undefined);
+            const linkedContractorPhases = linkedContractorPhaseIds.length > 0
+                ? await this.contractorPhasesRepository.find({
+                    where: {
+                        project_id: projectId,
+                        is_active: true,
+                        id: (0, typeorm_2.In)(linkedContractorPhaseIds),
+                    },
+                    relations: ["subPhases"],
+                    order: { created_at: "ASC" },
+                })
+                : [];
+            contractorPhaseMap = new Map(linkedContractorPhases.map(cp => [cp.id, { id: cp.id, title: cp.title, name: cp.title }]));
+            const legacyPhases = await this.phasesRepository.find({
+                where: { project_id: projectId, is_active: true, boqType: 'sub_contractor' },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const legacyContractorPhases = await this.phasesRepository.find({
+                where: {
+                    project_id: projectId,
+                    is_active: true,
+                    boqType: 'contractor',
+                    id: (0, typeorm_2.In)(linkedContractorPhaseIds),
+                },
+                relations: ["subPhases"],
+            });
+            legacyContractorPhases.forEach(cp => {
+                if (contractorPhaseMap && !contractorPhaseMap.has(cp.id)) {
+                    contractorPhaseMap.set(cp.id, { id: cp.id, title: cp.title, name: cp.title });
+                }
+            });
+            allPhases = [...subContractorPhases, ...linkedContractorPhases, ...legacyPhases];
+        }
+        else {
+            const contractorPhases = await this.contractorPhasesRepository.find({
+                where: { project_id: projectId, is_active: true },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const subContractorPhases = await this.subContractorPhasesRepository.find({
+                where: { project_id: projectId, is_active: true },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            const legacyPhases = await this.phasesRepository.find({
+                where: { project_id: projectId, is_active: true },
+                relations: ["subPhases"],
+                order: { created_at: "ASC" },
+            });
+            allPhases = [...contractorPhases, ...subContractorPhases, ...legacyPhases];
+        }
+        const normalizedPhases = allPhases.map(phase => {
+            const normalized = this.normalizePhaseResponse(phase);
+            if (userRole === 'sub_contractor' && normalized.linkedContractorPhaseId && contractorPhaseMap) {
+                const linkedPhase = contractorPhaseMap.get(normalized.linkedContractorPhaseId);
+                if (linkedPhase) {
+                    normalized.linkedContractorPhase = {
+                        id: linkedPhase.id,
+                        title: linkedPhase.title,
+                        name: linkedPhase.name,
+                    };
+                }
+            }
+            if (userRole === 'contractor' && normalized.isLinkedPhase && normalized.linkedContractorPhaseId && contractorPhaseMap) {
+                const linkedPhase = contractorPhaseMap.get(normalized.linkedContractorPhaseId);
+                if (linkedPhase) {
+                    normalized.linkedContractorPhase = {
+                        id: linkedPhase.id,
+                        title: linkedPhase.title,
+                        name: linkedPhase.name,
+                    };
+                }
+            }
+            return normalized;
         });
+        normalizedPhases.sort((a, b) => new Date(a.created_at || a.start_date || 0).getTime() - new Date(b.created_at || b.start_date || 0).getTime());
+        const total = normalizedPhases.length;
+        const paginatedItems = normalizedPhases.slice((pageNum - 1) * limitNum, pageNum * limitNum);
         return {
-            items: phases,
+            items: paginatedItems,
             total,
             page: pageNum,
             limit: limitNum,
@@ -332,11 +736,15 @@ exports.ProjectContractorService = ProjectContractorService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(project_entity_1.Project)),
     __param(1, (0, typeorm_1.InjectRepository)(phase_entity_1.Phase)),
-    __param(2, (0, typeorm_1.InjectRepository)(inventory_entity_1.Inventory)),
-    __param(3, (0, typeorm_1.InjectRepository)(inventory_usage_entity_1.InventoryUsage)),
-    __param(5, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
-    __param(6, (0, common_1.Inject)((0, common_1.forwardRef)(() => projects_service_1.ProjectsService))),
+    __param(2, (0, typeorm_1.InjectRepository)(contractor_phase_entity_1.ContractorPhase)),
+    __param(3, (0, typeorm_1.InjectRepository)(sub_contractor_phase_entity_1.SubContractorPhase)),
+    __param(4, (0, typeorm_1.InjectRepository)(inventory_entity_1.Inventory)),
+    __param(5, (0, typeorm_1.InjectRepository)(inventory_usage_entity_1.InventoryUsage)),
+    __param(7, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
+    __param(8, (0, common_1.Inject)((0, common_1.forwardRef)(() => projects_service_1.ProjectsService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,

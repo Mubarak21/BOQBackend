@@ -15,7 +15,12 @@ const user_entity_1 = require("./user.entity");
 const task_entity_1 = require("./task.entity");
 const comment_entity_1 = require("./comment.entity");
 const phase_entity_1 = require("./phase.entity");
+const contractor_phase_entity_1 = require("./contractor-phase.entity");
+const sub_contractor_phase_entity_1 = require("./sub-contractor-phase.entity");
 const department_entity_1 = require("./department.entity");
+const project_financial_summary_entity_1 = require("./project-financial-summary.entity");
+const project_metadata_entity_1 = require("./project-metadata.entity");
+const project_settings_entity_1 = require("./project-settings.entity");
 var ProjectStatus;
 (function (ProjectStatus) {
     ProjectStatus["PLANNING"] = "planning";
@@ -100,62 +105,23 @@ __decorate([
     __metadata("design:type", Number)
 ], Project.prototype, "totalAmount", void 0);
 __decorate([
-    (0, typeorm_1.Column)({
-        type: "decimal",
-        precision: 15,
-        scale: 2,
-        default: 0.0,
-        name: "total_budget",
+    (0, typeorm_1.OneToOne)(() => project_financial_summary_entity_1.ProjectFinancialSummary, (summary) => summary.project, {
+        cascade: true,
     }),
-    __metadata("design:type", Number)
-], Project.prototype, "totalBudget", void 0);
+    __metadata("design:type", project_financial_summary_entity_1.ProjectFinancialSummary)
+], Project.prototype, "financialSummary", void 0);
 __decorate([
-    (0, typeorm_1.Column)({
-        type: "decimal",
-        precision: 15,
-        scale: 2,
-        default: 0.0,
-        name: "allocated_budget",
+    (0, typeorm_1.OneToOne)(() => project_metadata_entity_1.ProjectMetadata, (metadata) => metadata.project, {
+        cascade: true,
     }),
-    __metadata("design:type", Number)
-], Project.prototype, "allocatedBudget", void 0);
+    __metadata("design:type", project_metadata_entity_1.ProjectMetadata)
+], Project.prototype, "metadata", void 0);
 __decorate([
-    (0, typeorm_1.Column)({
-        type: "decimal",
-        precision: 15,
-        scale: 2,
-        default: 0.0,
-        name: "spent_amount",
+    (0, typeorm_1.OneToOne)(() => project_settings_entity_1.ProjectSettings, (settings) => settings.project, {
+        cascade: true,
     }),
-    __metadata("design:type", Number)
-], Project.prototype, "spentAmount", void 0);
-__decorate([
-    (0, typeorm_1.Column)({
-        type: "decimal",
-        precision: 15,
-        scale: 2,
-        default: 0.0,
-        name: "estimated_savings",
-    }),
-    __metadata("design:type", Number)
-], Project.prototype, "estimatedSavings", void 0);
-__decorate([
-    (0, typeorm_1.Column)({
-        type: "timestamp",
-        nullable: true,
-        name: "budget_last_updated",
-    }),
-    __metadata("design:type", Date)
-], Project.prototype, "budgetLastUpdated", void 0);
-__decorate([
-    (0, typeorm_1.Column)({
-        type: "enum",
-        enum: ["on_track", "warning", "over_budget", "excellent"],
-        default: "on_track",
-        name: "financial_status",
-    }),
-    __metadata("design:type", String)
-], Project.prototype, "financialStatus", void 0);
+    __metadata("design:type", project_settings_entity_1.ProjectSettings)
+], Project.prototype, "settings", void 0);
 __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", String)
@@ -178,6 +144,14 @@ __decorate([
     (0, typeorm_1.OneToMany)(() => phase_entity_1.Phase, (phase) => phase.project),
     __metadata("design:type", Array)
 ], Project.prototype, "phases", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => contractor_phase_entity_1.ContractorPhase, (phase) => phase.project),
+    __metadata("design:type", Array)
+], Project.prototype, "contractorPhases", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => sub_contractor_phase_entity_1.SubContractorPhase, (phase) => phase.project),
+    __metadata("design:type", Array)
+], Project.prototype, "subContractorPhases", void 0);
 __decorate([
     (0, typeorm_1.OneToMany)(() => task_entity_1.Task, (task) => task.project),
     __metadata("design:type", Array)

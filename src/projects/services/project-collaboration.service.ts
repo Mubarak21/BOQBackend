@@ -36,7 +36,7 @@ export class ProjectCollaborationService {
   ): Promise<Project> {
     const project = await this.projectsService.findOne(projectId);
     const user = await this.usersService.findOne(userId);
-    const isAdmin = user?.role === "admin";
+    const isAdmin = user?.role === "consultant";
     const isConsultant = user?.role === "consultant";
 
     if (project.owner_id !== userId && !isAdmin && !isConsultant) {
@@ -68,7 +68,7 @@ export class ProjectCollaborationService {
   ): Promise<Project> {
     const project = await this.projectsService.findOne(projectId);
     const user = await this.usersService.findOne(userId);
-    const isAdmin = user?.role === "admin";
+    const isAdmin = user?.role === "consultant";
     const isConsultant = user?.role === "consultant";
 
     if (project.owner_id !== userId && !isAdmin && !isConsultant) {
@@ -113,7 +113,7 @@ export class ProjectCollaborationService {
     });
     if (!project) throw new NotFoundException("Project not found");
     const user = await this.usersService.findOne(ownerId);
-    const isAdmin = user?.role === "admin";
+    const isAdmin = user?.role === "consultant";
     const isConsultant = user?.role === "consultant";
     if (project.owner_id !== ownerId && !isAdmin && !isConsultant)
       throw new ForbiddenException(
@@ -136,7 +136,7 @@ export class ProjectCollaborationService {
     });
     if (!project) throw new NotFoundException("Project not found");
     const user = await this.usersService.findOne(ownerId);
-    const isAdmin = user?.role === "admin";
+    const isAdmin = user?.role === "consultant";
     const isConsultant = user?.role === "consultant";
     if (project.owner_id !== ownerId && !isAdmin && !isConsultant)
       throw new ForbiddenException(
@@ -168,7 +168,7 @@ export class ProjectCollaborationService {
     });
     if (!project) throw new NotFoundException("Project not found");
     const user = await this.usersService.findOne(ownerId);
-    const isAdmin = user?.role === "admin";
+    const isAdmin = user?.role === "consultant";
     const isConsultant = user?.role === "consultant";
     if (project.owner_id !== ownerId && !isAdmin && !isConsultant)
       throw new ForbiddenException(

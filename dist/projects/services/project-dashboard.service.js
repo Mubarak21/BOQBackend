@@ -25,27 +25,54 @@ let ProjectDashboardService = class ProjectDashboardService {
     }
     async getDashboardProjectStats() {
         try {
+            const totalCount = await this.projectsRepository.count();
             const result = await this.projectsRepository
                 .createQueryBuilder("project")
+                .leftJoin("project.financialSummary", "financialSummary")
                 .select("COUNT(project.id)", "total")
                 .addSelect(`SUM(CASE WHEN project.status IN ('in_progress', 'planning') THEN 1 ELSE 0 END)`, "active")
                 .addSelect(`SUM(CASE WHEN project.status = 'completed' THEN 1 ELSE 0 END)`, "completed")
-                .addSelect(`SUM(COALESCE(project.total_budget, 0))`, "totalValue")
+                .addSelect(`SUM(COALESCE(financialSummary.total_budget, project."totalAmount", 0))`, "totalValue")
                 .getRawOne();
+            const total = result?.total
+                ? (typeof result.total === 'string' ? parseInt(result.total, 10) : Math.floor(Number(result.total)))
+                : totalCount;
+            const active = result?.active
+                ? (typeof result.active === 'string' ? parseInt(result.active, 10) : Math.floor(Number(result.active)))
+                : 0;
+            const completed = result?.completed
+                ? (typeof result.completed === 'string' ? parseInt(result.completed, 10) : Math.floor(Number(result.completed)))
+                : 0;
+            const totalValue = result?.totalValue
+                ? (typeof result.totalValue === 'string' ? parseFloat(result.totalValue) : Number(result.totalValue))
+                : 0;
             return {
-                total: parseInt(result?.total) || 0,
-                active: parseInt(result?.active) || 0,
-                completed: parseInt(result?.completed) || 0,
-                totalValue: parseFloat(result?.totalValue) || 0,
+                total: total || 0,
+                active: active || 0,
+                completed: completed || 0,
+                totalValue: totalValue || 0,
             };
         }
         catch (error) {
-            return {
-                total: 0,
-                active: 0,
-                completed: 0,
-                totalValue: 0,
-            };
+            console.error('[ProjectDashboardService] Error getting project stats:', error);
+            try {
+                const totalCount = await this.projectsRepository.count();
+                return {
+                    total: totalCount || 0,
+                    active: 0,
+                    completed: 0,
+                    totalValue: 0,
+                };
+            }
+            catch (fallbackError) {
+                console.error('[ProjectDashboardService] Fallback count also failed:', fallbackError);
+                return {
+                    total: 0,
+                    active: 0,
+                    completed: 0,
+                    totalValue: 0,
+                };
+            }
         }
     }
     async getDashboardPhaseStats() {
@@ -56,6 +83,7 @@ let ProjectDashboardService = class ProjectDashboardService {
                 .addSelect(`SUM(CASE WHEN phase.status = 'completed' THEN 1 ELSE 0 END)`, "completed")
                 .addSelect(`SUM(CASE WHEN phase.status = 'in_progress' THEN 1 ELSE 0 END)`, "inProgress")
                 .addSelect("SUM(COALESCE(phase.budget, 0))", "totalBudget")
+                .where("phase.is_active = :isActive", { isActive: true })
                 .getRawOne();
             const total = parseInt(result?.total) || 0;
             const completed = parseInt(result?.completed) || 0;
@@ -69,6 +97,7 @@ let ProjectDashboardService = class ProjectDashboardService {
             };
         }
         catch (error) {
+            console.error('[ProjectDashboardService] Error getting phase stats:', error);
             return {
                 total: 0,
                 completed: 0,

@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  OneToOne,
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
@@ -12,6 +13,7 @@ import { Project } from "./project.entity";
 import { Task } from "./task.entity";
 import { User } from "./user.entity";
 import { SubPhase } from "./sub-phase.entity";
+import { PhaseFinancialSummary } from "./phase-financial-summary.entity";
 
 export enum PhaseStatus {
   NOT_STARTED = "not_started",
@@ -86,9 +88,38 @@ export class Phase {
   @Column({ type: "boolean", default: false })
   from_boq: boolean;
 
+  // Track which BOQ type this phase came from
+  @Column({
+    type: "enum",
+    enum: ["contractor", "sub_contractor"],
+    nullable: true,
+    name: "boq_type",
+  })
+  boqType: "contractor" | "sub_contractor" | null;
+
+  // Link sub-contractor phases to contractor phases
+  @Column({ nullable: true, name: "linked_contractor_phase_id" })
+  linkedContractorPhaseId: string;
+
+  @ManyToOne(() => Phase, (phase) => phase.linkedSubContractorPhases, {
+    nullable: true,
+  })
+  @JoinColumn({ name: "linked_contractor_phase_id" })
+  linkedContractorPhase: Phase;
+
+  // Sub-contractor phases linked to this contractor phase
+  @OneToMany(() => Phase, (phase) => phase.linkedContractorPhase)
+  linkedSubContractorPhases: Phase[];
+
   @OneToMany(() => SubPhase, (subPhase) => subPhase.phase, {
     cascade: true,
     eager: true,
   })
   subPhases: SubPhase[];
+
+  // Financial summary moved to PhaseFinancialSummary table
+  @OneToOne(() => PhaseFinancialSummary, (summary) => summary.phase, {
+    cascade: true,
+  })
+  financialSummary: PhaseFinancialSummary;
 }

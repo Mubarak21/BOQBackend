@@ -19,14 +19,18 @@ const typeorm_2 = require("typeorm");
 const sub_phase_entity_1 = require("../entities/sub-phase.entity");
 const activities_service_1 = require("../activities/activities.service");
 const phase_entity_1 = require("../entities/phase.entity");
+const contractor_phase_entity_1 = require("../entities/contractor-phase.entity");
+const sub_contractor_phase_entity_1 = require("../entities/sub-contractor-phase.entity");
 const project_entity_1 = require("../entities/project.entity");
 const user_entity_1 = require("../entities/user.entity");
 const activity_entity_1 = require("../entities/activity.entity");
 const users_service_1 = require("../users/users.service");
 let SubPhasesService = class SubPhasesService {
-    constructor(subPhaseRepository, phaseRepository, projectRepository, activitiesService, usersService) {
+    constructor(subPhaseRepository, phaseRepository, contractorPhaseRepository, subContractorPhaseRepository, projectRepository, activitiesService, usersService) {
         this.subPhaseRepository = subPhaseRepository;
         this.phaseRepository = phaseRepository;
+        this.contractorPhaseRepository = contractorPhaseRepository;
+        this.subContractorPhaseRepository = subContractorPhaseRepository;
         this.projectRepository = projectRepository;
         this.activitiesService = activitiesService;
         this.usersService = usersService;
@@ -35,23 +39,73 @@ let SubPhasesService = class SubPhasesService {
         if (!user) {
             throw new common_1.ForbiddenException("User must be authenticated to create sub-phases");
         }
-        const phase = await this.phaseRepository.findOne({
+        let phase = null;
+        let phaseType = 'legacy';
+        let isLinkedSubContractorPhase = false;
+        const contractorPhase = await this.contractorPhaseRepository.findOne({
             where: { id: phaseId },
             relations: ["project", "project.owner", "project.collaborators"],
         });
+        if (contractorPhase) {
+            phase = contractorPhase;
+            phaseType = 'contractor';
+        }
+        else {
+            const subContractorPhase = await this.subContractorPhaseRepository.findOne({
+                where: { id: phaseId },
+                relations: ["project", "project.owner", "project.collaborators", "linkedContractorPhase"],
+            });
+            if (subContractorPhase) {
+                phase = subContractorPhase;
+                phaseType = 'sub_contractor';
+                if (subContractorPhase.linkedContractorPhaseId) {
+                    isLinkedSubContractorPhase = true;
+                }
+            }
+            else {
+                const legacyPhase = await this.phaseRepository.findOne({
+                    where: { id: phaseId },
+                    relations: ["project", "project.owner", "project.collaborators"],
+                });
+                if (legacyPhase) {
+                    phase = legacyPhase;
+                    phaseType = 'legacy';
+                    if (legacyPhase.boqType === 'sub_contractor' && legacyPhase.linkedContractorPhaseId) {
+                        isLinkedSubContractorPhase = true;
+                    }
+                }
+            }
+        }
         if (!phase)
             throw new common_1.NotFoundException("Phase not found");
         let parentSubPhase = null;
         if (createDto.parentSubPhaseId) {
             parentSubPhase = await this.subPhaseRepository.findOne({
                 where: { id: createDto.parentSubPhaseId },
-                relations: ["phase"],
+                relations: ["phase", "subContractorPhase", "subContractorPhase.linkedContractorPhase"],
             });
             if (!parentSubPhase) {
                 throw new common_1.NotFoundException("Parent sub-phase not found");
             }
-            if (parentSubPhase.phase_id !== phaseId) {
+            const parentBelongsToPhase = parentSubPhase.phase_id === phaseId ||
+                parentSubPhase.contractorPhaseId === phaseId ||
+                parentSubPhase.subContractorPhaseId === phaseId;
+            if (!parentBelongsToPhase) {
                 throw new common_1.ForbiddenException("Parent sub-phase must belong to the same phase");
+            }
+            if (parentSubPhase.subContractorPhaseId) {
+                if (parentSubPhase.subContractorPhase?.linkedContractorPhaseId) {
+                    isLinkedSubContractorPhase = true;
+                }
+                else {
+                    const parentSubContractorPhase = await this.subContractorPhaseRepository.findOne({
+                        where: { id: parentSubPhase.subContractorPhaseId },
+                        relations: ["linkedContractorPhase"],
+                    });
+                    if (parentSubContractorPhase?.linkedContractorPhaseId) {
+                        isLinkedSubContractorPhase = true;
+                    }
+                }
             }
         }
         const userWithRole = await this.usersService.findOne(user.id);
@@ -61,6 +115,9 @@ let SubPhasesService = class SubPhasesService {
         const isConsultant = userWithRole?.role === user_entity_1.UserRole.CONSULTANT;
         const isOwner = phase.project?.owner_id === user.id;
         const isCollaborator = phase.project?.collaborators?.some((c) => c.id === user.id);
+        if (isContractor && isLinkedSubContractorPhase && !isAdmin && !isConsultant && !isOwner) {
+            throw new common_1.ForbiddenException("Contractors can only view sub-phases from linked sub-contractor phases. Only the sub-contractor can create or modify them.");
+        }
         if (createDto.parentSubPhaseId) {
             if (!isSubContractor && !isAdmin && !isConsultant && !isOwner) {
                 throw new common_1.ForbiddenException("Only sub_contractors, project owners, admins, or consultants can create nested sub-phases");
@@ -76,18 +133,28 @@ let SubPhasesService = class SubPhasesService {
                 throw new common_1.ForbiddenException("Only sub_contractors, contractors, project owners, collaborators, admins, or consultants can create sub-phases");
             }
         }
-        const subPhase = this.subPhaseRepository.create({
+        const subPhaseData = {
             title: createDto.title,
             description: createDto.description,
-            phase_id: phaseId,
             parent_sub_phase_id: createDto.parentSubPhaseId || null,
-            isCompleted: false,
-        });
-        const saved = await this.subPhaseRepository.save(subPhase);
-        if (phase.project && user) {
-            await this.activitiesService.createActivity(activity_entity_1.ActivityType.TASK_CREATED, `Sub-phase "${subPhase.title}" was added to phase "${phase.title}"`, user, phase.project, phase, { subPhaseId: saved.id });
+            isCompleted: createDto.isCompleted || false,
+        };
+        if (phaseType === 'contractor') {
+            subPhaseData.contractorPhaseId = phaseId;
         }
-        return saved;
+        else if (phaseType === 'sub_contractor') {
+            subPhaseData.subContractorPhaseId = phaseId;
+        }
+        else {
+            subPhaseData.phase_id = phaseId;
+        }
+        const subPhase = this.subPhaseRepository.create(subPhaseData);
+        const saved = await this.subPhaseRepository.save(subPhase);
+        const savedSubPhase = Array.isArray(saved) ? saved[0] : saved;
+        if (phase.project && user) {
+            await this.activitiesService.createActivity(activity_entity_1.ActivityType.TASK_CREATED, `Sub-phase "${savedSubPhase.title}" was added to phase "${phase.title || phase.name}"`, user, phase.project, phase, { subPhaseId: savedSubPhase.id });
+        }
+        return savedSubPhase;
     }
     async update(id, update, user) {
         if (!user) {
@@ -100,7 +167,9 @@ let SubPhasesService = class SubPhasesService {
                 "phase.project",
                 "phase.project.owner",
                 "phase.project.collaborators",
-                "subPhases"
+                "subPhases",
+                "subContractorPhase",
+                "subContractorPhase.linkedContractorPhase"
             ],
         });
         if (!subPhase)
@@ -112,6 +181,24 @@ let SubPhasesService = class SubPhasesService {
         const isConsultant = userWithRole?.role === user_entity_1.UserRole.CONSULTANT;
         const isOwner = subPhase.phase?.project?.owner_id === user.id;
         const isCollaborator = subPhase.phase?.project?.collaborators?.some((c) => c.id === user.id);
+        let isLinkedSubContractorPhase = false;
+        if (subPhase.subContractorPhaseId) {
+            if (subPhase.subContractorPhase?.linkedContractorPhaseId) {
+                isLinkedSubContractorPhase = true;
+            }
+            else {
+                const subContractorPhase = await this.subContractorPhaseRepository.findOne({
+                    where: { id: subPhase.subContractorPhaseId },
+                    relations: ["linkedContractorPhase"],
+                });
+                if (subContractorPhase?.linkedContractorPhaseId) {
+                    isLinkedSubContractorPhase = true;
+                }
+            }
+        }
+        if (isContractor && isLinkedSubContractorPhase && !isAdmin && !isConsultant && !isOwner) {
+            throw new common_1.ForbiddenException("Contractors can only view sub-phases from linked sub-contractor phases. Only the sub-contractor can modify them.");
+        }
         if (!isSubContractor &&
             !isContractor &&
             !isAdmin &&
@@ -128,11 +215,32 @@ let SubPhasesService = class SubPhasesService {
         }
         Object.assign(subPhase, update);
         const saved = await this.subPhaseRepository.save(subPhase);
-        const phase = await this.phaseRepository.findOne({
-            where: { id: subPhase.phase_id },
-            relations: ["project", "subPhases"],
-        });
+        let phase = null;
+        let project = null;
+        let phaseType = 'legacy';
+        if (subPhase.contractorPhaseId) {
+            phase = await this.contractorPhaseRepository.findOne({
+                where: { id: subPhase.contractorPhaseId },
+                relations: ["project", "subPhases"],
+            });
+            phaseType = 'contractor';
+        }
+        else if (subPhase.subContractorPhaseId) {
+            phase = await this.subContractorPhaseRepository.findOne({
+                where: { id: subPhase.subContractorPhaseId },
+                relations: ["project", "subPhases", "linkedContractorPhase"],
+            });
+            phaseType = 'sub_contractor';
+        }
+        else if (subPhase.phase_id) {
+            phase = await this.phaseRepository.findOne({
+                where: { id: subPhase.phase_id },
+                relations: ["project", "subPhases"],
+            });
+            phaseType = 'legacy';
+        }
         if (phase) {
+            project = phase.project;
             const allCompleted = (phase.subPhases || []).every((sp) => sp.isCompleted);
             let PhaseStatus;
             try {
@@ -151,12 +259,59 @@ let SubPhasesService = class SubPhasesService {
                 }
                 if (newStatus !== phase.status) {
                     phase.status = newStatus;
-                    await this.phaseRepository.save(phase);
+                    if (phaseType === 'contractor') {
+                        await this.contractorPhaseRepository.save(phase);
+                        if (newStatus === PhaseStatus.COMPLETED) {
+                            const linkedSubContractorPhases = await this.subContractorPhaseRepository.find({
+                                where: {
+                                    project_id: phase.project_id,
+                                    linkedContractorPhaseId: phase.id,
+                                    is_active: true,
+                                },
+                            });
+                            for (const linkedPhase of linkedSubContractorPhases) {
+                                if (linkedPhase.status !== PhaseStatus.COMPLETED) {
+                                    linkedPhase.status = PhaseStatus.COMPLETED;
+                                    await this.subContractorPhaseRepository.save(linkedPhase);
+                                }
+                            }
+                        }
+                    }
+                    else if (phaseType === 'sub_contractor') {
+                        await this.subContractorPhaseRepository.save(phase);
+                        if (phase.linkedContractorPhaseId) {
+                            const linkedContractorPhase = await this.contractorPhaseRepository.findOne({
+                                where: { id: phase.linkedContractorPhaseId, project_id: phase.project_id },
+                                relations: ["subPhases"],
+                            });
+                            if (linkedContractorPhase) {
+                                const allLinkedSubContractorPhases = await this.subContractorPhaseRepository.find({
+                                    where: {
+                                        project_id: phase.project_id,
+                                        linkedContractorPhaseId: phase.linkedContractorPhaseId,
+                                        is_active: true,
+                                    },
+                                });
+                                const allLinkedCompleted = allLinkedSubContractorPhases.every(p => p.status === PhaseStatus.COMPLETED);
+                                if (allLinkedCompleted && linkedContractorPhase.status !== PhaseStatus.COMPLETED) {
+                                    linkedContractorPhase.status = PhaseStatus.COMPLETED;
+                                    linkedContractorPhase.progress = 100;
+                                    await this.contractorPhaseRepository.save(linkedContractorPhase);
+                                }
+                                else if (!allLinkedCompleted && linkedContractorPhase.status === PhaseStatus.COMPLETED) {
+                                    linkedContractorPhase.status = PhaseStatus.IN_PROGRESS;
+                                    const completedCount = allLinkedSubContractorPhases.filter(p => p.status === PhaseStatus.COMPLETED).length;
+                                    linkedContractorPhase.progress = Math.min(100, (completedCount / allLinkedSubContractorPhases.length) * 100);
+                                    await this.contractorPhaseRepository.save(linkedContractorPhase);
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        await this.phaseRepository.save(phase);
+                    }
                 }
             }
-            const project = await this.projectRepository.findOne({
-                where: { id: phase.project_id },
-            });
             if (project) {
                 await this.activitiesService.createActivity(activity_entity_1.ActivityType.TASK_UPDATED, `SubPhase "${subPhase.title}" was updated (isCompleted: ${subPhase.isCompleted})`, user, project, phase, { subPhaseId: subPhase.id, isCompleted: subPhase.isCompleted });
             }
@@ -227,9 +382,13 @@ exports.SubPhasesService = SubPhasesService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(sub_phase_entity_1.SubPhase)),
     __param(1, (0, typeorm_1.InjectRepository)(phase_entity_1.Phase)),
-    __param(2, (0, typeorm_1.InjectRepository)(project_entity_1.Project)),
-    __param(3, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
+    __param(2, (0, typeorm_1.InjectRepository)(contractor_phase_entity_1.ContractorPhase)),
+    __param(3, (0, typeorm_1.InjectRepository)(sub_contractor_phase_entity_1.SubContractorPhase)),
+    __param(4, (0, typeorm_1.InjectRepository)(project_entity_1.Project)),
+    __param(5, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         activities_service_1.ActivitiesService,

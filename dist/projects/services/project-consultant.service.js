@@ -77,7 +77,14 @@ let ProjectConsultantService = class ProjectConsultantService {
             };
         });
     }
-    async getAllConsultantProjectsPaginated(page = 1, limit = 10, search, status) {
+    async getAllConsultantProjectsPaginated(userId, page = 1, limit = 10, search, status) {
+        console.log('[ProjectConsultantService] getAllConsultantProjectsPaginated - Starting:', {
+            userId,
+            page,
+            limit,
+            search,
+            status
+        });
         const pageNum = Number(page) || 1;
         const limitNum = Number(limit) || 10;
         const qb = this.projectsRepository
@@ -96,6 +103,13 @@ let ProjectConsultantService = class ProjectConsultantService {
             .skip((pageNum - 1) * limitNum)
             .take(limitNum);
         const [projects, total] = await qb.getManyAndCount();
+        console.log('[ProjectConsultantService] getAllConsultantProjectsPaginated - Query result:', {
+            userId,
+            projectsFound: projects.length,
+            total,
+            page: pageNum,
+            limit: limitNum
+        });
         const calculatePhaseCompletion = (phase) => {
             if (!phase.subPhases || phase.subPhases.length === 0) {
                 return phase.progress || 0;
@@ -109,6 +123,17 @@ let ProjectConsultantService = class ProjectConsultantService {
                 ? Math.round(phases.reduce((sum, p) => sum + calculatePhaseCompletion(p), 0) /
                     phases.length)
                 : 0;
+            const isOwner = project.owner_id === userId;
+            const isCollaborator = project.collaborators?.some((c) => c.id === userId) || false;
+            console.log('[ProjectConsultantService] Processing project:', {
+                projectId: project.id,
+                projectTitle: project.title,
+                userId,
+                isOwner,
+                isCollaborator,
+                ownerId: project.owner_id,
+                collaborators: project.collaborators?.map(c => c.id) || []
+            });
             return {
                 id: project.id,
                 name: project.title,
@@ -127,18 +152,27 @@ let ProjectConsultantService = class ProjectConsultantService {
                 owner: project.owner?.display_name || project.owner_id,
                 collaborators: (project.collaborators || []).map((c) => c.display_name || c.id),
                 tags: project.tags || [],
-                isOwner: false,
-                isCollaborator: true,
+                isOwner: isOwner,
+                isCollaborator: isCollaborator,
                 hasPendingInvite: false,
             };
         });
-        return {
+        const result = {
             items,
             total,
             page: pageNum,
             limit: limitNum,
             totalPages: Math.ceil(total / limitNum),
         };
+        console.log('[ProjectConsultantService] getAllConsultantProjectsPaginated - Completed:', {
+            userId,
+            itemsReturned: items.length,
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: result.totalPages
+        });
+        return result;
     }
     async getConsultantProjectDetails(id) {
         const project = await this.projectsService.findOne(id);

@@ -14,10 +14,11 @@ const typeorm_1 = require("typeorm");
 const project_entity_1 = require("./project.entity");
 const comment_entity_1 = require("./comment.entity");
 const department_entity_1 = require("./department.entity");
+const user_preferences_entity_1 = require("./user-preferences.entity");
+const user_session_entity_1 = require("./user-session.entity");
 var UserRole;
 (function (UserRole) {
     UserRole["USER"] = "user";
-    UserRole["ADMIN"] = "admin";
     UserRole["CONSULTANT"] = "consultant";
     UserRole["CONTRACTOR"] = "contractor";
     UserRole["SUB_CONTRACTOR"] = "sub_contractor";
@@ -59,12 +60,15 @@ __decorate([
     __metadata("design:type", String)
 ], User.prototype, "role", void 0);
 __decorate([
-    (0, typeorm_1.Column)({
-        type: "jsonb",
-        default: { email: true, project_updates: true, task_updates: true },
+    (0, typeorm_1.OneToOne)(() => user_preferences_entity_1.UserPreferences, (preferences) => preferences.user, {
+        cascade: true,
     }),
-    __metadata("design:type", Object)
-], User.prototype, "notification_preferences", void 0);
+    __metadata("design:type", user_preferences_entity_1.UserPreferences)
+], User.prototype, "preferences", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => user_session_entity_1.UserSession, (session) => session.user),
+    __metadata("design:type", Array)
+], User.prototype, "sessions", void 0);
 __decorate([
     (0, typeorm_1.Column)({ default: "active" }),
     __metadata("design:type", String)

@@ -2,7 +2,12 @@ import { User } from "./user.entity";
 import { Task } from "./task.entity";
 import { Comment } from "./comment.entity";
 import { Phase } from "./phase.entity";
+import { ContractorPhase } from "./contractor-phase.entity";
+import { SubContractorPhase } from "./sub-contractor-phase.entity";
 import { Department } from "./department.entity";
+import { ProjectFinancialSummary } from "./project-financial-summary.entity";
+import { ProjectMetadata } from "./project-metadata.entity";
+import { ProjectSettings } from "./project-settings.entity";
 export declare enum ProjectStatus {
     PLANNING = "planning",
     IN_PROGRESS = "in_progress",
@@ -25,16 +30,15 @@ export declare class Project {
     start_date: Date;
     end_date: Date;
     totalAmount: number;
-    totalBudget: number;
-    allocatedBudget: number;
-    spentAmount: number;
-    estimatedSavings: number;
-    budgetLastUpdated: Date;
-    financialStatus: "on_track" | "warning" | "over_budget" | "excellent";
+    financialSummary: ProjectFinancialSummary;
+    metadata: ProjectMetadata;
+    settings: ProjectSettings;
     owner_id: string;
     owner: User;
     collaborators: User[];
     phases: Phase[];
+    contractorPhases: ContractorPhase[];
+    subContractorPhases: SubContractorPhase[];
     tasks: Task[];
     tags: string[];
     created_at: Date;

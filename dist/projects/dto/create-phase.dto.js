@@ -83,6 +83,11 @@ __decorate([
     __metadata("design:type", String)
 ], CreatePhaseDto.prototype, "referenceTaskId", void 0);
 __decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreatePhaseDto.prototype, "linkedContractorPhaseId", void 0);
+__decorate([
     (0, class_validator_2.ValidateNested)({ each: true }),
     (0, class_transformer_1.Type)(() => create_task_dto_1.CreateTaskDto),
     (0, class_validator_1.IsOptional)(),

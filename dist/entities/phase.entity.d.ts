@@ -1,6 +1,7 @@
 import { Project } from "./project.entity";
 import { Task } from "./task.entity";
 import { SubPhase } from "./sub-phase.entity";
+import { PhaseFinancialSummary } from "./phase-financial-summary.entity";
 export declare enum PhaseStatus {
     NOT_STARTED = "not_started",
     IN_PROGRESS = "in_progress",
@@ -27,5 +28,10 @@ export declare class Phase {
     reference_task_id: string;
     is_active: boolean;
     from_boq: boolean;
+    boqType: "contractor" | "sub_contractor" | null;
+    linkedContractorPhaseId: string;
+    linkedContractorPhase: Phase;
+    linkedSubContractorPhases: Phase[];
     subPhases: SubPhase[];
+    financialSummary: PhaseFinancialSummary;
 }

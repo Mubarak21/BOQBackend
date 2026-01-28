@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, DataSource } from "typeorm";
 import { Project } from "../../entities/project.entity";
+import { ProjectFinancialSummary } from "../../entities/project-financial-summary.entity";
 import { BudgetCategory } from "../entities/budget-category.entity";
 import { ProjectTransaction } from "../entities/project-transaction.entity";
 import { BudgetAlert, AlertType } from "../entities/budget-alert.entity";
@@ -13,12 +14,15 @@ export class BudgetManagementService {
   constructor(
     @InjectRepository(Project)
     private readonly projectRepository: Repository<Project>,
+    @InjectRepository(ProjectFinancialSummary)
+    private readonly financialSummaryRepository: Repository<ProjectFinancialSummary>,
     @InjectRepository(BudgetCategory)
     private readonly budgetCategoryRepository: Repository<BudgetCategory>,
     @InjectRepository(ProjectTransaction)
     private readonly transactionRepository: Repository<ProjectTransaction>,
     @InjectRepository(BudgetAlert)
-    private readonly alertRepository: Repository<BudgetAlert>
+    private readonly alertRepository: Repository<BudgetAlert>,
+    private readonly dataSource: DataSource
   ) {}
 
   /**
@@ -33,15 +37,26 @@ export class BudgetManagementService {
     // Verify project exists
     const project = await this.projectRepository.findOne({
       where: { id: projectId },
+      relations: ["financialSummary"],
     });
     if (!project) {
       throw new NotFoundException("Project not found");
     }
 
-    // Update project total budget
-    project.totalBudget = totalBudget;
-    project.budgetLastUpdated = new Date();
-    await this.projectRepository.save(project);
+    // Get or create financial summary
+    let financialSummary = project.financialSummary;
+    if (!financialSummary) {
+      financialSummary = this.financialSummaryRepository.create({
+        project_id: projectId,
+        totalBudget: totalBudget,
+        budgetLastUpdated: new Date(),
+      });
+      await this.financialSummaryRepository.save(financialSummary);
+    } else {
+      financialSummary.totalBudget = totalBudget;
+      financialSummary.budgetLastUpdated = new Date();
+      await this.financialSummaryRepository.save(financialSummary);
+    }
 
     // Update category budgets
     for (const categoryUpdate of categories) {
@@ -142,9 +157,26 @@ export class BudgetManagementService {
     // Validate and normalize the result (decimal(15,2) for project spent amount)
     const normalizedSpent = validateAndNormalizeAmount(totalSpent, 9999999999999.99, 2);
 
-    await this.projectRepository.update(projectId, {
-      spentAmount: normalizedSpent,
+    // Get or create financial summary
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId },
+      relations: ["financialSummary"],
     });
+    if (!project) {
+      throw new NotFoundException("Project not found");
+    }
+
+    let financialSummary = project.financialSummary;
+    if (!financialSummary) {
+      financialSummary = this.financialSummaryRepository.create({
+        project_id: projectId,
+        spentAmount: normalizedSpent,
+      });
+      await this.financialSummaryRepository.save(financialSummary);
+    } else {
+      financialSummary.spentAmount = normalizedSpent;
+      await this.financialSummaryRepository.save(financialSummary);
+    }
 
 
     
@@ -165,9 +197,26 @@ export class BudgetManagementService {
       0
     );
 
-    await this.projectRepository.update(projectId, {
-      allocatedBudget: totalAllocated,
+    // Get or create financial summary
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId },
+      relations: ["financialSummary"],
     });
+    if (!project) {
+      throw new NotFoundException("Project not found");
+    }
+
+    let financialSummary = project.financialSummary;
+    if (!financialSummary) {
+      financialSummary = this.financialSummaryRepository.create({
+        project_id: projectId,
+        allocatedBudget: totalAllocated,
+      });
+      await this.financialSummaryRepository.save(financialSummary);
+    } else {
+      financialSummary.allocatedBudget = totalAllocated;
+      await this.financialSummaryRepository.save(financialSummary);
+    }
   }
 
   /**
@@ -176,24 +225,27 @@ export class BudgetManagementService {
   async updateProjectFinancialStatus(projectId: string) {
     const project = await this.projectRepository.findOne({
       where: { id: projectId },
+      relations: ["financialSummary"],
     });
     if (!project) return;
 
+    const financialSummary = project.financialSummary;
+    if (!financialSummary) return;
+
     let financialStatus: "on_track" | "warning" | "over_budget" | "excellent";
 
-    if (project.spentAmount > project.totalBudget) {
+    if (financialSummary.spentAmount > financialSummary.totalBudget) {
       financialStatus = "over_budget";
-    } else if (project.spentAmount > project.totalBudget * 0.9) {
+    } else if (financialSummary.spentAmount > financialSummary.totalBudget * 0.9) {
       financialStatus = "warning";
-    } else if (project.estimatedSavings > project.totalBudget * 0.1) {
+    } else if (financialSummary.estimatedSavings > financialSummary.totalBudget * 0.1) {
       financialStatus = "excellent";
     } else {
       financialStatus = "on_track";
     }
 
-    await this.projectRepository.update(projectId, {
-      financialStatus,
-    });
+    financialSummary.financialStatus = financialStatus;
+    await this.financialSummaryRepository.save(financialSummary);
   }
 
   /**
@@ -202,16 +254,19 @@ export class BudgetManagementService {
   async checkAndCreateBudgetAlerts(projectId: string) {
     const project = await this.projectRepository.findOne({
       where: { id: projectId },
+      relations: ["financialSummary"],
     });
-    if (!project) return;
+    if (!project || !project.financialSummary) return;
+
+    const financialSummary = project.financialSummary;
 
     // Ensure values are numbers before calculation
-    const totalBudget = typeof project.totalBudget === 'number' 
-      ? project.totalBudget 
-      : parseFloat(String(project.totalBudget || 0)) || 0;
-    const spentAmount = typeof project.spentAmount === 'number' 
-      ? project.spentAmount 
-      : parseFloat(String(project.spentAmount || 0)) || 0;
+    const totalBudget = typeof financialSummary.totalBudget === 'number' 
+      ? financialSummary.totalBudget 
+      : parseFloat(String(financialSummary.totalBudget || 0)) || 0;
+    const spentAmount = typeof financialSummary.spentAmount === 'number' 
+      ? financialSummary.spentAmount 
+      : parseFloat(String(financialSummary.spentAmount || 0)) || 0;
 
     // Calculate utilization percentage and ensure it's valid
     let utilizationPercentage = 0;

@@ -1,4 +1,4 @@
-import { Repository } from "typeorm";
+import { Repository, DataSource } from "typeorm";
 import { Project, ProjectStatus, ProjectPriority } from "../entities/project.entity";
 import { User } from "../entities/user.entity";
 import { Task } from "../entities/task.entity";
@@ -21,6 +21,10 @@ import { ProjectContractorService } from "./services/project-contractor.service"
 import { ProjectPhaseService } from "./services/project-phase.service";
 import { ProjectBoqService } from "./services/project-boq.service";
 import { ProjectCollaborationService } from "./services/project-collaboration.service";
+import { ProjectBoq, BOQType, BOQStatus } from "../entities/project-boq.entity";
+import { ProjectFinancialSummary } from "../entities/project-financial-summary.entity";
+import { ProjectMetadata } from "../entities/project-metadata.entity";
+import { ProjectSettings } from "../entities/project-settings.entity";
 export interface ProcessBoqResult {
     message: string;
     totalAmount: number;
@@ -33,6 +37,10 @@ export declare class ProjectsService {
     private readonly accessRequestRepository;
     private readonly inventoryRepository;
     private readonly inventoryUsageRepository;
+    private readonly projectBoqRepository;
+    private readonly financialSummaryRepository;
+    private readonly metadataRepository;
+    private readonly settingsRepository;
     private readonly usersService;
     private readonly activitiesService;
     private readonly tasksService;
@@ -44,7 +52,8 @@ export declare class ProjectsService {
     private readonly projectPhaseService;
     private readonly projectBoqService;
     private readonly projectCollaborationService;
-    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, accessRequestRepository: Repository<ProjectAccessRequest>, inventoryRepository: Repository<Inventory>, inventoryUsageRepository: Repository<InventoryUsage>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService, dashboardService: DashboardService, boqParserService: BoqParserService, projectDashboardService: ProjectDashboardService, projectConsultantService: ProjectConsultantService, projectContractorService: ProjectContractorService, projectPhaseService: ProjectPhaseService, projectBoqService: ProjectBoqService, projectCollaborationService: ProjectCollaborationService);
+    private readonly dataSource;
+    constructor(projectsRepository: Repository<Project>, tasksRepository: Repository<Task>, phasesRepository: Repository<Phase>, accessRequestRepository: Repository<ProjectAccessRequest>, inventoryRepository: Repository<Inventory>, inventoryUsageRepository: Repository<InventoryUsage>, projectBoqRepository: Repository<ProjectBoq>, financialSummaryRepository: Repository<ProjectFinancialSummary>, metadataRepository: Repository<ProjectMetadata>, settingsRepository: Repository<ProjectSettings>, usersService: UsersService, activitiesService: ActivitiesService, tasksService: TasksService, dashboardService: DashboardService, boqParserService: BoqParserService, projectDashboardService: ProjectDashboardService, projectConsultantService: ProjectConsultantService, projectContractorService: ProjectContractorService, projectPhaseService: ProjectPhaseService, projectBoqService: ProjectBoqService, projectCollaborationService: ProjectCollaborationService, dataSource: DataSource);
     findAll(): Promise<Project[]>;
     findAllPaginated({ page, limit, search, status, }: {
         page?: number;
@@ -78,7 +87,7 @@ export declare class ProjectsService {
     addCollaborator(projectId: string, collaborator: User, userId: string): Promise<Project>;
     removeCollaborator(projectId: string, collaboratorId: string, userId: string): Promise<Project>;
     processBoqFile(projectId: string, file: Express.Multer.File, userId: string): Promise<ProcessBoqResult>;
-    processBoqFileFromParsedData(projectId: string, data: any[], totalAmount: number, userId: string, fileName?: string): Promise<ProcessBoqResult>;
+    processBoqFileFromParsedData(projectId: string, data: any[], totalAmount: number, userId: string, file?: Express.Multer.File, type?: 'contractor' | 'sub_contractor'): Promise<ProcessBoqResult>;
     createPhase(projectId: string, createPhaseDto: CreatePhaseDto, userId: string): Promise<Phase>;
     updatePhase(projectId: string, phaseId: string, updatePhaseDto: UpdatePhaseDto, userId: string): Promise<Phase>;
     deletePhase(projectId: string, phaseId: string, userId: string): Promise<void>;
@@ -87,14 +96,15 @@ export declare class ProjectsService {
         page?: number;
         limit?: number;
     }): Promise<{
-        items: Phase[];
+        items: any[];
         total: number;
         page: number;
         limit: number;
         totalPages: number;
     }>;
+    getContractorPhasesForLinking(projectId: string, userId: string): Promise<any[]>;
     getAvailableAssignees(projectId: string): Promise<User[]>;
-    getProjectResponse(project: Project): Promise<any>;
+    getProjectResponse(project: Project, userId?: string): Promise<any>;
     findAllProjects(): Promise<Project[]>;
     joinProject(projectId: string, user: User): Promise<Project>;
     createJoinRequest(projectId: string, requesterId: string): Promise<ProjectAccessRequest>;
@@ -208,7 +218,7 @@ export declare class ProjectsService {
         };
     };
     getAllConsultantProjects(): Promise<any[]>;
-    getAllConsultantProjectsPaginated(page?: number, limit?: number, search?: string, status?: string): Promise<{
+    getAllConsultantProjectsPaginated(userId: string, page?: number, limit?: number, search?: string, status?: string): Promise<{
         items: any[];
         total: number;
         page: number;
@@ -227,8 +237,8 @@ export declare class ProjectsService {
         limit: number;
         totalPages: number;
     }>;
-    getBoqDraftPhases(projectId: string, userId: string): Promise<Phase[]>;
-    activateBoqPhases(projectId: string, phaseIds: string[], userId: string): Promise<{
+    getBoqDraftPhases(projectId: string, userId: string): Promise<any[]>;
+    activateBoqPhases(projectId: string, phaseIds: string[], userId: string, linkedContractorPhaseId?: string): Promise<{
         activated: number;
         phases: Phase[];
     }>;
@@ -294,4 +304,15 @@ export declare class ProjectsService {
     }>;
     getDashboardTeamMembersCount(): Promise<number>;
     getDashboardMonthlyGrowth(): Promise<number>;
+    getProjectBoqs(projectId: string, userId: string): Promise<{
+        id: string;
+        type: BOQType;
+        status: BOQStatus;
+        fileName: string;
+        totalAmount: number;
+        phasesCount: number;
+        createdAt: Date;
+        updatedAt: Date;
+        errorMessage: string;
+    }[]>;
 }

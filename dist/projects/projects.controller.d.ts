@@ -14,6 +14,7 @@ import { BoqParserService } from "./boq-parser.service";
 import { BoqProgressGateway } from "./boq-progress.gateway";
 import { CollaborationRequest } from "../entities/collaboration-request.entity";
 import { EmailService } from "./email.service";
+import { ProjectBoqService } from "./services/project-boq.service";
 export declare class ProjectsController {
     private readonly projectsService;
     private readonly usersService;
@@ -23,8 +24,9 @@ export declare class ProjectsController {
     private readonly boqParserService;
     private readonly boqProgressGateway;
     private readonly emailService;
+    private readonly projectBoqService;
     private readonly collaborationRequestRepository;
-    constructor(projectsService: ProjectsService, usersService: UsersService, complaintsService: ComplaintsService, penaltiesService: PenaltiesService, evidenceService: EvidenceService, boqParserService: BoqParserService, boqProgressGateway: BoqProgressGateway, emailService: EmailService, collaborationRequestRepository: Repository<CollaborationRequest>);
+    constructor(projectsService: ProjectsService, usersService: UsersService, complaintsService: ComplaintsService, penaltiesService: PenaltiesService, evidenceService: EvidenceService, boqParserService: BoqParserService, boqProgressGateway: BoqProgressGateway, emailService: EmailService, projectBoqService: ProjectBoqService, collaborationRequestRepository: Repository<CollaborationRequest>);
     create(createProjectDto: CreateProjectDto, req: any): Promise<import("../entities/project.entity").Project>;
     findAll(req: RequestWithUser, page?: number, limit?: number, search?: string, status?: string): Promise<{
         items: any[];
@@ -69,22 +71,48 @@ export declare class ProjectsController {
             rowIndex: number;
         }[];
     }>;
-    uploadBoq(id: string, file: Express.Multer.File, req: RequestWithUser, roomId?: string): Promise<ProcessBoqResult>;
+    uploadBoq(id: string, file: Express.Multer.File, req: RequestWithUser, roomId?: string, type?: string): Promise<ProcessBoqResult>;
+    getProjectBoqs(id: string, req: RequestWithUser): Promise<{
+        id: string;
+        type: import("../entities/project-boq.entity").BOQType;
+        status: import("../entities/project-boq.entity").BOQStatus;
+        fileName: string;
+        totalAmount: number;
+        phasesCount: number;
+        createdAt: Date;
+        updatedAt: Date;
+        errorMessage: string;
+    }[]>;
+    getMissingBoqItems(id: string, req: RequestWithUser, type?: 'contractor' | 'sub_contractor'): Promise<{
+        items: Array<{
+            description: string;
+            unit: string;
+            quantity: number;
+            rate: number;
+            amount: number;
+            section?: string;
+            subSection?: string;
+            rowIndex: number;
+        }>;
+        totalAmount: number;
+    }>;
     createPhase(id: string, createPhaseDto: CreatePhaseDto, req: RequestWithUser): Promise<Phase>;
-    getBoqDraftPhases(id: string, req: RequestWithUser): Promise<Phase[]>;
+    getBoqDraftPhases(id: string, req: RequestWithUser): Promise<any[]>;
     activateBoqPhases(id: string, body: {
         phaseIds: string[];
+        linkedContractorPhaseId?: string;
     }, req: RequestWithUser): Promise<{
         activated: number;
         phases: Phase[];
     }>;
     getProjectPhases(id: string, page: number, limit: number, req: RequestWithUser): Promise<{
-        items: Phase[];
+        items: any[];
         total: number;
         page: number;
         limit: number;
         totalPages: number;
     }>;
+    getContractorPhasesForLinking(id: string, req: RequestWithUser): Promise<any[]>;
     updatePhase(projectId: string, phaseId: string, updatePhaseDto: UpdatePhaseDto, req: RequestWithUser): Promise<Phase>;
     deletePhase(projectId: string, phaseId: string, req: RequestWithUser): Promise<{
         message: string;

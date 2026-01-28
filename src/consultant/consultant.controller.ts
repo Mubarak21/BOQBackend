@@ -31,12 +31,24 @@ export class ConsultantController {
     @Query("search") search?: string,
     @Query("status") status?: string
   ) {
-    return this.projectsService.getAllConsultantProjectsPaginated(
-      page,
-      limit,
-      search,
-      status
-    );
+    try {
+      const result = await this.projectsService.getAllConsultantProjectsPaginated(
+        req.user.id,
+        page,
+        limit,
+        search,
+        status
+      );
+
+      return result;
+    } catch (error) {
+      console.error('[ConsultantController] GET /consultant/projects - Error:', {
+        userId: req.user.id,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      throw error;
+    }
   }
 
   // GET /consultant/projects/:id — Project details

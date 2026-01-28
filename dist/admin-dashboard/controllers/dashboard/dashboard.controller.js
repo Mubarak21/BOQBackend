@@ -40,30 +40,38 @@ let AdminDashboardController = class AdminDashboardController {
         return metrics;
     }
     async getStats(req) {
-        const startTime = Date.now();
-        const [projectStats, phaseStats, teamMembersCount, monthlyGrowth] = await Promise.all([
-            this.projectDashboardService.getDashboardProjectStats(),
-            this.projectDashboardService.getDashboardPhaseStats(),
-            this.projectDashboardService.getDashboardTeamMembersCount(),
-            this.projectDashboardService.getDashboardMonthlyGrowth()
-        ]);
-        const stats = {
-            totalProjects: projectStats.total,
-            activeProjects: projectStats.active,
-            completedProjects: projectStats.completed,
-            totalValue: projectStats.totalValue,
-            monthlyGrowth: monthlyGrowth,
-            teamMembers: teamMembersCount,
-            phaseStats: {
-                totalPhases: phaseStats.total,
-                completedPhases: phaseStats.completed,
-                inProgressPhases: phaseStats.inProgress,
-                totalBudget: phaseStats.totalBudget,
-                completionRate: phaseStats.completionRate,
-            },
-        };
-        const duration = Date.now() - startTime;
-        return stats;
+        try {
+            const [projectStats, phaseStats, teamMembersCount, monthlyGrowth] = await Promise.all([
+                this.projectDashboardService.getDashboardProjectStats(),
+                this.projectDashboardService.getDashboardPhaseStats(),
+                this.projectDashboardService.getDashboardTeamMembersCount(),
+                this.projectDashboardService.getDashboardMonthlyGrowth()
+            ]);
+            const stats = {
+                totalProjects: projectStats.total,
+                activeProjects: projectStats.active,
+                completedProjects: projectStats.completed,
+                totalValue: projectStats.totalValue,
+                monthlyGrowth: monthlyGrowth,
+                teamMembers: teamMembersCount,
+                phaseStats: {
+                    totalPhases: phaseStats.total || 0,
+                    completedPhases: phaseStats.completed || 0,
+                    inProgressPhases: phaseStats.inProgress || 0,
+                    totalBudget: phaseStats.totalBudget || 0,
+                    completionRate: phaseStats.completionRate || 0,
+                },
+            };
+            return stats;
+        }
+        catch (error) {
+            console.error('[AdminDashboardController] GET /consultant/dashboard/stats - Error:', {
+                userId: req.user.id,
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined
+            });
+            throw error;
+        }
     }
     async getRecentActivities(limit = 10) {
         const activities = await this.activitiesService.getRecentActivities(limit);

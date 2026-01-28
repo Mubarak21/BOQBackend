@@ -18,18 +18,24 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const project_entity_1 = require("../../entities/project.entity");
 const phase_entity_1 = require("../../entities/phase.entity");
+const project_boq_entity_1 = require("../../entities/project-boq.entity");
 const boq_parser_service_1 = require("../boq-parser.service");
 const activities_service_1 = require("../../activities/activities.service");
 const projects_service_1 = require("../projects.service");
 const project_phase_service_1 = require("./project-phase.service");
+const path = require("path");
+const fs = require("fs");
+const stream_1 = require("stream");
 let ProjectBoqService = class ProjectBoqService {
-    constructor(projectsRepository, phasesRepository, boqParserService, activitiesService, projectsService, projectPhaseService) {
+    constructor(projectsRepository, phasesRepository, projectBoqRepository, boqParserService, activitiesService, projectsService, projectPhaseService, dataSource) {
         this.projectsRepository = projectsRepository;
         this.phasesRepository = phasesRepository;
+        this.projectBoqRepository = projectBoqRepository;
         this.boqParserService = boqParserService;
         this.activitiesService = activitiesService;
         this.projectsService = projectsService;
         this.projectPhaseService = projectPhaseService;
+        this.dataSource = dataSource;
     }
     async processBoqFile(projectId, file, userId) {
         const project = await this.projectsService.findOne(projectId, userId);
@@ -55,7 +61,7 @@ let ProjectBoqService = class ProjectBoqService {
             throw new common_1.BadRequestException(`Failed to process BOQ file: ${error.message}`);
         }
     }
-    async processBoqFileFromParsedData(projectId, data, totalAmount, userId, fileName) {
+    async processBoqFileFromParsedData(projectId, data, totalAmount, userId, fileName, file, type) {
         if (!projectId || projectId.trim() === "") {
             throw new common_1.BadRequestException("Project ID is required to process BOQ file");
         }
@@ -63,7 +69,69 @@ let ProjectBoqService = class ProjectBoqService {
         if (!project || !project.id) {
             throw new common_1.NotFoundException(`Project with ID ${projectId} not found`);
         }
+        const boqType = type === 'sub_contractor' ? project_boq_entity_1.BOQType.SUB_CONTRACTOR : project_boq_entity_1.BOQType.CONTRACTOR;
+        if (boqType === project_boq_entity_1.BOQType.SUB_CONTRACTOR) {
+            const contractorBoq = await this.projectBoqRepository.findOne({
+                where: {
+                    project_id: projectId,
+                    type: project_boq_entity_1.BOQType.CONTRACTOR,
+                    status: project_boq_entity_1.BOQStatus.PROCESSED,
+                },
+            });
+            if (!contractorBoq) {
+                throw new common_1.BadRequestException("Contractor BOQ must be processed before uploading sub-contractor BOQ");
+            }
+        }
+        const existingBoq = await this.projectBoqRepository.findOne({
+            where: {
+                project_id: projectId,
+                type: boqType,
+            },
+        });
+        let filePath = null;
+        let oldFilePath = null;
+        if (file?.buffer) {
+            const uploadsDir = path.join(process.cwd(), 'uploads', 'boqs');
+            if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+            }
+            const fileExtension = path.extname(file.originalname);
+            const uniqueFileName = `${projectId}-${boqType}-${Date.now()}${fileExtension}`;
+            filePath = path.join(uploadsDir, uniqueFileName);
+            fs.writeFileSync(filePath, file.buffer);
+            if (existingBoq?.file_path) {
+                oldFilePath = existingBoq.file_path;
+            }
+        }
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+        let boqRecord = null;
         try {
+            if (existingBoq) {
+                boqRecord = existingBoq;
+                boqRecord.status = project_boq_entity_1.BOQStatus.PROCESSING;
+                if (filePath) {
+                    boqRecord.file_path = filePath;
+                    boqRecord.file_name = file?.originalname || fileName || null;
+                    boqRecord.file_mimetype = file?.mimetype || null;
+                    boqRecord.file_size = file?.size || null;
+                }
+                await queryRunner.manager.save(project_boq_entity_1.ProjectBoq, boqRecord);
+            }
+            else {
+                boqRecord = queryRunner.manager.create(project_boq_entity_1.ProjectBoq, {
+                    project_id: projectId,
+                    type: boqType,
+                    status: project_boq_entity_1.BOQStatus.PROCESSING,
+                    file_path: filePath,
+                    file_name: file?.originalname || fileName || null,
+                    file_mimetype: file?.mimetype || null,
+                    file_size: file?.size || null,
+                    uploaded_by: userId,
+                });
+                await queryRunner.manager.save(project_boq_entity_1.ProjectBoq, boqRecord);
+            }
             const dataWithUnits = data.filter((row) => {
                 const unit = row.unit ||
                     row.Unit ||
@@ -91,33 +159,75 @@ let ProjectBoqService = class ProjectBoqService {
             if (!projectId || projectId !== project.id) {
                 throw new common_1.BadRequestException("Project ID mismatch when creating phases");
             }
-            const createdPhases = await this.projectPhaseService.createPhasesFromBoqData(dataWithUnits, projectId, userId);
+            const boqTypeString = boqType === project_boq_entity_1.BOQType.SUB_CONTRACTOR ? 'sub_contractor' : 'contractor';
+            const createdPhases = await this.projectPhaseService.createPhasesFromBoqData(dataWithUnits, projectId, userId, boqTypeString);
             for (const phase of createdPhases) {
                 if (!phase.project_id || phase.project_id !== projectId) {
                     throw new Error(`Phase ${phase.id} was created without valid project_id`);
                 }
             }
-            const projectToUpdate = await this.projectsRepository.findOne({
+            const projectToUpdate = await queryRunner.manager.findOne(project_entity_1.Project, {
                 where: { id: project.id },
             });
             if (!projectToUpdate) {
                 throw new common_1.NotFoundException(`Project with ID ${project.id} not found`);
             }
             projectToUpdate.totalAmount = totalAmount;
-            await this.projectsRepository.save(projectToUpdate);
+            await queryRunner.manager.save(project_entity_1.Project, projectToUpdate);
+            boqRecord.status = project_boq_entity_1.BOQStatus.PROCESSED;
+            boqRecord.total_amount = totalAmount;
+            boqRecord.phases_count = createdPhases.length;
+            boqRecord.error_message = null;
+            await queryRunner.manager.save(project_boq_entity_1.ProjectBoq, boqRecord);
+            await queryRunner.commitTransaction();
+            if (oldFilePath && fs.existsSync(oldFilePath)) {
+                try {
+                    fs.unlinkSync(oldFilePath);
+                }
+                catch (error) {
+                }
+            }
             try {
                 await this.activitiesService.logBoqUploaded(project.owner, project, fileName || "BOQ File", createdPhases.length, totalAmount);
             }
             catch (error) {
+                console.error('Failed to log BOQ upload activity:', error);
             }
             return {
-                message: `Successfully processed BOQ file and created ${createdPhases.length} phases from rows with Unit column filled.`,
+                message: `Successfully processed ${boqType} BOQ file and created ${createdPhases.length} phases from rows with Unit column filled.`,
                 totalAmount,
                 tasks: [],
             };
         }
         catch (error) {
+            await queryRunner.rollbackTransaction();
+            if (filePath && fs.existsSync(filePath)) {
+                try {
+                    fs.unlinkSync(filePath);
+                }
+                catch (fileError) {
+                    console.error('Failed to clean up file:', fileError);
+                }
+            }
+            try {
+                if (boqRecord?.id) {
+                    const errorBoqRecord = await this.projectBoqRepository.findOne({
+                        where: { id: boqRecord.id },
+                    });
+                    if (errorBoqRecord) {
+                        errorBoqRecord.status = project_boq_entity_1.BOQStatus.FAILED;
+                        errorBoqRecord.error_message = error.message;
+                        await this.projectBoqRepository.save(errorBoqRecord);
+                    }
+                }
+            }
+            catch (updateError) {
+                console.error('Failed to update BOQ error status:', updateError);
+            }
             throw new common_1.BadRequestException(`Failed to process BOQ data: ${error.message}`);
+        }
+        finally {
+            await queryRunner.release();
         }
     }
     async previewBoqFile(file) {
@@ -150,19 +260,79 @@ let ProjectBoqService = class ProjectBoqService {
             totalPhases: phases.length,
         };
     }
+    async getMissingBoqItems(projectId, userId, boqType) {
+        await this.projectsService.findOne(projectId, userId);
+        const whereClause = { project_id: projectId };
+        if (boqType) {
+            whereClause.type = boqType;
+        }
+        const boqRecord = await this.projectBoqRepository.findOne({
+            where: whereClause,
+            order: { created_at: 'DESC' },
+        });
+        if (!boqRecord || !boqRecord.file_path) {
+            throw new common_1.NotFoundException("BOQ file not found for this project");
+        }
+        const filePath = boqRecord.file_path;
+        if (!fs.existsSync(filePath)) {
+            throw new common_1.NotFoundException("BOQ file not found on server");
+        }
+        const fileBuffer = fs.readFileSync(filePath);
+        const file = {
+            buffer: fileBuffer,
+            originalname: boqRecord.file_name || 'boq.xlsx',
+            mimetype: boqRecord.file_mimetype || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            size: boqRecord.file_size || fileBuffer.length,
+            fieldname: 'file',
+            encoding: '7bit',
+            destination: '',
+            filename: boqRecord.file_name || 'boq.xlsx',
+            path: filePath,
+            stream: stream_1.Readable.from(fileBuffer),
+        };
+        const parseResult = await this.boqParserService.parseBoqFile(file);
+        const existingPhases = await this.phasesRepository.find({
+            where: {
+                project_id: projectId,
+                from_boq: true,
+                boqType: boqType || undefined,
+            },
+        });
+        const existingPhaseDescriptions = new Set(existingPhases.map(p => (p.title || p.description || '').toLowerCase().trim()));
+        const missingItems = parseResult.items.filter((item) => {
+            const itemDescription = (item.description || '').toLowerCase().trim();
+            return !existingPhaseDescriptions.has(itemDescription);
+        });
+        return {
+            items: missingItems.map((item) => ({
+                description: item.description,
+                unit: item.unit,
+                quantity: item.quantity,
+                rate: item.rate,
+                amount: item.amount,
+                section: item.section,
+                subSection: item.subSection,
+                rowIndex: item.rowIndex,
+            })),
+            totalAmount: missingItems.reduce((sum, item) => sum + item.amount, 0),
+        };
+    }
 };
 exports.ProjectBoqService = ProjectBoqService;
 exports.ProjectBoqService = ProjectBoqService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(project_entity_1.Project)),
     __param(1, (0, typeorm_1.InjectRepository)(phase_entity_1.Phase)),
-    __param(3, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
-    __param(4, (0, common_1.Inject)((0, common_1.forwardRef)(() => projects_service_1.ProjectsService))),
+    __param(2, (0, typeorm_1.InjectRepository)(project_boq_entity_1.ProjectBoq)),
+    __param(4, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
+    __param(5, (0, common_1.Inject)((0, common_1.forwardRef)(() => projects_service_1.ProjectsService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         boq_parser_service_1.BoqParserService,
         activities_service_1.ActivitiesService,
         projects_service_1.ProjectsService,
-        project_phase_service_1.ProjectPhaseService])
+        project_phase_service_1.ProjectPhaseService,
+        typeorm_2.DataSource])
 ], ProjectBoqService);
 //# sourceMappingURL=project-boq.service.js.map

@@ -37,6 +37,7 @@ import { FileValidationPipe } from "./pipes/file-validation.pipe";
 import { CollaborationRequest, CollaborationRequestStatus } from "../entities/collaboration-request.entity";
 import { EmailService } from "./email.service";
 import { RateLimitGuard } from "../auth/guards/rate-limit.guard";
+import { ProjectBoqService } from "./services/project-boq.service";
 import * as crypto from "crypto";
 import * as bcrypt from "bcrypt";
 
@@ -52,6 +53,7 @@ export class ProjectsController {
     private readonly boqParserService: BoqParserService,
     private readonly boqProgressGateway: BoqProgressGateway,
     private readonly emailService: EmailService,
+    private readonly projectBoqService: ProjectBoqService,
     @InjectRepository(CollaborationRequest)
     private readonly collaborationRequestRepository: Repository<CollaborationRequest>
   ) {}
@@ -69,14 +71,16 @@ export class ProjectsController {
     @Query("search") search?: string,
     @Query("status") status?: string
   ) {
-    // Contractors and sub-contractors can see ALL projects
+    // Consultants can see all projects (they create projects)
+    // Contractors and sub-contractors can only see projects they're invited to (owner or collaborator)
     // Other users only see projects they're part of (owner or collaborator)
+    const isConsultant = req.user.role?.toLowerCase() === 'consultant';
     const isContractor = req.user.role?.toLowerCase() === 'contractor';
     const isSubContractor = req.user.role?.toLowerCase() === 'sub_contractor';
     
     let result;
-    if (isContractor || isSubContractor) {
-      // Contractors can see all projects
+    if (isConsultant) {
+      // Consultants can see all projects (they create projects)
       result = await this.projectsService.findAllPaginated({
         page,
         limit,
@@ -84,7 +88,7 @@ export class ProjectsController {
         status,
       });
     } else {
-      // Regular users only see projects they're part of
+      // Contractors, sub-contractors, and other users only see projects they're part of (owner or collaborator)
       result = await this.projectsService.findUserProjectsPaginated(
         req.user.id,
         {
@@ -99,7 +103,7 @@ export class ProjectsController {
 
     // Transform to response format
     const items = await Promise.all(
-      result.items.map((p) => this.projectsService.getProjectResponse(p))
+      result.items.map((p) => this.projectsService.getProjectResponse(p, req.user.id))
     );
 
     return {
@@ -163,11 +167,10 @@ export class ProjectsController {
       throw new BadRequestException("Either userId or email must be provided");
     }
 
-    let invitedUser: any = null;
-    let inviteEmail: string | null = null;
+    let collaboratorUser: any = null;
     let userId: string | null = null;
 
-    // Handle email-based invite (for unregistered users)
+    // Handle email-based invite - user must exist to be added directly
     if (body.email) {
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -175,149 +178,40 @@ export class ProjectsController {
         throw new BadRequestException("Invalid email format");
       }
 
-      inviteEmail = body.email.toLowerCase().trim();
+      const inviteEmail = body.email.toLowerCase().trim();
       
       // Check if user exists with this email
       const existingUser = await this.usersService.findByEmail(inviteEmail);
       
-      if (existingUser) {
-        userId = existingUser.id;
-        // Check if user is already a collaborator
-        if (project.collaborators?.some((c) => c.id === userId)) {
-          throw new BadRequestException("User is already a collaborator");
-        }
-        // Check if user is the owner
-        if (project.owner_id === userId) {
-          throw new BadRequestException("Owner cannot be invited as collaborator");
-        }
-        invitedUser = existingUser;
+      if (!existingUser) {
+        throw new BadRequestException("User with this email does not exist. They must register first.");
       }
+      
+      userId = existingUser.id;
+      collaboratorUser = existingUser;
     } else if (body.userId) {
       userId = body.userId;
-      invitedUser = await this.usersService.findOne(userId);
+      collaboratorUser = await this.usersService.findOne(userId);
       
-      // Check if user is already a collaborator
-      if (project.collaborators?.some((c) => c.id === userId)) {
-        throw new BadRequestException("User is already a collaborator");
-      }
-      // Check if user is the owner
-      if (project.owner_id === userId) {
-        throw new BadRequestException("Owner cannot be invited as collaborator");
+      if (!collaboratorUser) {
+        throw new BadRequestException("User not found");
       }
     }
 
-    // Check if invitation already exists (by userId or email)
-    // Only check for non-expired, pending invites
-    const now = new Date();
-    
-    // First, clean up any expired invites for this project
-    const allPendingRequests = await this.collaborationRequestRepository.find({
-      where: {
-        projectId: id,
-        status: CollaborationRequestStatus.PENDING,
-      },
-    });
-    
-    for (const req of allPendingRequests) {
-      if (req.expiresAt && req.expiresAt < now) {
-        // Clean up expired invite
-        await this.collaborationRequestRepository.remove(req);
-      }
-    }
-
-    // Now check for valid pending invites
-    let existingRequest = null;
-
-    if (userId) {
-      // Check by userId - only non-expired pending invites
-      existingRequest = await this.collaborationRequestRepository.findOne({
-        where: {
-          projectId: id,
-          userId: userId,
-          status: CollaborationRequestStatus.PENDING,
-        },
-      });
-      
-      // Double-check it's not expired
-      if (existingRequest && existingRequest.expiresAt && existingRequest.expiresAt < now) {
-        await this.collaborationRequestRepository.remove(existingRequest);
-        existingRequest = null;
-      }
+    // Check if user is already a collaborator
+    if (project.collaborators?.some((c) => c.id === userId)) {
+      throw new BadRequestException("User is already a collaborator");
     }
     
-    // If not found by userId and we have an email, check by email
-    if (!existingRequest && inviteEmail) {
-      existingRequest = await this.collaborationRequestRepository.findOne({
-        where: {
-          projectId: id,
-          inviteEmail: inviteEmail,
-          status: CollaborationRequestStatus.PENDING,
-        },
-      });
-      
-      // Double-check it's not expired
-      if (existingRequest && existingRequest.expiresAt && existingRequest.expiresAt < now) {
-        await this.collaborationRequestRepository.remove(existingRequest);
-        existingRequest = null;
-      }
+    // Check if user is the owner
+    if (project.owner_id === userId) {
+      throw new BadRequestException("Owner cannot be added as collaborator");
     }
 
-    if (existingRequest) {
-      throw new BadRequestException("Invitation already sent to this user/email");
-    }
+    // Directly add user as collaborator (skip invitation process)
+    await this.projectsService.addCollaborator(id, collaboratorUser, req.user.id);
 
-    // Generate secure token for invite link
-    const token = crypto.randomBytes(32).toString('hex');
-    const tokenHash = await bcrypt.hash(token, 10);
-    
-    // Set expiry to 7 days from now
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
-
-    // Create collaboration request with token and expiry
-    // Only consultants can specify a role when inviting
-    const invitedRole = isConsultant && body.role ? body.role : null;
-    
-    const collaborationRequest = this.collaborationRequestRepository.create({
-      projectId: id,
-      userId: userId,
-      inviteEmail: inviteEmail,
-      inviterId: req.user.id,
-      status: CollaborationRequestStatus.PENDING,
-      tokenHash,
-      expiresAt,
-      invitedRole: invitedRole,
-    });
-
-    await this.collaborationRequestRepository.save(collaborationRequest);
-
-    // Send invitation email with secure token link
-    try {
-      const inviterName = user?.display_name || user?.email || 'Someone';
-      const projectName = project.title || 'a project';
-      const emailToSend = invitedUser?.email || inviteEmail;
-      
-      if (!emailToSend) {
-
-        return { message: "Invitation sent successfully (email not sent - no email address)" };
-      }
-      
-
-      await this.emailService.sendProjectInvite(
-        emailToSend,
-        inviterName,
-        projectName,
-        id,
-        token,
-        !invitedUser // isUnregisteredUser
-      );
-
-    } catch (emailError: any) {
-      // Log error but don't fail the invitation - email is optional
-      // Email sending failed, but invitation was created successfully
-    }
-
-    return { message: "Invitation sent successfully" };
+    return { message: "Collaborator added successfully" };
   }
 
   @Post(":id/collaborators/:userId")
@@ -384,7 +278,8 @@ export class ProjectsController {
     @Param("id") id: string,
     @UploadedFile(new FileValidationPipe()) file: Express.Multer.File,
     @Req() req: RequestWithUser,
-    @Query("roomId") roomId?: string
+    @Query("roomId") roomId?: string,
+    @Query("type") type?: string
   ): Promise<ProcessBoqResult> {
     // Parse BOQ file using the new stateful parser with progress tracking
     const parseResult = await this.boqParserService.parseBoqFile(
@@ -427,16 +322,41 @@ export class ProjectsController {
         _extractedDescription: item.description,
         _extractedUnit: item.unit,
         _extractedQuantity: item.quantity,
+        _extractedSection: item.section,
+        _extractedAmount: item.amount,
+        _extractedRate: item.rate,
+        // Ensure amount is accessible
+        amount: item.amount,
+        rate: item.rate,
       };
     });
 
-    // Update the service method to accept parsed data
+    // Update the service method to accept parsed data with type
     return this.projectsService.processBoqFileFromParsedData(
       id,
       processedData,
       parseResult.totalAmount,
-      req.user.id
+      req.user.id,
+      file,
+      type as 'contractor' | 'sub_contractor' | undefined
     );
+  }
+
+  @Get(":id/boqs")
+  async getProjectBoqs(
+    @Param("id") id: string,
+    @Req() req: RequestWithUser
+  ) {
+    return this.projectsService.getProjectBoqs(id, req.user.id);
+  }
+
+  @Get(":id/boqs/missing-items")
+  async getMissingBoqItems(
+    @Param("id") id: string,
+    @Req() req: RequestWithUser,
+    @Query("type") type?: 'contractor' | 'sub_contractor'
+  ) {
+    return this.projectBoqService.getMissingBoqItems(id, req.user.id, type);
   }
 
   @Post(":id/phases")
@@ -460,10 +380,10 @@ export class ProjectsController {
   @Post(":id/phases/activate-boq")
   async activateBoqPhases(
     @Param("id") id: string,
-    @Body() body: { phaseIds: string[] },
+    @Body() body: { phaseIds: string[]; linkedContractorPhaseId?: string },
     @Req() req: RequestWithUser
   ) {
-    return this.projectsService.activateBoqPhases(id, body.phaseIds, req.user.id);
+    return this.projectsService.activateBoqPhases(id, body.phaseIds, req.user.id, body.linkedContractorPhaseId);
   }
 
   @Get(":id/phases")
@@ -477,6 +397,14 @@ export class ProjectsController {
       page,
       limit,
     });
+  }
+
+  @Get(":id/phases/contractor-phases")
+  async getContractorPhasesForLinking(
+    @Param("id") id: string,
+    @Req() req: RequestWithUser
+  ) {
+    return this.projectsService.getContractorPhasesForLinking(id, req.user.id);
   }
 
   @Patch(":projectId/phases/:phaseId")

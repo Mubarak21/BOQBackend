@@ -14,6 +14,8 @@ const typeorm_1 = require("typeorm");
 const project_entity_1 = require("../../entities/project.entity");
 const user_entity_1 = require("../../entities/user.entity");
 const budget_category_entity_1 = require("./budget-category.entity");
+const transaction_attachment_entity_1 = require("../../entities/transaction-attachment.entity");
+const transaction_approval_history_entity_1 = require("../../entities/transaction-approval-history.entity");
 var TransactionType;
 (function (TransactionType) {
     TransactionType["EXPENSE"] = "expense";
@@ -105,9 +107,17 @@ __decorate([
     __metadata("design:type", Date)
 ], ProjectTransaction.prototype, "approvedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ length: 500, nullable: true, name: "receipt_url" }),
-    __metadata("design:type", String)
-], ProjectTransaction.prototype, "receiptUrl", void 0);
+    (0, typeorm_1.OneToMany)(() => transaction_attachment_entity_1.TransactionAttachment, (attachment) => attachment.transaction, {
+        cascade: true,
+    }),
+    __metadata("design:type", Array)
+], ProjectTransaction.prototype, "attachments", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => transaction_approval_history_entity_1.TransactionApprovalHistory, (history) => history.transaction, {
+        cascade: true,
+    }),
+    __metadata("design:type", Array)
+], ProjectTransaction.prototype, "approvalHistory", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: "text", nullable: true }),
     __metadata("design:type", String)

@@ -4,6 +4,8 @@ import { ConfigModule } from "@nestjs/config";
 import { Project } from "../entities/project.entity";
 import { Task } from "../entities/task.entity";
 import { Phase } from "../entities/phase.entity";
+import { ContractorPhase } from "../entities/contractor-phase.entity";
+import { SubContractorPhase } from "../entities/sub-contractor-phase.entity";
 import { ProjectsService } from "./projects.service";
 import { ProjectsController } from "./projects.controller";
 import { UsersModule } from "../users/users.module";
@@ -26,6 +28,10 @@ import { BoqParserService } from "./boq-parser.service";
 import { BoqProgressGateway } from "./boq-progress.gateway";
 import { Inventory } from "../entities/inventory.entity";
 import { InventoryUsage } from "../entities/inventory-usage.entity";
+import { ProjectBoq } from "../entities/project-boq.entity";
+import { ProjectFinancialSummary } from "../entities/project-financial-summary.entity";
+import { ProjectMetadata } from "../entities/project-metadata.entity";
+import { ProjectSettings } from "../entities/project-settings.entity";
 import { ProjectDashboardService } from "./services/project-dashboard.service";
 import { ProjectConsultantService } from "./services/project-consultant.service";
 import { ProjectContractorService } from "./services/project-contractor.service";
@@ -41,12 +47,18 @@ import { EmailService } from "./email.service";
       Project,
       Task,
       Phase,
+      ContractorPhase,
+      SubContractorPhase,
       SubPhase,
       CollaborationRequest,
       ProjectAccessRequest,
       PhaseEvidence,
       Inventory,
       InventoryUsage,
+      ProjectBoq,
+      ProjectFinancialSummary,
+      ProjectMetadata,
+      ProjectSettings,
     ]),
     UsersModule,
     forwardRef(() => AuthModule),
@@ -76,6 +88,6 @@ import { EmailService } from "./email.service";
     CollaborationRequestsController,
     SubPhasesController,
   ],
-  exports: [ProjectsService, ProjectDashboardService, ProjectConsultantService, ProjectContractorService, ProjectPhaseService, ProjectBoqService, ProjectCollaborationService, TypeOrmModule],
+  exports: [ProjectsService, ProjectDashboardService, ProjectConsultantService, ProjectContractorService, ProjectPhaseService, ProjectBoqService, ProjectCollaborationService, SubPhasesService, TypeOrmModule],
 })
 export class ProjectsModule {}

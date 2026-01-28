@@ -12,6 +12,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SubPhase = void 0;
 const typeorm_1 = require("typeorm");
 const phase_entity_1 = require("./phase.entity");
+const contractor_phase_entity_1 = require("./contractor-phase.entity");
+const sub_contractor_phase_entity_1 = require("./sub-contractor-phase.entity");
 let SubPhase = class SubPhase {
 };
 exports.SubPhase = SubPhase;
@@ -32,14 +34,32 @@ __decorate([
     __metadata("design:type", Boolean)
 ], SubPhase.prototype, "isCompleted", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => phase_entity_1.Phase, (phase) => phase.subPhases, { onDelete: "CASCADE" }),
+    (0, typeorm_1.ManyToOne)(() => phase_entity_1.Phase, (phase) => phase.subPhases, { nullable: true, onDelete: "CASCADE" }),
     (0, typeorm_1.JoinColumn)({ name: "phase_id" }),
     __metadata("design:type", phase_entity_1.Phase)
 ], SubPhase.prototype, "phase", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
 ], SubPhase.prototype, "phase_id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true, name: "contractor_phase_id" }),
+    __metadata("design:type", String)
+], SubPhase.prototype, "contractorPhaseId", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => contractor_phase_entity_1.ContractorPhase, (phase) => phase.subPhases, { nullable: true, onDelete: "CASCADE" }),
+    (0, typeorm_1.JoinColumn)({ name: "contractor_phase_id" }),
+    __metadata("design:type", contractor_phase_entity_1.ContractorPhase)
+], SubPhase.prototype, "contractorPhase", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true, name: "sub_contractor_phase_id" }),
+    __metadata("design:type", String)
+], SubPhase.prototype, "subContractorPhaseId", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => sub_contractor_phase_entity_1.SubContractorPhase, (phase) => phase.subPhases, { nullable: true, onDelete: "CASCADE" }),
+    (0, typeorm_1.JoinColumn)({ name: "sub_contractor_phase_id" }),
+    __metadata("design:type", sub_contractor_phase_entity_1.SubContractorPhase)
+], SubPhase.prototype, "subContractorPhase", void 0);
 __decorate([
     (0, typeorm_1.ManyToOne)(() => SubPhase, (subPhase) => subPhase.subPhases, { nullable: true, onDelete: "CASCADE" }),
     (0, typeorm_1.JoinColumn)({ name: "parent_sub_phase_id" }),

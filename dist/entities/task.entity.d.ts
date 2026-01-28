@@ -1,5 +1,7 @@
 import { Project } from "./project.entity";
 import { Phase } from "./phase.entity";
+import { ContractorPhase } from "./contractor-phase.entity";
+import { SubContractorPhase } from "./sub-contractor-phase.entity";
 export declare class Task {
     id: string;
     description: string;
@@ -10,6 +12,10 @@ export declare class Task {
     project: Project;
     phase_id: string;
     phase: Phase;
+    contractorPhaseId: string;
+    contractorPhase: ContractorPhase;
+    subContractorPhaseId: string;
+    subContractorPhase: SubContractorPhase;
     created_at: Date;
     updated_at: Date;
     parentTask: Task;

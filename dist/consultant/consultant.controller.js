@@ -23,7 +23,18 @@ let ConsultantController = class ConsultantController {
         this.commentsService = commentsService;
     }
     async getAllProjects(req, page = 1, limit = 10, search, status) {
-        return this.projectsService.getAllConsultantProjectsPaginated(page, limit, search, status);
+        try {
+            const result = await this.projectsService.getAllConsultantProjectsPaginated(req.user.id, page, limit, search, status);
+            return result;
+        }
+        catch (error) {
+            console.error('[ConsultantController] GET /consultant/projects - Error:', {
+                userId: req.user.id,
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined
+            });
+            throw error;
+        }
     }
     async getProjectDetails(id, req) {
         return this.projectsService.getConsultantProjectDetails(id);

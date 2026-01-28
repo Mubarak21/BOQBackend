@@ -13,6 +13,8 @@ const config_1 = require("@nestjs/config");
 const project_entity_1 = require("../entities/project.entity");
 const task_entity_1 = require("../entities/task.entity");
 const phase_entity_1 = require("../entities/phase.entity");
+const contractor_phase_entity_1 = require("../entities/contractor-phase.entity");
+const sub_contractor_phase_entity_1 = require("../entities/sub-contractor-phase.entity");
 const projects_service_1 = require("./projects.service");
 const projects_controller_1 = require("./projects.controller");
 const users_module_1 = require("../users/users.module");
@@ -35,6 +37,10 @@ const boq_parser_service_1 = require("./boq-parser.service");
 const boq_progress_gateway_1 = require("./boq-progress.gateway");
 const inventory_entity_1 = require("../entities/inventory.entity");
 const inventory_usage_entity_1 = require("../entities/inventory-usage.entity");
+const project_boq_entity_1 = require("../entities/project-boq.entity");
+const project_financial_summary_entity_1 = require("../entities/project-financial-summary.entity");
+const project_metadata_entity_1 = require("../entities/project-metadata.entity");
+const project_settings_entity_1 = require("../entities/project-settings.entity");
 const project_dashboard_service_1 = require("./services/project-dashboard.service");
 const project_consultant_service_1 = require("./services/project-consultant.service");
 const project_contractor_service_1 = require("./services/project-contractor.service");
@@ -53,12 +59,18 @@ exports.ProjectsModule = ProjectsModule = __decorate([
                 project_entity_1.Project,
                 task_entity_1.Task,
                 phase_entity_1.Phase,
+                contractor_phase_entity_1.ContractorPhase,
+                sub_contractor_phase_entity_1.SubContractorPhase,
                 sub_phase_entity_1.SubPhase,
                 collaboration_request_entity_1.CollaborationRequest,
                 project_access_request_entity_1.ProjectAccessRequest,
                 phase_evidence_entity_1.PhaseEvidence,
                 inventory_entity_1.Inventory,
                 inventory_usage_entity_1.InventoryUsage,
+                project_boq_entity_1.ProjectBoq,
+                project_financial_summary_entity_1.ProjectFinancialSummary,
+                project_metadata_entity_1.ProjectMetadata,
+                project_settings_entity_1.ProjectSettings,
             ]),
             users_module_1.UsersModule,
             (0, common_1.forwardRef)(() => auth_module_1.AuthModule),
@@ -88,7 +100,7 @@ exports.ProjectsModule = ProjectsModule = __decorate([
             collaboration_requests_controller_1.CollaborationRequestsController,
             subphases_controller_1.SubPhasesController,
         ],
-        exports: [projects_service_1.ProjectsService, project_dashboard_service_1.ProjectDashboardService, project_consultant_service_1.ProjectConsultantService, project_contractor_service_1.ProjectContractorService, project_phase_service_1.ProjectPhaseService, project_boq_service_1.ProjectBoqService, project_collaboration_service_1.ProjectCollaborationService, typeorm_1.TypeOrmModule],
+        exports: [projects_service_1.ProjectsService, project_dashboard_service_1.ProjectDashboardService, project_consultant_service_1.ProjectConsultantService, project_contractor_service_1.ProjectContractorService, project_phase_service_1.ProjectPhaseService, project_boq_service_1.ProjectBoqService, project_collaboration_service_1.ProjectCollaborationService, subphases_service_1.SubPhasesService, typeorm_1.TypeOrmModule],
     })
 ], ProjectsModule);
 //# sourceMappingURL=projects.module.js.map

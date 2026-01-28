@@ -86,6 +86,7 @@ export class ProjectConsultantService {
    * Get paginated consultant projects
    */
   async getAllConsultantProjectsPaginated(
+    userId: string,
     page: number = 1,
     limit: number = 10,
     search?: string,
@@ -97,6 +98,14 @@ export class ProjectConsultantService {
     limit: number;
     totalPages: number;
   }> {
+    console.log('[ProjectConsultantService] getAllConsultantProjectsPaginated - Starting:', {
+      userId,
+      page,
+      limit,
+      search,
+      status
+    });
+
     const pageNum = Number(page) || 1;
     const limitNum = Number(limit) || 10;
 
@@ -123,6 +132,13 @@ export class ProjectConsultantService {
       .take(limitNum);
 
     const [projects, total] = await qb.getManyAndCount();
+    console.log('[ProjectConsultantService] getAllConsultantProjectsPaginated - Query result:', {
+      userId,
+      projectsFound: projects.length,
+      total,
+      page: pageNum,
+      limit: limitNum
+    });
 
     const calculatePhaseCompletion = (phase: Phase): number => {
       if (!phase.subPhases || phase.subPhases.length === 0) {
@@ -141,6 +157,22 @@ export class ProjectConsultantService {
                 phases.length
             )
           : 0;
+
+      // Check if user is owner or collaborator
+      const isOwner = project.owner_id === userId;
+      const isCollaborator = project.collaborators?.some(
+        (c) => c.id === userId
+      ) || false;
+
+      console.log('[ProjectConsultantService] Processing project:', {
+        projectId: project.id,
+        projectTitle: project.title,
+        userId,
+        isOwner,
+        isCollaborator,
+        ownerId: project.owner_id,
+        collaborators: project.collaborators?.map(c => c.id) || []
+      });
 
       return {
         id: project.id,
@@ -162,19 +194,30 @@ export class ProjectConsultantService {
           (c) => c.display_name || c.id
         ),
         tags: project.tags || [],
-        isOwner: false,
-        isCollaborator: true,
+        isOwner: isOwner,
+        isCollaborator: isCollaborator,
         hasPendingInvite: false,
       };
     });
 
-    return {
+    const result = {
       items,
       total,
       page: pageNum,
       limit: limitNum,
       totalPages: Math.ceil(total / limitNum),
     };
+
+    console.log('[ProjectConsultantService] getAllConsultantProjectsPaginated - Completed:', {
+      userId,
+      itemsReturned: items.length,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: result.totalPages
+    });
+
+    return result;
   }
 
   /**

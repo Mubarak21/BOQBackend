@@ -23,7 +23,7 @@ export class CollaborationRequest {
   @Column()
   projectId: string;
 
-  @ManyToOne(() => Project)
+  @ManyToOne(() => Project, { onDelete: "CASCADE" })
   @JoinColumn({ name: "projectId" })
   project: Project;
 

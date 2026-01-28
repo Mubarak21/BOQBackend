@@ -75,7 +75,6 @@ export class AuthService {
       password: hashedPassword,
       bio: createUserDto.bio,
       avatar_url: createUserDto.avatar_url,
-      notification_preferences: createUserDto.notification_preferences,
       department_id: departmentId,
     });
 

@@ -273,7 +273,7 @@ __decorate([
 exports.FinanceDashboardController = FinanceDashboardController = __decorate([
     (0, common_1.Controller)("finance/dashboard"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.FINANCE),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.FINANCE, user_entity_1.UserRole.CONSULTANT),
     __metadata("design:paramtypes", [finance_service_1.FinanceService,
         inventory_service_1.InventoryService,
         dashboard_service_1.DashboardService])

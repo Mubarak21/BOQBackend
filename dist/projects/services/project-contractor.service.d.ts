@@ -1,6 +1,8 @@
 import { Repository } from "typeorm";
 import { Project } from "../../entities/project.entity";
 import { Phase } from "../../entities/phase.entity";
+import { ContractorPhase } from "../../entities/contractor-phase.entity";
+import { SubContractorPhase } from "../../entities/sub-contractor-phase.entity";
 import { Inventory } from "../../entities/inventory.entity";
 import { InventoryUsage } from "../../entities/inventory-usage.entity";
 import { UsersService } from "../../users/users.service";
@@ -9,20 +11,24 @@ import { ProjectsService } from "../projects.service";
 export declare class ProjectContractorService {
     private readonly projectsRepository;
     private readonly phasesRepository;
+    private readonly contractorPhasesRepository;
+    private readonly subContractorPhasesRepository;
     private readonly inventoryRepository;
     private readonly inventoryUsageRepository;
     private readonly usersService;
     private readonly activitiesService;
     private readonly projectsService;
-    constructor(projectsRepository: Repository<Project>, phasesRepository: Repository<Phase>, inventoryRepository: Repository<Inventory>, inventoryUsageRepository: Repository<InventoryUsage>, usersService: UsersService, activitiesService: ActivitiesService, projectsService: ProjectsService);
+    constructor(projectsRepository: Repository<Project>, phasesRepository: Repository<Phase>, contractorPhasesRepository: Repository<ContractorPhase>, subContractorPhasesRepository: Repository<SubContractorPhase>, inventoryRepository: Repository<Inventory>, inventoryUsageRepository: Repository<InventoryUsage>, usersService: UsersService, activitiesService: ActivitiesService, projectsService: ProjectsService);
     private verifyContractorAccess;
     private verifyProjectAccess;
-    getProjectPhases(projectId: string, userId: string): Promise<Phase[]>;
+    getProjectPhases(projectId: string, userId: string): Promise<any[]>;
+    getContractorPhasesForLinking(projectId: string, userId: string): Promise<any[]>;
+    private normalizePhaseResponse;
     getProjectPhasesPaginated(projectId: string, userId: string, { page, limit }: {
         page?: number;
         limit?: number;
     }): Promise<{
-        items: Phase[];
+        items: any[];
         total: number;
         page: number;
         limit: number;

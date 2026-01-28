@@ -30,6 +30,8 @@ const user_entity_1 = require("./entities/user.entity");
 const department_entity_1 = require("./entities/department.entity");
 const project_entity_1 = require("./entities/project.entity");
 const phase_entity_1 = require("./entities/phase.entity");
+const contractor_phase_entity_1 = require("./entities/contractor-phase.entity");
+const sub_contractor_phase_entity_1 = require("./entities/sub-contractor-phase.entity");
 const task_entity_1 = require("./entities/task.entity");
 const budget_category_entity_1 = require("./finance/entities/budget-category.entity");
 const project_transaction_entity_1 = require("./finance/entities/project-transaction.entity");
@@ -42,6 +44,18 @@ const comment_entity_1 = require("./entities/comment.entity");
 const complaint_entity_1 = require("./entities/complaint.entity");
 const sub_phase_entity_1 = require("./entities/sub-phase.entity");
 const inventory_entity_1 = require("./entities/inventory.entity");
+const project_boq_entity_1 = require("./entities/project-boq.entity");
+const project_financial_summary_entity_1 = require("./entities/project-financial-summary.entity");
+const project_metadata_entity_1 = require("./entities/project-metadata.entity");
+const project_settings_entity_1 = require("./entities/project-settings.entity");
+const supplier_entity_1 = require("./entities/supplier.entity");
+const transaction_attachment_entity_1 = require("./entities/transaction-attachment.entity");
+const transaction_approval_history_entity_1 = require("./entities/transaction-approval-history.entity");
+const user_preferences_entity_1 = require("./entities/user-preferences.entity");
+const user_session_entity_1 = require("./entities/user-session.entity");
+const audit_log_entity_1 = require("./entities/audit-log.entity");
+const inventory_usage_log_entity_1 = require("./entities/inventory-usage-log.entity");
+const phase_financial_summary_entity_1 = require("./entities/phase-financial-summary.entity");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -68,6 +82,8 @@ exports.AppModule = AppModule = __decorate([
                 department_entity_1.Department,
                 project_entity_1.Project,
                 phase_entity_1.Phase,
+                contractor_phase_entity_1.ContractorPhase,
+                sub_contractor_phase_entity_1.SubContractorPhase,
                 task_entity_1.Task,
                 budget_category_entity_1.BudgetCategory,
                 project_transaction_entity_1.ProjectTransaction,
@@ -80,10 +96,22 @@ exports.AppModule = AppModule = __decorate([
                 complaint_entity_1.Complaint,
                 sub_phase_entity_1.SubPhase,
                 inventory_entity_1.Inventory,
+                project_boq_entity_1.ProjectBoq,
+                project_financial_summary_entity_1.ProjectFinancialSummary,
+                project_metadata_entity_1.ProjectMetadata,
+                project_settings_entity_1.ProjectSettings,
+                supplier_entity_1.Supplier,
+                transaction_attachment_entity_1.TransactionAttachment,
+                transaction_approval_history_entity_1.TransactionApprovalHistory,
+                user_preferences_entity_1.UserPreferences,
+                user_session_entity_1.UserSession,
+                audit_log_entity_1.AuditLog,
+                inventory_usage_log_entity_1.InventoryUsageLog,
+                phase_financial_summary_entity_1.PhaseFinancialSummary,
             ]),
             auth_module_1.AuthModule,
             users_module_1.UsersModule,
-            projects_module_1.ProjectsModule,
+            (0, common_1.forwardRef)(() => projects_module_1.ProjectsModule),
             tasks_module_1.TasksModule,
             comments_module_1.CommentsModule,
             dashboard_module_1.DashboardModule,

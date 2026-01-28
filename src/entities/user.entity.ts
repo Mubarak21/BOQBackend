@@ -7,16 +7,18 @@ import {
   OneToMany,
   ManyToMany,
   ManyToOne,
+  OneToOne,
   JoinColumn,
 } from "typeorm";
 import { Project } from "./project.entity";
 import { Task } from "./task.entity";
 import { Comment } from "./comment.entity";
 import { Department } from "./department.entity";
+import { UserPreferences } from "./user-preferences.entity";
+import { UserSession } from "./user-session.entity";
 
 export enum UserRole {
   USER = "user",
-  ADMIN = "admin",
   CONSULTANT = "consultant",
   CONTRACTOR = "contractor",
   SUB_CONTRACTOR = "sub_contractor",
@@ -50,15 +52,15 @@ export class User {
   })
   role: UserRole;
 
-  @Column({
-    type: "jsonb",
-    default: { email: true, project_updates: true, task_updates: true },
+  // Preferences moved to UserPreferences table
+  @OneToOne(() => UserPreferences, (preferences) => preferences.user, {
+    cascade: true,
   })
-  notification_preferences: {
-    email: boolean;
-    project_updates: boolean;
-    task_updates: boolean;
-  };
+  preferences: UserPreferences;
+
+  // Sessions tracking
+  @OneToMany(() => UserSession, (session) => session.user)
+  sessions: UserSession[];
 
   @Column({ default: "active" })
   status: string;

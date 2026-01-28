@@ -17,19 +17,22 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const project_entity_1 = require("../../entities/project.entity");
+const project_financial_summary_entity_1 = require("../../entities/project-financial-summary.entity");
 const budget_category_entity_1 = require("../entities/budget-category.entity");
 const project_transaction_entity_1 = require("../entities/project-transaction.entity");
 const budget_alert_entity_1 = require("../entities/budget-alert.entity");
 const budget_management_service_1 = require("./budget-management.service");
+const amount_utils_1 = require("../../utils/amount.utils");
 const fs = require("fs");
 const path = require("path");
 let TransactionService = class TransactionService {
-    constructor(projectRepository, budgetCategoryRepository, transactionRepository, alertRepository, budgetManagementService) {
+    constructor(projectRepository, budgetCategoryRepository, transactionRepository, alertRepository, budgetManagementService, dataSource) {
         this.projectRepository = projectRepository;
         this.budgetCategoryRepository = budgetCategoryRepository;
         this.transactionRepository = transactionRepository;
         this.alertRepository = alertRepository;
         this.budgetManagementService = budgetManagementService;
+        this.dataSource = dataSource;
     }
     async getTransactions(query) {
         const { projectId, category, dateFrom, dateTo, type, page = 1, limit = 10 } = query;
@@ -75,7 +78,7 @@ let TransactionService = class TransactionService {
         };
     }
     async createTransaction(createTransactionDto, userId, invoiceFile) {
-        const { projectId, categoryId, amount, type, description, vendor, transactionDate, receiptUrl, } = createTransactionDto;
+        const { projectId, categoryId, amount, type, description, vendor, transactionDate, } = createTransactionDto;
         const project = await this.projectRepository.findOne({
             where: { id: projectId },
         });
@@ -91,7 +94,8 @@ let TransactionService = class TransactionService {
                 throw new common_1.NotFoundException("Budget category not found");
             }
         }
-        let invoiceUrl = receiptUrl || null;
+        let invoiceUrl = null;
+        let filePath = null;
         if (invoiceFile) {
             if (invoiceFile.mimetype !== 'application/pdf') {
                 throw new common_1.BadRequestException("Invoice file must be a PDF");
@@ -104,110 +108,200 @@ let TransactionService = class TransactionService {
                 fs.mkdirSync(uploadDir, { recursive: true });
             }
             const fileName = `${Date.now()}-${invoiceFile.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-            const filePath = path.join(uploadDir, fileName);
+            filePath = path.join(uploadDir, fileName);
             fs.writeFileSync(filePath, invoiceFile.buffer);
             invoiceUrl = `/uploads/transactions/invoices/${fileName}`;
         }
-        const transactionNumber = await this.generateTransactionNumber();
-        const transaction = this.transactionRepository.create({
-            projectId,
-            categoryId: categoryId || null,
-            transactionNumber,
-            amount,
-            type,
-            description,
-            vendor,
-            transactionDate: new Date(transactionDate),
-            receiptUrl: invoiceUrl,
-            createdBy: userId,
-        });
-        const savedTransaction = await this.transactionRepository.save(transaction);
-        if (categoryId) {
-            await this.budgetManagementService.updateCategorySpentAmount(categoryId);
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+        try {
+            const transactionNumber = await this.generateTransactionNumber();
+            const transaction = queryRunner.manager.create(project_transaction_entity_1.ProjectTransaction, {
+                projectId,
+                categoryId: categoryId || null,
+                transactionNumber,
+                amount,
+                type,
+                description,
+                vendor,
+                transactionDate: new Date(transactionDate),
+                createdBy: userId,
+            });
+            const savedTransaction = await queryRunner.manager.save(project_transaction_entity_1.ProjectTransaction, transaction);
+            if (categoryId) {
+                await this.updateCategorySpentAmountInTransaction(categoryId, queryRunner);
+            }
+            await this.updateProjectSpentAmountInTransaction(projectId, queryRunner);
+            await this.checkAndCreateBudgetAlertsInTransaction(projectId, queryRunner);
+            await queryRunner.commitTransaction();
+            return savedTransaction;
         }
-        await this.budgetManagementService.updateProjectSpentAmount(projectId);
-        await this.budgetManagementService.checkAndCreateBudgetAlerts(projectId);
-        return savedTransaction;
+        catch (error) {
+            await queryRunner.rollbackTransaction();
+            if (filePath && fs.existsSync(filePath)) {
+                try {
+                    fs.unlinkSync(filePath);
+                }
+                catch (fileError) {
+                    console.error('Failed to clean up invoice file:', fileError);
+                }
+            }
+            throw error;
+        }
+        finally {
+            await queryRunner.release();
+        }
+    }
+    async updateCategorySpentAmountInTransaction(categoryId, queryRunner) {
+        const category = await queryRunner.manager.findOne(budget_category_entity_1.BudgetCategory, {
+            where: { id: categoryId },
+        });
+        if (!category) {
+            return;
+        }
+        const transactions = await queryRunner.manager.find(project_transaction_entity_1.ProjectTransaction, {
+            where: { categoryId },
+        });
+        const totalSpent = transactions.reduce((sum, t) => {
+            return sum + ((0, amount_utils_1.extractTransactionAmount)(t) || 0);
+        }, 0);
+        category.spentAmount = (0, amount_utils_1.validateAndNormalizeAmount)(totalSpent);
+        await queryRunner.manager.save(budget_category_entity_1.BudgetCategory, category);
+    }
+    async updateProjectSpentAmountInTransaction(projectId, queryRunner) {
+        const financialSummary = await queryRunner.manager.findOne(project_financial_summary_entity_1.ProjectFinancialSummary, {
+            where: { project_id: projectId },
+        });
+        if (!financialSummary) {
+            return;
+        }
+        const transactions = await queryRunner.manager.find(project_transaction_entity_1.ProjectTransaction, {
+            where: { projectId },
+        });
+        const totalSpent = transactions.reduce((sum, t) => {
+            return sum + ((0, amount_utils_1.extractTransactionAmount)(t) || 0);
+        }, 0);
+        financialSummary.spentAmount = (0, amount_utils_1.validateAndNormalizeAmount)(totalSpent);
+        await queryRunner.manager.save(project_financial_summary_entity_1.ProjectFinancialSummary, financialSummary);
+    }
+    async checkAndCreateBudgetAlertsInTransaction(projectId, queryRunner) {
+        const financialSummary = await queryRunner.manager.findOne(project_financial_summary_entity_1.ProjectFinancialSummary, {
+            where: { project_id: projectId },
+        });
+        if (!financialSummary) {
+            return;
+        }
+        const budgetUtilization = financialSummary.totalBudget > 0
+            ? (financialSummary.spentAmount / financialSummary.totalBudget) * 100
+            : 0;
+        if (budgetUtilization >= 90) {
+            const existingAlert = await queryRunner.manager.findOne(budget_alert_entity_1.BudgetAlert, {
+                where: {
+                    projectId,
+                    alertType: budget_alert_entity_1.AlertType.OVER_BUDGET,
+                },
+            });
+            if (!existingAlert) {
+                const alert = queryRunner.manager.create(budget_alert_entity_1.BudgetAlert, {
+                    projectId,
+                    alertType: budget_alert_entity_1.AlertType.OVER_BUDGET,
+                    thresholdPercentage: 90,
+                    currentPercentage: budgetUtilization,
+                });
+                await queryRunner.manager.save(budget_alert_entity_1.BudgetAlert, alert);
+            }
+        }
     }
     async updateTransaction(transactionId, updateTransactionDto, userId) {
-        const transaction = await this.transactionRepository.findOne({
-            where: { id: transactionId },
-        });
-        if (!transaction) {
-            throw new common_1.NotFoundException("Transaction not found");
-        }
-        const oldProjectId = transaction.projectId;
-        const oldCategoryId = transaction.categoryId;
-        const oldAmount = transaction.amount;
-        if (updateTransactionDto.projectId &&
-            updateTransactionDto.projectId !== transaction.projectId) {
-            const project = await this.projectRepository.findOne({
-                where: { id: updateTransactionDto.projectId },
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+        try {
+            const transaction = await queryRunner.manager.findOne(project_transaction_entity_1.ProjectTransaction, {
+                where: { id: transactionId },
             });
-            if (!project) {
-                throw new common_1.NotFoundException("Project not found");
+            if (!transaction) {
+                throw new common_1.NotFoundException("Transaction not found");
             }
-        }
-        if (updateTransactionDto.categoryId &&
-            updateTransactionDto.categoryId !== transaction.categoryId) {
-            const category = await this.budgetCategoryRepository.findOne({
-                where: { id: updateTransactionDto.categoryId },
-            });
-            if (!category) {
-                throw new common_1.NotFoundException("Budget category not found");
+            const oldProjectId = transaction.projectId;
+            const oldCategoryId = transaction.categoryId;
+            const oldAmount = transaction.amount;
+            if (updateTransactionDto.projectId &&
+                updateTransactionDto.projectId !== transaction.projectId) {
+                const project = await queryRunner.manager.findOne(project_entity_1.Project, {
+                    where: { id: updateTransactionDto.projectId },
+                });
+                if (!project) {
+                    throw new common_1.NotFoundException("Project not found");
+                }
             }
+            if (updateTransactionDto.categoryId &&
+                updateTransactionDto.categoryId !== transaction.categoryId) {
+                const category = await queryRunner.manager.findOne(budget_category_entity_1.BudgetCategory, {
+                    where: { id: updateTransactionDto.categoryId },
+                });
+                if (!category) {
+                    throw new common_1.NotFoundException("Budget category not found");
+                }
+            }
+            if (updateTransactionDto.projectId !== undefined) {
+                transaction.projectId = updateTransactionDto.projectId;
+            }
+            if (updateTransactionDto.categoryId !== undefined) {
+                transaction.categoryId = updateTransactionDto.categoryId;
+            }
+            if (updateTransactionDto.amount !== undefined) {
+                transaction.amount = updateTransactionDto.amount;
+            }
+            if (updateTransactionDto.type !== undefined) {
+                transaction.type = updateTransactionDto.type;
+            }
+            if (updateTransactionDto.description !== undefined) {
+                transaction.description = updateTransactionDto.description;
+            }
+            if (updateTransactionDto.vendor !== undefined) {
+                transaction.vendor = updateTransactionDto.vendor;
+            }
+            if (updateTransactionDto.transactionDate !== undefined) {
+                transaction.transactionDate = new Date(updateTransactionDto.transactionDate);
+            }
+            if (updateTransactionDto.invoiceNumber !== undefined) {
+                transaction.invoiceNumber = updateTransactionDto.invoiceNumber;
+            }
+            if (updateTransactionDto.notes !== undefined) {
+                transaction.notes = updateTransactionDto.notes;
+            }
+            const updatedTransaction = await queryRunner.manager.save(project_transaction_entity_1.ProjectTransaction, transaction);
+            if (oldCategoryId) {
+                await this.updateCategorySpentAmountInTransaction(oldCategoryId, queryRunner);
+            }
+            if (oldProjectId) {
+                await this.updateProjectSpentAmountInTransaction(oldProjectId, queryRunner);
+            }
+            if (transaction.categoryId && transaction.categoryId !== oldCategoryId) {
+                await this.updateCategorySpentAmountInTransaction(transaction.categoryId, queryRunner);
+            }
+            if (transaction.projectId && transaction.projectId !== oldProjectId) {
+                await this.updateProjectSpentAmountInTransaction(transaction.projectId, queryRunner);
+            }
+            else if (transaction.projectId === oldProjectId &&
+                transaction.amount !== oldAmount) {
+                await this.updateProjectSpentAmountInTransaction(transaction.projectId, queryRunner);
+            }
+            if (transaction.projectId) {
+                await this.checkAndCreateBudgetAlertsInTransaction(transaction.projectId, queryRunner);
+            }
+            await queryRunner.commitTransaction();
+            return updatedTransaction;
         }
-        if (updateTransactionDto.projectId !== undefined) {
-            transaction.projectId = updateTransactionDto.projectId;
+        catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
         }
-        if (updateTransactionDto.categoryId !== undefined) {
-            transaction.categoryId = updateTransactionDto.categoryId;
+        finally {
+            await queryRunner.release();
         }
-        if (updateTransactionDto.amount !== undefined) {
-            transaction.amount = updateTransactionDto.amount;
-        }
-        if (updateTransactionDto.type !== undefined) {
-            transaction.type = updateTransactionDto.type;
-        }
-        if (updateTransactionDto.description !== undefined) {
-            transaction.description = updateTransactionDto.description;
-        }
-        if (updateTransactionDto.vendor !== undefined) {
-            transaction.vendor = updateTransactionDto.vendor;
-        }
-        if (updateTransactionDto.transactionDate !== undefined) {
-            transaction.transactionDate = new Date(updateTransactionDto.transactionDate);
-        }
-        if (updateTransactionDto.invoiceNumber !== undefined) {
-            transaction.invoiceNumber = updateTransactionDto.invoiceNumber;
-        }
-        if (updateTransactionDto.receiptUrl !== undefined) {
-            transaction.receiptUrl = updateTransactionDto.receiptUrl;
-        }
-        if (updateTransactionDto.notes !== undefined) {
-            transaction.notes = updateTransactionDto.notes;
-        }
-        const updatedTransaction = await this.transactionRepository.save(transaction);
-        if (oldCategoryId) {
-            await this.budgetManagementService.updateCategorySpentAmount(oldCategoryId);
-        }
-        if (oldProjectId) {
-            await this.budgetManagementService.updateProjectSpentAmount(oldProjectId);
-        }
-        if (transaction.categoryId && transaction.categoryId !== oldCategoryId) {
-            await this.budgetManagementService.updateCategorySpentAmount(transaction.categoryId);
-        }
-        if (transaction.projectId && transaction.projectId !== oldProjectId) {
-            await this.budgetManagementService.updateProjectSpentAmount(transaction.projectId);
-        }
-        else if (transaction.projectId === oldProjectId &&
-            transaction.amount !== oldAmount) {
-            await this.budgetManagementService.updateProjectSpentAmount(transaction.projectId);
-        }
-        if (transaction.projectId) {
-            await this.budgetManagementService.checkAndCreateBudgetAlerts(transaction.projectId);
-        }
-        return updatedTransaction;
     }
     async deleteTransaction(transactionId) {
         const transaction = await this.transactionRepository.findOne({
@@ -260,6 +354,7 @@ exports.TransactionService = TransactionService = __decorate([
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
-        budget_management_service_1.BudgetManagementService])
+        budget_management_service_1.BudgetManagementService,
+        typeorm_2.DataSource])
 ], TransactionService);
 //# sourceMappingURL=transaction.service.js.map

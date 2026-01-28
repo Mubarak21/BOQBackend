@@ -13,6 +13,8 @@ exports.Inventory = exports.InventoryCategory = void 0;
 const typeorm_1 = require("typeorm");
 const user_entity_1 = require("./user.entity");
 const project_entity_1 = require("./project.entity");
+const supplier_entity_1 = require("./supplier.entity");
+const inventory_usage_log_entity_1 = require("./inventory-usage-log.entity");
 var InventoryCategory;
 (function (InventoryCategory) {
     InventoryCategory["MATERIALS"] = "materials";
@@ -66,13 +68,20 @@ __decorate([
     __metadata("design:type", String)
 ], Inventory.prototype, "model", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ name: "supplier_id", nullable: true }),
     __metadata("design:type", String)
+], Inventory.prototype, "supplierId", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => supplier_entity_1.Supplier, (supplier) => supplier.inventory_items, {
+        nullable: true,
+    }),
+    (0, typeorm_1.JoinColumn)({ name: "supplier_id" }),
+    __metadata("design:type", supplier_entity_1.Supplier)
 ], Inventory.prototype, "supplier", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", String)
-], Inventory.prototype, "supplier_contact", void 0);
+    (0, typeorm_1.OneToMany)(() => inventory_usage_log_entity_1.InventoryUsageLog, (log) => log.inventory),
+    __metadata("design:type", Array)
+], Inventory.prototype, "usageLogs", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: "int", default: 0 }),
     __metadata("design:type", Number)

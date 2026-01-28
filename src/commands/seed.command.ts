@@ -1,5 +1,5 @@
 import { Command } from "nestjs-command";
-import { Injectable } from "@nestjs/common";
+import { Injectable, forwardRef, Inject } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { User, UserRole } from "../entities/user.entity";
@@ -10,6 +10,8 @@ import {
   ProjectPriority,
 } from "../entities/project.entity";
 import { Phase, PhaseStatus } from "../entities/phase.entity";
+import { ContractorPhase } from "../entities/contractor-phase.entity";
+import { SubContractorPhase } from "../entities/sub-contractor-phase.entity";
 import { Task } from "../entities/task.entity";
 import { BudgetCategory } from "../finance/entities/budget-category.entity";
 import {
@@ -32,7 +34,25 @@ import { Comment } from "../entities/comment.entity";
 import { Complaint, ComplaintStatus } from "../entities/complaint.entity";
 import { SubPhase } from "../entities/sub-phase.entity";
 import { Inventory, InventoryCategory } from "../entities/inventory.entity";
+import { ProjectFinancialSummary } from "../entities/project-financial-summary.entity";
+import { Supplier } from "../entities/supplier.entity";
+import { ProjectMetadata } from "../entities/project-metadata.entity";
+import { ProjectSettings } from "../entities/project-settings.entity";
+import { PhaseFinancialSummary } from "../entities/phase-financial-summary.entity";
+import { UserPreferences } from "../entities/user-preferences.entity";
+import { UserSession } from "../entities/user-session.entity";
+import { TransactionAttachment, AttachmentType } from "../entities/transaction-attachment.entity";
+import { TransactionApprovalHistory, ApprovalAction } from "../entities/transaction-approval-history.entity";
+import { AuditLog, AuditAction, AuditEntityType } from "../entities/audit-log.entity";
+import { InventoryUsageLog, UsageType } from "../entities/inventory-usage-log.entity";
+import { ProjectBoq, BOQType, BOQStatus } from "../entities/project-boq.entity";
+import { ProjectsService } from "../projects/projects.service";
+import { ProjectPhaseService } from "../projects/services/project-phase.service";
+import { SubPhasesService } from "../projects/subphases.service";
+import { CreateProjectDto } from "../projects/dto/create-project.dto";
+import { CreatePhaseDto } from "../projects/dto/create-phase.dto";
 import * as bcrypt from "bcrypt";
+import * as crypto from "crypto";
 
 @Injectable()
 export class SeedService {
@@ -45,6 +65,10 @@ export class SeedService {
     private readonly projectRepository: Repository<Project>,
     @InjectRepository(Phase)
     private readonly phaseRepository: Repository<Phase>,
+    @InjectRepository(ContractorPhase)
+    private readonly contractorPhaseRepository: Repository<ContractorPhase>,
+    @InjectRepository(SubContractorPhase)
+    private readonly subContractorPhaseRepository: Repository<SubContractorPhase>,
     @InjectRepository(Task)
     private readonly taskRepository: Repository<Task>,
     @InjectRepository(BudgetCategory)
@@ -68,7 +92,37 @@ export class SeedService {
     @InjectRepository(SubPhase)
     private readonly subPhaseRepository: Repository<SubPhase>,
     @InjectRepository(Inventory)
-    private readonly inventoryRepository: Repository<Inventory>
+    private readonly inventoryRepository: Repository<Inventory>,
+    @InjectRepository(ProjectFinancialSummary)
+    private readonly financialSummaryRepository: Repository<ProjectFinancialSummary>,
+    @InjectRepository(Supplier)
+    private readonly supplierRepository: Repository<Supplier>,
+    @InjectRepository(ProjectMetadata)
+    private readonly projectMetadataRepository: Repository<ProjectMetadata>,
+    @InjectRepository(ProjectSettings)
+    private readonly projectSettingsRepository: Repository<ProjectSettings>,
+    @InjectRepository(PhaseFinancialSummary)
+    private readonly phaseFinancialSummaryRepository: Repository<PhaseFinancialSummary>,
+    @InjectRepository(UserPreferences)
+    private readonly userPreferencesRepository: Repository<UserPreferences>,
+    @InjectRepository(UserSession)
+    private readonly userSessionRepository: Repository<UserSession>,
+    @InjectRepository(TransactionAttachment)
+    private readonly transactionAttachmentRepository: Repository<TransactionAttachment>,
+    @InjectRepository(TransactionApprovalHistory)
+    private readonly transactionApprovalHistoryRepository: Repository<TransactionApprovalHistory>,
+    @InjectRepository(AuditLog)
+    private readonly auditLogRepository: Repository<AuditLog>,
+    @InjectRepository(InventoryUsageLog)
+    private readonly inventoryUsageLogRepository: Repository<InventoryUsageLog>,
+    @InjectRepository(ProjectBoq)
+    private readonly projectBoqRepository: Repository<ProjectBoq>,
+    @Inject(forwardRef(() => ProjectsService))
+    private readonly projectsService: ProjectsService,
+    @Inject(forwardRef(() => ProjectPhaseService))
+    private readonly projectPhaseService: ProjectPhaseService,
+    @Inject(forwardRef(() => SubPhasesService))
+    private readonly subPhasesService: SubPhasesService
   ) {}
 
   async seed() {
@@ -122,7 +176,21 @@ export class SeedService {
     // Seed Inventory Items
     await this.seedInventoryItems(users, projects);
 
+    // Seed new normalized tables
+    await this.seedUserPreferences(users);
+    await this.seedUserSessions(users);
+    await this.seedProjectMetadata(projects);
+    await this.seedProjectSettings(projects);
+    await this.seedPhaseFinancialSummaries(phases);
+    await this.seedTransactionAttachments(projects);
+    await this.seedTransactionApprovalHistory(projects);
+    await this.seedAuditLogs(users, projects);
+    await this.seedInventoryUsageLogs(users, projects, phases);
 
+    // Seed BOQ Data and BOQ Phases (for View BOQ Phases area)
+    await this.seedBOQData(projects, users);
+
+    console.log("\n✅ Database seeding completed successfully!");
   }
 
   private async seedDepartments() {
@@ -380,15 +448,6 @@ export class SeedService {
           department_id: userData.department.id,
           bio: userData.bio,
           status: userData.status,
-          notification_preferences: {
-            email: true,
-            project_updates: true,
-            task_updates: true,
-          },
-          last_login:
-            userData.status === "active"
-              ? new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000)
-              : null,
         });
         await this.userRepository.save(user);
         console.log(
@@ -442,7 +501,7 @@ export class SeedService {
   }
 
   private async seedProjects(users: User[], departments: Department[]) {
-
+    console.log("\n🏗️  Seeding Projects using ProjectsService...");
 
     const tanzanianProjects = [
       {
@@ -578,92 +637,102 @@ export class SeedService {
       },
     ];
 
+    // Only use consultants as project owners (contractors/sub-contractors will be assigned later)
+    const consultants = users.filter(u => u.role === UserRole.CONSULTANT && u.status === "active");
+    if (consultants.length === 0) {
+      console.log("   ⚠️  No consultants found. Projects need consultants as owners.");
+      return [];
+    }
+
     const projects = [];
     for (let i = 0; i < tanzanianProjects.length; i++) {
       const projectData = tanzanianProjects[i];
-      const owner =
-        users[i % users.filter((u) => u.status === "active").length];
+      // Always use a consultant as the owner
+      const owner = consultants[i % consultants.length];
 
       let project = await this.projectRepository.findOne({
         where: { title: projectData.title },
       });
 
       if (!project) {
-        // Calculate realistic spent amounts and savings based on status
-        let spentAmount = 0;
-        let estimatedSavings = 0;
-        let financialStatus:
-          | "on_track"
-          | "warning"
-          | "over_budget"
-          | "excellent" = "on_track";
-
-        switch (projectData.status) {
-          case ProjectStatus.COMPLETED:
-            spentAmount =
-              projectData.totalBudget * (0.85 + Math.random() * 0.1); // 85-95%
-            estimatedSavings = projectData.totalBudget - spentAmount;
-            financialStatus = "excellent";
-            break;
-          case ProjectStatus.IN_PROGRESS:
-            spentAmount = projectData.totalBudget * (0.4 + Math.random() * 0.4); // 40-80%
-            estimatedSavings =
-              projectData.totalBudget * (0.05 + Math.random() * 0.1); // 5-15%
-            financialStatus = Math.random() > 0.7 ? "warning" : "on_track";
-            break;
-          case ProjectStatus.PLANNING:
-            spentAmount =
-              projectData.totalBudget * (0.05 + Math.random() * 0.1); // 5-15%
-            estimatedSavings = 0;
-            financialStatus = "on_track";
-            break;
-          case ProjectStatus.ON_HOLD:
-            spentAmount = projectData.totalBudget * (0.2 + Math.random() * 0.3); // 20-50%
-            estimatedSavings = 0;
-            financialStatus = "warning";
-            break;
-          case ProjectStatus.CANCELLED:
-            spentAmount = projectData.totalBudget * (0.1 + Math.random() * 0.2); // 10-30%
-            estimatedSavings = -spentAmount; // Negative savings for cancelled projects
-            financialStatus = "over_budget";
-            break;
-        }
-
-        project = this.projectRepository.create({
+        // Use ProjectsService.create() to follow current functionalities
+        const createProjectDto: CreateProjectDto = {
           title: projectData.title,
           description: projectData.description,
           status: projectData.status,
           priority: projectData.priority,
-          owner_id: owner.id,
-          department_id: projectData.department.id,
-          totalBudget: projectData.totalBudget,
-          totalAmount: projectData.totalBudget, // For backward compatibility
-          spentAmount,
-          estimatedSavings,
-          financialStatus,
-          budgetLastUpdated: new Date(),
+          totalAmount: projectData.totalBudget,
           tags: projectData.tags,
           start_date: new Date(
             Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000
-          ), // Random start within last year
+          ).toISOString(),
           end_date: new Date(
             Date.now() + Math.random() * 365 * 24 * 60 * 60 * 1000
-          ), // Random end within next year
-        });
+          ).toISOString(),
+        };
 
-        await this.projectRepository.save(project);
-
-        // Add collaborators (2-4 random users per project)
-        const collaboratorCount = 2 + Math.floor(Math.random() * 3);
-        const availableUsers = users.filter(
+        // Add only consultants as collaborators (contractors/sub-contractors will be assigned later)
+        const collaboratorCount = 1 + Math.floor(Math.random() * 2); // 1-2 consultant collaborators
+        const availableConsultants = consultants.filter(
           (u) => u.id !== owner.id && u.status === "active"
         );
-        const selectedCollaborators = availableUsers
+        const selectedCollaborators = availableConsultants
           .sort(() => 0.5 - Math.random())
           .slice(0, collaboratorCount);
+        createProjectDto.collaborator_ids = selectedCollaborators.map(u => u.id);
 
-        project.collaborators = selectedCollaborators;
-        await this.projectRepository.save(project);
+        // Create project using service (this will also create financial summary, metadata, settings)
+        project = await this.projectsService.create(createProjectDto, owner);
+
+        // Update financial summary with realistic spent amounts based on status
+        const financialSummary = await this.financialSummaryRepository.findOne({
+          where: { project_id: project.id },
+        });
+        if (financialSummary) {
+          let spentAmount = 0;
+          let estimatedSavings = 0;
+          let financialStatus:
+            | "on_track"
+            | "warning"
+            | "over_budget"
+            | "excellent" = "on_track";
+
+          switch (projectData.status) {
+            case ProjectStatus.COMPLETED:
+              spentAmount =
+                projectData.totalBudget * (0.85 + Math.random() * 0.1); // 85-95%
+              estimatedSavings = projectData.totalBudget - spentAmount;
+              financialStatus = "excellent";
+              break;
+            case ProjectStatus.IN_PROGRESS:
+              spentAmount = projectData.totalBudget * (0.4 + Math.random() * 0.4); // 40-80%
+              estimatedSavings =
+                projectData.totalBudget * (0.05 + Math.random() * 0.1); // 5-15%
+              financialStatus = Math.random() > 0.7 ? "warning" : "on_track";
+              break;
+            case ProjectStatus.PLANNING:
+              spentAmount =
+                projectData.totalBudget * (0.05 + Math.random() * 0.1); // 5-15%
+              estimatedSavings = 0;
+              financialStatus = "on_track";
+              break;
+            case ProjectStatus.ON_HOLD:
+              spentAmount = projectData.totalBudget * (0.2 + Math.random() * 0.3); // 20-50%
+              estimatedSavings = 0;
+              financialStatus = "warning";
+              break;
+            case ProjectStatus.CANCELLED:
+              spentAmount = projectData.totalBudget * (0.1 + Math.random() * 0.2); // 10-30%
+              estimatedSavings = -spentAmount; // Negative savings for cancelled projects
+              financialStatus = "over_budget";
+              break;
+          }
+
+          financialSummary.spentAmount = spentAmount;
+          financialSummary.estimatedSavings = estimatedSavings;
+          financialSummary.financialStatus = financialStatus;
+          await this.financialSummaryRepository.save(financialSummary);
+        }
 
         console.log(
           `   ✓ Created project: ${project.title} (Budget: TSh ${(projectData.totalBudget / 1000000000).toFixed(1)}B)`
@@ -671,11 +740,12 @@ export class SeedService {
       }
       projects.push(project);
     }
+    console.log(`   ✓ Created ${projects.length} projects using ProjectsService`);
     return projects;
   }
 
   private async seedPhases(projects: Project[], users: User[]) {
-
+    console.log("\n📋 Seeding Phases using ProjectPhaseService...");
 
     const phaseTemplates = [
       {
@@ -704,67 +774,97 @@ export class SeedService {
       },
     ];
 
-    const phases = [];
-    for (const project of projects) {
-      const numPhases = 3 + Math.floor(Math.random() * 4); // 3-6 phases per project
-      let cumulativeBudget = 0;
+    // Only use consultants - contractors/sub-contractors will be assigned by consultants later
+    const consultants = users.filter(u => u.role === UserRole.CONSULTANT && u.status === "active");
+    if (consultants.length === 0) {
+      console.log("   ⚠️  No consultants found. Skipping phase creation.");
+      return [];
+    }
 
+    const allPhases: Phase[] = [];
+
+    for (const project of projects) {
+      // Create 2-4 consultant phases per project (these are planning/oversight phases)
+      const numPhases = 2 + Math.floor(Math.random() * 3); // 2-4 phases per project
+      
+      // Get financial summary for budget
+      const financialSummary = await this.financialSummaryRepository.findOne({
+        where: { project_id: project.id },
+      });
+      const projectBudget = financialSummary?.totalBudget || project.totalAmount || 0;
+      const phaseBudget = projectBudget / (numPhases + 1); // Reserve budget for future contractor phases
+
+      // Create only consultant/legacy phases (contractors will create their phases after being assigned)
       for (let i = 0; i < numPhases; i++) {
         const phaseTemplate = phaseTemplates[i % phaseTemplates.length];
-        const phaseBudget = project.totalBudget / numPhases;
-        cumulativeBudget += phaseBudget;
+        const consultant = consultants[Math.floor(Math.random() * consultants.length)];
 
         let status = PhaseStatus.NOT_STARTED;
         let progress = 0;
 
         // Set realistic phase status based on project status
         if (project.status === ProjectStatus.COMPLETED) {
-          status = PhaseStatus.COMPLETED;
-          progress = 100;
-        } else if (project.status === ProjectStatus.IN_PROGRESS) {
           if (i < numPhases / 2) {
             status = PhaseStatus.COMPLETED;
             progress = 100;
-          } else if (i === Math.floor(numPhases / 2)) {
+          }
+        } else if (project.status === ProjectStatus.IN_PROGRESS) {
+          if (i === 0) {
             status = PhaseStatus.IN_PROGRESS;
-            progress = 20 + Math.random() * 60; // 20-80% progress
+            progress = 30 + Math.random() * 50; // 30-80% progress
+          } else if (i === 1 && Math.random() > 0.5) {
+            status = PhaseStatus.IN_PROGRESS;
+            progress = 10 + Math.random() * 40; // 10-50% progress
           }
         } else if (project.status === ProjectStatus.PLANNING && i === 0) {
           status = PhaseStatus.IN_PROGRESS;
-          progress = 30 + Math.random() * 40; // 30-70% progress
+          progress = 20 + Math.random() * 30; // 20-50% progress
         }
 
-        const phase = this.phaseRepository.create({
+        const createPhaseDto: CreatePhaseDto = {
           title: `${phaseTemplate.title} - ${project.title.split(" ").slice(0, 3).join(" ")}`,
-          description: phaseTemplate.description,
-          project_id: project.id,
+          description: `${phaseTemplate.description} - Consultant planning and oversight phase`,
           budget: phaseBudget,
           progress,
           status,
-          start_date: new Date(
-            Date.now() - Math.random() * 200 * 24 * 60 * 60 * 1000
-          ),
-          end_date: new Date(
-            Date.now() + Math.random() * 300 * 24 * 60 * 60 * 1000
-          ),
-          due_date: new Date(
-            Date.now() + Math.random() * 250 * 24 * 60 * 60 * 1000
-          ),
-        });
+          startDate: new Date(
+            Date.now() - Math.random() * 100 * 24 * 60 * 60 * 1000
+          ).toISOString(),
+          endDate: new Date(
+            Date.now() + Math.random() * 200 * 24 * 60 * 60 * 1000
+          ).toISOString(),
+          dueDate: new Date(
+            Date.now() + Math.random() * 150 * 24 * 60 * 60 * 1000
+          ).toISOString(),
+        };
 
-        await this.phaseRepository.save(phase);
-        phases.push(phase);
-
-        // Create sub-phases for this phase
-        await this.seedSubPhasesForPhase(phase, status);
+        try {
+          // Use ProjectPhaseService to create legacy phase (for consultants)
+          // This creates phases that consultants can see and manage
+          const phase = await this.projectPhaseService.createPhase(
+            project.id,
+            createPhaseDto,
+            consultant.id
+          );
+          allPhases.push(phase as Phase);
+          
+          // Create sub-phases for this consultant phase
+          await this.seedSubPhasesForPhase(phase.id, status, 'legacy');
+        } catch (error) {
+          console.error(`   ⚠️  Error creating consultant phase: ${error.message}`);
+        }
       }
     }
 
-
-    return phases;
+    console.log(`   ✓ Created ${allPhases.length} consultant phases (contractors will be assigned and create their phases later)`);
+    return allPhases;
   }
 
-  private async seedSubPhasesForPhase(phase: Phase, phaseStatus: PhaseStatus) {
+  private async seedSubPhasesForPhase(
+    phaseId: string,
+    phaseStatus: PhaseStatus,
+    phaseType: 'contractor' | 'sub_contractor' | 'legacy'
+  ) {
     // Define sub-phase templates based on phase title/description
     const subPhaseTemplates: {
       [key: string]: Array<{ title: string; description?: string }>;
@@ -876,11 +976,45 @@ export class SeedService {
       ],
     };
 
+    // Load phase to get title and description
+    let phaseTitle = '';
+    let phaseDescription = '';
+    let phaseProgress = 0;
+
+    if (phaseType === 'contractor') {
+      const contractorPhase = await this.contractorPhaseRepository.findOne({
+        where: { id: phaseId },
+      });
+      if (contractorPhase) {
+        phaseTitle = contractorPhase.title || '';
+        phaseDescription = contractorPhase.description || '';
+        phaseProgress = contractorPhase.progress || 0;
+      }
+    } else if (phaseType === 'sub_contractor') {
+      const subContractorPhase = await this.subContractorPhaseRepository.findOne({
+        where: { id: phaseId },
+      });
+      if (subContractorPhase) {
+        phaseTitle = subContractorPhase.title || '';
+        phaseDescription = subContractorPhase.description || '';
+        phaseProgress = subContractorPhase.progress || 0;
+      }
+    } else {
+      const legacyPhase = await this.phaseRepository.findOne({
+        where: { id: phaseId },
+      });
+      if (legacyPhase) {
+        phaseTitle = legacyPhase.title || '';
+        phaseDescription = legacyPhase.description || '';
+        phaseProgress = legacyPhase.progress || 0;
+      }
+    }
+
     // Find matching template based on phase title or description
     // Phase title format is: "Template Title - Project Name", so we check if title contains the key
     let subPhasesToCreate: Array<{ title: string; description?: string }> = [];
     for (const [key, templates] of Object.entries(subPhaseTemplates)) {
-      if (phase.title.includes(key) || phase.description?.includes(key)) {
+      if (phaseTitle.includes(key) || phaseDescription?.includes(key)) {
         subPhasesToCreate = templates;
         break;
       }
@@ -908,23 +1042,45 @@ export class SeedService {
       completedCount = subPhasesToCreate.length; // All completed
     } else if (phaseStatus === PhaseStatus.IN_PROGRESS) {
       // Complete some sub-phases based on progress
-      const progressRatio = (phase.progress || 0) / 100;
+      const progressRatio = phaseProgress / 100;
       completedCount = Math.floor(subPhasesToCreate.length * progressRatio);
     }
 
-    // Create sub-phases
+    // Get a user for creating sub-phases (use contractor for contractor phases, sub-contractor for sub-contractor phases)
+    const users = await this.userRepository.find({ where: { status: "active" } });
+    const contractors = users.filter(u => u.role === UserRole.CONTRACTOR);
+    const subContractors = users.filter(u => u.role === UserRole.SUB_CONTRACTOR);
+    const consultants = users.filter(u => u.role === UserRole.CONSULTANT);
+    
+    let user: User;
+    if (phaseType === 'contractor' && contractors.length > 0) {
+      user = contractors[Math.floor(Math.random() * contractors.length)];
+    } else if (phaseType === 'sub_contractor' && subContractors.length > 0) {
+      user = subContractors[Math.floor(Math.random() * subContractors.length)];
+    } else if (consultants.length > 0) {
+      user = consultants[Math.floor(Math.random() * consultants.length)];
+    } else {
+      user = users[0];
+    }
+
+    // Create sub-phases using SubPhasesService
     for (let i = 0; i < subPhasesToCreate.length; i++) {
       const template = subPhasesToCreate[i];
       const isCompleted = i < completedCount;
 
-      const subPhase = this.subPhaseRepository.create({
-        title: template.title,
-        description: template.description,
-        phase_id: phase.id,
-        isCompleted,
-      });
-
-      await this.subPhaseRepository.save(subPhase);
+      try {
+        await this.subPhasesService.create(
+          phaseId,
+          {
+            title: template.title,
+            description: template.description,
+            isCompleted,
+          },
+          user
+        );
+      } catch (error) {
+        console.error(`   ⚠️  Error creating sub-phase "${template.title}": ${error.message}`);
+      }
     }
   }
 
@@ -955,12 +1111,19 @@ export class SeedService {
           taskTemplates[Math.floor(Math.random() * taskTemplates.length)];
         const quantity = 1 + Math.random() * 100;
 
+        // Ensure project_id is set - get it from phase if available
+        const projectId = phase.project_id || (phase as any).project?.id || null;
+        if (!projectId) {
+          console.error(`   ⚠️  Phase ${phase.id} has no project_id, skipping task creation`);
+          continue;
+        }
+
         const task = this.taskRepository.create({
           description: `${template.description} - ${phase.title}`,
           unit: template.unit,
           quantity: Math.round(quantity * 100) / 100,
           price: template.price,
-          project_id: phase.project_id,
+          project_id: projectId,
           phase_id: phase.id,
         });
 
@@ -995,8 +1158,12 @@ export class SeedService {
 
       const createdCategories = [];
       for (const categoryData of categories) {
-        const budgetedAmount =
-          project.totalBudget * categoryData.budgetPercentage;
+        // Get financial summary for budget
+        const financialSummary = await this.financialSummaryRepository.findOne({
+          where: { project_id: project.id },
+        });
+        const projectBudget = financialSummary?.totalBudget || project.totalAmount || 0;
+        const budgetedAmount = projectBudget * categoryData.budgetPercentage;
         
         // Don't set spentAmount here - it will be calculated from transactions
         const category = this.budgetCategoryRepository.create({
@@ -1038,9 +1205,14 @@ export class SeedService {
       // Validate and normalize the allocated budget
       const normalizedAllocated = Math.max(0, Math.min(totalAllocated, 9999999999999.99));
       
-      await this.projectRepository.update(project.id, {
-        allocatedBudget: normalizedAllocated,
+      // Update financial summary instead of project
+      const financialSummary = await this.financialSummaryRepository.findOne({
+        where: { project_id: project.id },
       });
+      if (financialSummary) {
+        financialSummary.allocatedBudget = normalizedAllocated;
+        await this.financialSummaryRepository.save(financialSummary);
+      }
 
       // Create savings records
       await this.createSavingsRecords(project, users[0]);
@@ -1091,9 +1263,14 @@ export class SeedService {
     }, 0);
 
     const normalizedSpent = Math.max(0, totalSpent);
-    await this.projectRepository.update(projectId, {
-      spentAmount: normalizedSpent,
+    // Update financial summary instead of project
+    const financialSummary = await this.financialSummaryRepository.findOne({
+      where: { project_id: projectId },
     });
+    if (financialSummary) {
+      financialSummary.spentAmount = normalizedSpent;
+      await this.financialSummaryRepository.save(financialSummary);
+    }
   }
 
   private async createGeneralProjectTransactions(project: Project, users: User[], globalUsedNumbers: Set<string>) {
@@ -1269,7 +1446,10 @@ export class SeedService {
   }
 
   private async createSavingsRecords(project: Project, user: User) {
-    if (project.estimatedSavings <= 0) return;
+    const financialSummary = await this.financialSummaryRepository.findOne({
+      where: { project_id: project.id },
+    });
+    if (!financialSummary || financialSummary.estimatedSavings <= 0) return;
 
     const savingsCategories = [
       "Punguzo la Bei kwa Ununuzi wa Kwingi",
@@ -1304,13 +1484,18 @@ export class SeedService {
   }
 
   private async createBudgetAlerts(project: Project) {
+    const financialSummary = await this.financialSummaryRepository.findOne({
+      where: { project_id: project.id },
+    });
+    if (!financialSummary) return;
+
     // Ensure values are numbers before calculation
-    const totalBudget = typeof project.totalBudget === 'number' 
-      ? project.totalBudget 
-      : parseFloat(String(project.totalBudget || 0)) || 0;
-    const spentAmount = typeof project.spentAmount === 'number' 
-      ? project.spentAmount 
-      : parseFloat(String(project.spentAmount || 0)) || 0;
+    const totalBudget = typeof financialSummary.totalBudget === 'number' 
+      ? financialSummary.totalBudget 
+      : parseFloat(String(financialSummary.totalBudget || 0)) || 0;
+    const spentAmount = typeof financialSummary.spentAmount === 'number' 
+      ? financialSummary.spentAmount 
+      : parseFloat(String(financialSummary.spentAmount || 0)) || 0;
 
     // Calculate utilization percentage and ensure it's valid
     let utilizationPercentage = 0;
@@ -2075,8 +2260,27 @@ export class SeedService {
       financeUsers[Math.floor(Math.random() * financeUsers.length)] || users[0];
 
     for (const itemData of inventoryItems) {
+      // Handle supplier - find or create supplier
+      let supplierId: string | null = null;
+      if (itemData.supplier) {
+        let supplier = await this.supplierRepository.findOne({
+          where: { name: itemData.supplier },
+        });
+        if (!supplier) {
+          supplier = this.supplierRepository.create({
+            name: itemData.supplier,
+            contact_person: itemData.supplier_contact || null,
+            phone: itemData.supplier_contact || null,
+          });
+          supplier = await this.supplierRepository.save(supplier);
+        }
+        supplierId = supplier.id;
+      }
+
+      const { supplier, supplier_contact, ...inventoryData } = itemData;
       const inventory = this.inventoryRepository.create({
-        ...itemData,
+        ...inventoryData,
+        supplierId,
         created_by: randomUser.id,
         picture_url: `https://via.placeholder.com/400x300?text=${encodeURIComponent(itemData.name)}`,
         tags: itemData.category ? [itemData.category.toString()] : [],
@@ -2088,6 +2292,560 @@ export class SeedService {
 
 
     return createdItems;
+  }
+
+  private async seedUserPreferences(users: User[]) {
+    console.log("\n📋 Seeding User Preferences...");
+    for (const user of users) {
+      const existing = await this.userPreferencesRepository.findOne({
+        where: { user_id: user.id },
+      });
+      if (!existing) {
+        const preferences = this.userPreferencesRepository.create({
+          user_id: user.id,
+          notification_preferences: {
+            email: true,
+            project_updates: true,
+            task_updates: true,
+            financial_updates: user.role === UserRole.FINANCE || user.role === UserRole.CONSULTANT,
+            inventory_alerts: user.role === UserRole.FINANCE || user.role === UserRole.CONSULTANT,
+            system_notifications: true,
+          },
+          language: "en",
+          timezone: "Africa/Dar_es_Salaam",
+          theme: "dark",
+          items_per_page: 10,
+          email_notifications_enabled: true,
+          push_notifications_enabled: true,
+        });
+        await this.userPreferencesRepository.save(preferences);
+      }
+    }
+    console.log(`   ✓ Created user preferences for ${users.length} users`);
+  }
+
+  private async seedUserSessions(users: User[]) {
+    console.log("\n🔐 Seeding User Sessions...");
+    const activeUsers = users.filter((u) => u.status === "active").slice(0, 10);
+    let sessionCount = 0;
+    for (const user of activeUsers) {
+      // Create 1-3 sessions per user
+      const numSessions = Math.floor(Math.random() * 3) + 1;
+      for (let i = 0; i < numSessions; i++) {
+        const session = this.userSessionRepository.create({
+          userId: user.id,
+          token: crypto.randomBytes(32).toString("hex"),
+          ip_address: `192.168.1.${Math.floor(Math.random() * 255)}`,
+          user_agent: i % 2 === 0 ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" : "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0)",
+          device_type: i % 2 === 0 ? "desktop" : "mobile",
+          browser: i % 2 === 0 ? "Chrome" : "Safari",
+          os: i % 2 === 0 ? "Windows" : "iOS",
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+          is_active: Math.random() > 0.3, // 70% active
+          last_activity: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000),
+          location: "Dar es Salaam, Tanzania",
+        });
+        await this.userSessionRepository.save(session);
+        sessionCount++;
+      }
+    }
+    console.log(`   ✓ Created ${sessionCount} user sessions`);
+  }
+
+  private async seedProjectMetadata(projects: Project[]) {
+    console.log("\n📄 Seeding Project Metadata...");
+    const tanzanianLocations = [
+      "Dar es Salaam",
+      "Dodoma",
+      "Mwanza",
+      "Arusha",
+      "Mbeya",
+      "Tanga",
+      "Morogoro",
+      "Zanzibar",
+      "Kigoma",
+      "Iringa",
+    ];
+    const clientNames = [
+      "Tanzania Government",
+      "Dar es Salaam City Council",
+      "TANESCO",
+      "Tanzania Ports Authority",
+      "Tanzania Railways Corporation",
+      "Ministry of Health",
+      "Ministry of Education",
+      "Tanzania National Roads Agency",
+    ];
+    for (const project of projects) {
+      const existing = await this.projectMetadataRepository.findOne({
+        where: { project_id: project.id },
+      });
+      if (!existing) {
+        const location = tanzanianLocations[Math.floor(Math.random() * tanzanianLocations.length)];
+        const clientName = clientNames[Math.floor(Math.random() * clientNames.length)];
+        const metadata = this.projectMetadataRepository.create({
+          project_id: project.id,
+          location: location,
+          address: `${location}, Tanzania`,
+          coordinates: JSON.stringify({
+            lat: -6.7924 + (Math.random() * 2 - 1) * 0.5,
+            lng: 39.2083 + (Math.random() * 2 - 1) * 0.5,
+          }),
+          client_name: clientName,
+          client_contact: `+255 ${700 + Math.floor(Math.random() * 100)} ${Math.floor(Math.random() * 1000000).toString().padStart(6, "0")}`,
+          client_email: `contact@${clientName.toLowerCase().replace(/\s+/g, "")}.co.tz`,
+          architect: `Arch. ${["John", "Mary", "Peter", "Sarah"][Math.floor(Math.random() * 4)]} ${["Mwangi", "Kimani", "Ochieng", "Njoroge"][Math.floor(Math.random() * 4)]}`,
+          engineer: `Eng. ${["Hassan", "Fatma", "Amina", "Juma"][Math.floor(Math.random() * 4)]} ${["Kikwete", "Mohammed", "Bakari", "Juma"][Math.floor(Math.random() * 4)]}`,
+          contractor_name: "Tanzania Construction Company Ltd",
+          contract_number: `CONTRACT-${project.id.slice(0, 8).toUpperCase()}`,
+          contract_date: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000),
+          permit_number: `PERMIT-${Math.floor(Math.random() * 100000)}`,
+          permit_issued_date: new Date(Date.now() - Math.random() * 180 * 24 * 60 * 60 * 1000),
+          notes: `Project metadata for ${project.title}`,
+        });
+        await this.projectMetadataRepository.save(metadata);
+      }
+    }
+    console.log(`   ✓ Created metadata for ${projects.length} projects`);
+  }
+
+  private async seedProjectSettings(projects: Project[]) {
+    console.log("\n⚙️ Seeding Project Settings...");
+    for (const project of projects) {
+      const existing = await this.projectSettingsRepository.findOne({
+        where: { project_id: project.id },
+      });
+      if (!existing) {
+        const settings = this.projectSettingsRepository.create({
+          project_id: project.id,
+          allow_collaborator_invites: true,
+          allow_task_creation: true,
+          allow_phase_modification: true,
+          require_approval_for_transactions: Math.random() > 0.5,
+          approval_threshold: 1000000, // TSh 1M
+          send_notifications: true,
+          track_inventory: true,
+          track_time: true,
+          currency: "TZS",
+          language: "en",
+          custom_settings: {
+            timezone: "Africa/Dar_es_Salaam",
+            date_format: "DD/MM/YYYY",
+          },
+        });
+        await this.projectSettingsRepository.save(settings);
+      }
+    }
+    console.log(`   ✓ Created settings for ${projects.length} projects`);
+  }
+
+  private async seedPhaseFinancialSummaries(phases: Phase[]) {
+    console.log("\n💰 Seeding Phase Financial Summaries...");
+    for (const phase of phases) {
+      const existing = await this.phaseFinancialSummaryRepository.findOne({
+        where: { phase_id: phase.id },
+      });
+      if (!existing) {
+        const budget = phase.budget || 0;
+        const spent = budget * (0.3 + Math.random() * 0.5); // 30-80% spent
+        const estimated = budget * (0.9 + Math.random() * 0.1); // 90-100% estimated
+        const actual = spent * (0.95 + Math.random() * 0.1); // 95-105% of spent
+        const variance = actual - estimated;
+        let financialStatus: "on_track" | "warning" | "over_budget" = "on_track";
+        if (variance > budget * 0.1) {
+          financialStatus = "over_budget";
+        } else if (variance > budget * 0.05) {
+          financialStatus = "warning";
+        }
+        const summary = this.phaseFinancialSummaryRepository.create({
+          phase_id: phase.id,
+          allocatedBudget: budget,
+          spentAmount: spent,
+          estimatedCost: estimated,
+          actualCost: actual,
+          variance,
+          financialStatus,
+          lastUpdated: new Date(),
+        });
+        await this.phaseFinancialSummaryRepository.save(summary);
+      }
+    }
+    console.log(`   ✓ Created financial summaries for ${phases.length} phases`);
+  }
+
+  private async seedTransactionAttachments(projects: Project[]) {
+    console.log("\n📎 Seeding Transaction Attachments...");
+    let attachmentCount = 0;
+    for (const project of projects) {
+      const transactions = await this.transactionRepository.find({
+        where: { projectId: project.id },
+        take: 10, // Limit to 10 transactions per project
+      });
+      for (const transaction of transactions.slice(0, Math.floor(transactions.length * 0.6))) {
+        // Add attachments to 60% of transactions
+        const numAttachments = Math.floor(Math.random() * 3) + 1; // 1-3 attachments
+        for (let i = 0; i < numAttachments; i++) {
+          const attachment = this.transactionAttachmentRepository.create({
+            transactionId: transaction.id,
+            type: i === 0 ? AttachmentType.RECEIPT : 
+                  i === 1 ? AttachmentType.INVOICE : 
+                  AttachmentType.OTHER,
+            file_url: `https://storage.example.com/transactions/${transaction.id}/attachment-${i + 1}.pdf`,
+            file_name: `${transaction.transactionNumber}-${i === 0 ? "receipt" : i === 1 ? "invoice" : "document"}-${i + 1}.pdf`,
+            file_mime_type: "application/pdf",
+            file_size: 100000 + Math.floor(Math.random() * 500000), // 100KB - 600KB
+            description: i === 0 ? "Payment receipt" : i === 1 ? "Invoice document" : "Supporting document",
+            uploadedBy: transaction.createdBy || transaction.approvedBy || "",
+          });
+          await this.transactionAttachmentRepository.save(attachment);
+          attachmentCount++;
+        }
+      }
+    }
+    console.log(`   ✓ Created ${attachmentCount} transaction attachments`);
+  }
+
+  private async seedTransactionApprovalHistory(projects: Project[]) {
+    console.log("\n✅ Seeding Transaction Approval History...");
+    let historyCount = 0;
+    for (const project of projects) {
+      const transactions = await this.transactionRepository.find({
+        where: { projectId: project.id, approvalStatus: ApprovalStatus.APPROVED },
+        take: 15,
+      });
+      for (const transaction of transactions) {
+        if (transaction.approvedBy && transaction.approvedAt) {
+          const history = this.transactionApprovalHistoryRepository.create({
+            transactionId: transaction.id,
+            action: ApprovalAction.APPROVED,
+            actionBy: transaction.approvedBy,
+            comment: "Transaction approved as per budget guidelines",
+            reason: "Within budget allocation",
+          });
+          await this.transactionApprovalHistoryRepository.save(history);
+          historyCount++;
+        }
+      }
+    }
+    console.log(`   ✓ Created ${historyCount} approval history records`);
+  }
+
+  private async seedAuditLogs(users: User[], projects: Project[]) {
+    console.log("\n📊 Seeding Audit Logs...");
+    const auditActions = [
+      { action: AuditAction.CREATE, entity: AuditEntityType.PROJECT },
+      { action: AuditAction.UPDATE, entity: AuditEntityType.PROJECT },
+      { action: AuditAction.VIEW, entity: AuditEntityType.PROJECT },
+      { action: AuditAction.CREATE, entity: AuditEntityType.TRANSACTION },
+      { action: AuditAction.APPROVE, entity: AuditEntityType.TRANSACTION },
+      { action: AuditAction.CREATE, entity: AuditEntityType.INVENTORY },
+      { action: AuditAction.UPDATE, entity: AuditEntityType.INVENTORY },
+      { action: AuditAction.LOGIN, entity: AuditEntityType.USER },
+      { action: AuditAction.EXPORT, entity: AuditEntityType.REPORT },
+    ];
+    let logCount = 0;
+    for (let i = 0; i < 100; i++) {
+      const user = users[Math.floor(Math.random() * users.length)];
+      const auditTemplate = auditActions[Math.floor(Math.random() * auditActions.length)];
+      const project = projects[Math.floor(Math.random() * projects.length)];
+      const log = this.auditLogRepository.create({
+        action: auditTemplate.action,
+        entity_type: auditTemplate.entity,
+        entity_id: auditTemplate.entity === AuditEntityType.PROJECT ? project.id : 
+                   auditTemplate.entity === AuditEntityType.USER ? user.id : 
+                   crypto.randomUUID(),
+        userId: user.id,
+        description: `${auditTemplate.action} ${auditTemplate.entity} by ${user.display_name}`,
+        old_values: auditTemplate.action === AuditAction.UPDATE ? { status: "old" } : null,
+        new_values: auditTemplate.action === AuditAction.UPDATE ? { status: "new" } : null,
+        ip_address: `192.168.1.${Math.floor(Math.random() * 255)}`,
+        user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        is_successful: Math.random() > 0.1, // 90% successful
+        error_message: Math.random() > 0.9 ? "Sample error message" : null,
+      });
+      await this.auditLogRepository.save(log);
+      logCount++;
+    }
+    console.log(`   ✓ Created ${logCount} audit log entries`);
+  }
+
+  private async seedInventoryUsageLogs(users: User[], projects: Project[], phases: Phase[]) {
+    console.log("\n📦 Seeding Inventory Usage Logs...");
+    const inventoryItems = await this.inventoryRepository.find({ take: 20 });
+    let logCount = 0;
+    for (let i = 0; i < 50; i++) {
+      const inventory = inventoryItems[Math.floor(Math.random() * inventoryItems.length)];
+      const project = projects[Math.floor(Math.random() * projects.length)];
+      const projectPhases = phases.filter((p) => p.project_id === project.id);
+      const phase = projectPhases.length > 0 ? projectPhases[Math.floor(Math.random() * projectPhases.length)] : null;
+      const user = users[Math.floor(Math.random() * users.length)];
+      const usageTypes = [UsageType.USED, UsageType.USED, UsageType.USED, UsageType.RETURNED, UsageType.DAMAGED];
+      const usageType = usageTypes[Math.floor(Math.random() * usageTypes.length)];
+      const quantity = Math.floor(Math.random() * 10) + 1;
+      const unitPrice = inventory.unit_price || 0;
+      const totalCost = quantity * unitPrice;
+      const log = this.inventoryUsageLogRepository.create({
+        inventoryId: inventory.id,
+        projectId: project.id,
+        phaseId: phase?.id || null,
+        usage_type: usageType,
+        quantity,
+        unit_price: unitPrice,
+        total_cost: totalCost,
+        notes: `${usageType} ${quantity} ${inventory.unit} of ${inventory.name} for ${project.title}`,
+        recordedBy: user.id,
+        usage_date: new Date(Date.now() - Math.random() * 90 * 24 * 60 * 60 * 1000),
+      });
+      await this.inventoryUsageLogRepository.save(log);
+      logCount++;
+    }
+    console.log(`   ✓ Created ${logCount} inventory usage log entries`);
+  }
+
+  private async seedBOQData(projects: Project[], users: User[]) {
+    console.log("\n📋 Seeding BOQ Data and BOQ Phases...");
+
+    const contractors = users.filter(u => u.role === UserRole.CONTRACTOR && u.status === "active");
+    const subContractors = users.filter(u => u.role === UserRole.SUB_CONTRACTOR && u.status === "active");
+    const consultants = users.filter(u => u.role === UserRole.CONSULTANT && u.status === "active");
+
+    // BOQ item templates for realistic construction project data
+    const boqItemTemplates = [
+      // Earthworks
+      { section: "Earthworks", description: "Excavation for foundation", unit: "m³", rate: 15000, quantity: 100 },
+      { section: "Earthworks", description: "Backfilling and compaction", unit: "m³", rate: 12000, quantity: 80 },
+      { section: "Earthworks", description: "Site clearing and preparation", unit: "m²", rate: 5000, quantity: 500 },
+      
+      // Concrete Works
+      { section: "Concrete Works", description: "Reinforced concrete for foundation", unit: "m³", rate: 250000, quantity: 50 },
+      { section: "Concrete Works", description: "Concrete for columns", unit: "m³", rate: 280000, quantity: 30 },
+      { section: "Concrete Works", description: "Concrete for beams", unit: "m³", rate: 270000, quantity: 25 },
+      { section: "Concrete Works", description: "Concrete for slabs", unit: "m³", rate: 260000, quantity: 40 },
+      
+      // Masonry
+      { section: "Masonry", description: "Brickwork for walls", unit: "m²", rate: 45000, quantity: 200 },
+      { section: "Masonry", description: "Blockwork for partitions", unit: "m²", rate: 40000, quantity: 150 },
+      { section: "Masonry", description: "Stone masonry", unit: "m²", rate: 60000, quantity: 100 },
+      
+      // Steel Works
+      { section: "Steel Works", description: "Reinforcement steel bars", unit: "kg", rate: 2500, quantity: 5000 },
+      { section: "Steel Works", description: "Structural steel fabrication", unit: "kg", rate: 3500, quantity: 3000 },
+      { section: "Steel Works", description: "Steel installation", unit: "kg", rate: 2000, quantity: 8000 },
+      
+      // Roofing
+      { section: "Roofing", description: "Roof trusses", unit: "m²", rate: 35000, quantity: 300 },
+      { section: "Roofing", description: "Roofing sheets", unit: "m²", rate: 25000, quantity: 350 },
+      { section: "Roofing", description: "Gutters and downpipes", unit: "m", rate: 15000, quantity: 200 },
+      
+      // Finishes
+      { section: "Finishes", description: "Plastering", unit: "m²", rate: 12000, quantity: 800 },
+      { section: "Finishes", description: "Painting", unit: "m²", rate: 8000, quantity: 900 },
+      { section: "Finishes", description: "Floor tiling", unit: "m²", rate: 30000, quantity: 400 },
+      { section: "Finishes", description: "Wall tiling", unit: "m²", rate: 35000, quantity: 200 },
+      
+      // Electrical
+      { section: "Electrical", description: "Electrical wiring", unit: "m", rate: 5000, quantity: 1000 },
+      { section: "Electrical", description: "Light fixtures", unit: "no", rate: 50000, quantity: 50 },
+      { section: "Electrical", description: "Switchboards", unit: "no", rate: 200000, quantity: 5 },
+      
+      // Plumbing
+      { section: "Plumbing", description: "Water supply pipes", unit: "m", rate: 8000, quantity: 500 },
+      { section: "Plumbing", description: "Drainage pipes", unit: "m", rate: 10000, quantity: 400 },
+      { section: "Plumbing", description: "Sanitary fixtures", unit: "no", rate: 150000, quantity: 20 },
+      
+      // Doors and Windows
+      { section: "Doors and Windows", description: "Doors", unit: "no", rate: 200000, quantity: 30 },
+      { section: "Doors and Windows", description: "Windows", unit: "no", rate: 150000, quantity: 40 },
+      { section: "Doors and Windows", description: "Door frames", unit: "no", rate: 80000, quantity: 30 },
+      
+      // Site Works
+      { section: "Site Works", description: "Fencing", unit: "m", rate: 25000, quantity: 200 },
+      { section: "Site Works", description: "Landscaping", unit: "m²", rate: 15000, quantity: 500 },
+      { section: "Site Works", description: "Road works", unit: "m²", rate: 45000, quantity: 300 },
+    ];
+
+    let boqCount = 0;
+    let boqPhaseCount = 0;
+
+    // Create BOQ data for 70% of projects (mix of contractor and sub-contractor BOQs)
+    const projectsToSeed = projects.slice(0, Math.floor(projects.length * 0.7));
+
+    for (const project of projectsToSeed) {
+      // Get financial summary for budget calculation
+      const financialSummary = await this.financialSummaryRepository.findOne({
+        where: { project_id: project.id },
+      });
+      const projectBudget = financialSummary?.totalBudget || project.totalAmount || 100000000; // Default 100M TZS
+
+      // Randomly decide if this project gets contractor BOQ, sub-contractor BOQ, or both
+      const hasContractorBOQ = Math.random() > 0.3; // 70% chance
+      const hasSubContractorBOQ = Math.random() > 0.4; // 60% chance
+
+      const uploader = consultants[Math.floor(Math.random() * consultants.length)] || users[0];
+
+      // Create Contractor BOQ
+      if (hasContractorBOQ) {
+        const contractorBoqItems = [];
+        const numItems = 8 + Math.floor(Math.random() * 12); // 8-20 items
+        let totalAmount = 0;
+
+        for (let i = 0; i < numItems; i++) {
+          const template = boqItemTemplates[Math.floor(Math.random() * boqItemTemplates.length)];
+          const quantity = template.quantity * (0.8 + Math.random() * 0.4); // Vary quantity by ±20%
+          const rate = template.rate * (0.9 + Math.random() * 0.2); // Vary rate by ±10%
+          const amount = quantity * rate;
+          totalAmount += amount;
+
+          contractorBoqItems.push({
+            description: template.description,
+            section: template.section,
+            unit: template.unit,
+            quantity: Math.round(quantity * 100) / 100,
+            rate: Math.round(rate * 100) / 100,
+            amount: Math.round(amount * 100) / 100,
+            rowIndex: i + 1,
+            rawData: {},
+          });
+        }
+
+        // Create ProjectBoq entry
+        const contractorBoq = this.projectBoqRepository.create({
+          project_id: project.id,
+          type: BOQType.CONTRACTOR,
+          status: BOQStatus.PROCESSED,
+          file_name: `BOQ_Contractor_${project.title.replace(/\s+/g, '_')}.xlsx`,
+          file_path: `/uploads/boq/${project.id}/contractor_boq.xlsx`,
+          file_mimetype: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          file_size: 50000 + Math.floor(Math.random() * 100000),
+          total_amount: totalAmount,
+          phases_count: contractorBoqItems.length,
+          uploaded_by: uploader.id,
+        });
+
+        const savedContractorBoq = await this.projectBoqRepository.save(contractorBoq);
+        boqCount++;
+
+        // Create phases from BOQ items (these will appear in "View BOQ Phases")
+        for (const item of contractorBoqItems) {
+          const phaseStartDate = new Date(
+            Date.now() - Math.random() * 100 * 24 * 60 * 60 * 1000
+          );
+          const phaseEndDate = new Date(
+            phaseStartDate.getTime() + (30 + Math.random() * 90) * 24 * 60 * 60 * 1000
+          );
+
+          // Create phase directly in database with from_boq = true and is_active = false
+          const boqPhase = this.phaseRepository.create({
+            title: item.description,
+            description: `Section: ${item.section} | Unit: ${item.unit} | Quantity: ${item.quantity} | Rate: ${item.rate.toLocaleString('en-US')} TZS`,
+            budget: item.amount,
+            start_date: phaseStartDate,
+            end_date: phaseEndDate,
+            due_date: phaseEndDate,
+            progress: 0,
+            status: PhaseStatus.NOT_STARTED,
+            project_id: project.id,
+            is_active: false, // 🔒 HIDDEN: These phases appear in "View BOQ Phases" but not in regular phase list
+            from_boq: true, // 📋 Mark as BOQ-created
+            boqType: "contractor",
+            created_at: new Date(),
+            updated_at: new Date(),
+          });
+
+          await this.phaseRepository.save(boqPhase);
+          boqPhaseCount++;
+        }
+      }
+
+      // Create Sub-Contractor BOQ
+      if (hasSubContractorBOQ) {
+        const subContractorBoqItems = [];
+        const numItems = 5 + Math.floor(Math.random() * 10); // 5-15 items
+        let totalAmount = 0;
+
+        for (let i = 0; i < numItems; i++) {
+          const template = boqItemTemplates[Math.floor(Math.random() * boqItemTemplates.length)];
+          const quantity = template.quantity * (0.5 + Math.random() * 0.3); // Smaller quantities for sub-contractor
+          const rate = template.rate * (0.8 + Math.random() * 0.2); // Slightly lower rates
+          const amount = quantity * rate;
+          totalAmount += amount;
+
+          subContractorBoqItems.push({
+            description: `${template.description} (Sub-Contractor)`,
+            section: template.section,
+            unit: template.unit,
+            quantity: Math.round(quantity * 100) / 100,
+            rate: Math.round(rate * 100) / 100,
+            amount: Math.round(amount * 100) / 100,
+            rowIndex: i + 1,
+            rawData: {},
+          });
+        }
+
+        // Create ProjectBoq entry
+        const subContractorBoq = this.projectBoqRepository.create({
+          project_id: project.id,
+          type: BOQType.SUB_CONTRACTOR,
+          status: BOQStatus.PROCESSED,
+          file_name: `BOQ_SubContractor_${project.title.replace(/\s+/g, '_')}.xlsx`,
+          file_path: `/uploads/boq/${project.id}/sub_contractor_boq.xlsx`,
+          file_mimetype: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          file_size: 40000 + Math.floor(Math.random() * 80000),
+          total_amount: totalAmount,
+          phases_count: subContractorBoqItems.length,
+          uploaded_by: uploader.id,
+        });
+
+        const savedSubContractorBoq = await this.projectBoqRepository.save(subContractorBoq);
+        boqCount++;
+
+        // Get contractor phases for linking (if any exist)
+        const contractorPhases = await this.contractorPhaseRepository.find({
+          where: { project_id: project.id },
+          take: 5, // Get up to 5 contractor phases for potential linking
+        });
+
+        // Create phases from BOQ items
+        for (const item of subContractorBoqItems) {
+          const phaseStartDate = new Date(
+            Date.now() - Math.random() * 80 * 24 * 60 * 60 * 1000
+          );
+          const phaseEndDate = new Date(
+            phaseStartDate.getTime() + (20 + Math.random() * 60) * 24 * 60 * 60 * 1000
+          );
+
+          // Randomly link to a contractor phase (if available)
+          const linkedContractorPhaseId = contractorPhases.length > 0 && Math.random() > 0.5
+            ? contractorPhases[Math.floor(Math.random() * contractorPhases.length)].id
+            : null;
+
+          // Create phase directly in database with from_boq = true and is_active = false
+          const boqPhase = this.phaseRepository.create({
+            title: item.description,
+            description: `Section: ${item.section} | Unit: ${item.unit} | Quantity: ${item.quantity} | Rate: ${item.rate.toLocaleString('en-US')} TZS`,
+            budget: item.amount,
+            start_date: phaseStartDate,
+            end_date: phaseEndDate,
+            due_date: phaseEndDate,
+            progress: 0,
+            status: PhaseStatus.NOT_STARTED,
+            project_id: project.id,
+            is_active: false, // 🔒 HIDDEN: These phases appear in "View BOQ Phases" but not in regular phase list
+            from_boq: true, // 📋 Mark as BOQ-created
+            boqType: "sub_contractor",
+            linkedContractorPhaseId: linkedContractorPhaseId,
+            created_at: new Date(),
+            updated_at: new Date(),
+          });
+
+          await this.phaseRepository.save(boqPhase);
+          boqPhaseCount++;
+        }
+      }
+    }
+
+    console.log(`   ✓ Created ${boqCount} BOQ entries`);
+    console.log(`   ✓ Created ${boqPhaseCount} phases from BOQ data (visible in "View BOQ Phases" area)`);
   }
 }
 

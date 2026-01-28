@@ -7,6 +7,7 @@ import {
   ManyToOne,
   OneToMany,
   ManyToMany,
+  OneToOne,
   JoinTable,
   JoinColumn,
 } from "typeorm";
@@ -14,7 +15,12 @@ import { User } from "./user.entity";
 import { Task } from "./task.entity";
 import { Comment } from "./comment.entity";
 import { Phase } from "./phase.entity";
+import { ContractorPhase } from "./contractor-phase.entity";
+import { SubContractorPhase } from "./sub-contractor-phase.entity";
 import { Department } from "./department.entity";
+import { ProjectFinancialSummary } from "./project-financial-summary.entity";
+import { ProjectMetadata } from "./project-metadata.entity";
+import { ProjectSettings } from "./project-settings.entity";
 
 export enum ProjectStatus {
   PLANNING = "planning",
@@ -90,56 +96,23 @@ export class Project {
   totalAmount: number;
 
   // Financial fields
-  @Column({
-    type: "decimal",
-    precision: 15,
-    scale: 2,
-    default: 0.0,
-    name: "total_budget",
+  // Financial data moved to ProjectFinancialSummary
+  @OneToOne(() => ProjectFinancialSummary, (summary) => summary.project, {
+    cascade: true,
   })
-  totalBudget: number;
+  financialSummary: ProjectFinancialSummary;
 
-  @Column({
-    type: "decimal",
-    precision: 15,
-    scale: 2,
-    default: 0.0,
-    name: "allocated_budget",
+  // Metadata moved to ProjectMetadata
+  @OneToOne(() => ProjectMetadata, (metadata) => metadata.project, {
+    cascade: true,
   })
-  allocatedBudget: number;
+  metadata: ProjectMetadata;
 
-  @Column({
-    type: "decimal",
-    precision: 15,
-    scale: 2,
-    default: 0.0,
-    name: "spent_amount",
+  // Settings moved to ProjectSettings
+  @OneToOne(() => ProjectSettings, (settings) => settings.project, {
+    cascade: true,
   })
-  spentAmount: number;
-
-  @Column({
-    type: "decimal",
-    precision: 15,
-    scale: 2,
-    default: 0.0,
-    name: "estimated_savings",
-  })
-  estimatedSavings: number;
-
-  @Column({
-    type: "timestamp",
-    nullable: true,
-    name: "budget_last_updated",
-  })
-  budgetLastUpdated: Date;
-
-  @Column({
-    type: "enum",
-    enum: ["on_track", "warning", "over_budget", "excellent"],
-    default: "on_track",
-    name: "financial_status",
-  })
-  financialStatus: "on_track" | "warning" | "over_budget" | "excellent";
+  settings: ProjectSettings;
 
   @Column()
   owner_id: string;
@@ -156,8 +129,17 @@ export class Project {
   })
   collaborators: User[];
 
+  // Legacy phases (for backward compatibility)
   @OneToMany(() => Phase, (phase) => phase.project)
   phases: Phase[];
+
+  // Contractor phases
+  @OneToMany(() => ContractorPhase, (phase) => phase.project)
+  contractorPhases: ContractorPhase[];
+
+  // Sub-contractor phases
+  @OneToMany(() => SubContractorPhase, (phase) => phase.project)
+  subContractorPhases: SubContractorPhase[];
 
   @OneToMany(() => Task, (task) => task.project)
   tasks: Task[];

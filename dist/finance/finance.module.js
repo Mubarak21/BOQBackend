@@ -18,6 +18,7 @@ const project_transaction_entity_1 = require("./entities/project-transaction.ent
 const project_savings_entity_1 = require("./entities/project-savings.entity");
 const budget_alert_entity_1 = require("./entities/budget-alert.entity");
 const financial_report_entity_1 = require("./entities/financial-report.entity");
+const project_financial_summary_entity_1 = require("../entities/project-financial-summary.entity");
 const finance_service_1 = require("./services/finance.service");
 const analytics_service_1 = require("./services/analytics.service");
 const finance_report_generator_service_1 = require("./services/finance-report-generator.service");
@@ -36,6 +37,7 @@ exports.FinanceModule = FinanceModule = __decorate([
             inventory_module_1.InventoryModule,
             typeorm_1.TypeOrmModule.forFeature([
                 project_entity_1.Project,
+                project_financial_summary_entity_1.ProjectFinancialSummary,
                 budget_category_entity_1.BudgetCategory,
                 project_transaction_entity_1.ProjectTransaction,
                 project_savings_entity_1.ProjectSavings,

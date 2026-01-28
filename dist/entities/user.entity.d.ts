@@ -1,9 +1,10 @@
 import { Project } from "./project.entity";
 import { Comment } from "./comment.entity";
 import { Department } from "./department.entity";
+import { UserPreferences } from "./user-preferences.entity";
+import { UserSession } from "./user-session.entity";
 export declare enum UserRole {
     USER = "user",
-    ADMIN = "admin",
     CONSULTANT = "consultant",
     CONTRACTOR = "contractor",
     SUB_CONTRACTOR = "sub_contractor",
@@ -17,11 +18,8 @@ export declare class User {
     bio: string;
     avatar_url: string;
     role: UserRole;
-    notification_preferences: {
-        email: boolean;
-        project_updates: boolean;
-        task_updates: boolean;
-    };
+    preferences: UserPreferences;
+    sessions: UserSession[];
     status: string;
     last_login: Date;
     created_at: Date;

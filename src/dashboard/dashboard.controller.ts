@@ -14,7 +14,8 @@ export class DashboardController {
 
   /**
    * Get user-specific dashboard statistics
-   * Contractors and sub-contractors see stats for ALL projects
+   * Consultants see stats for ALL projects (they create projects)
+   * Contractors and sub-contractors see stats only for projects they're invited to
    * Other users see stats only for projects they own or collaborate on
    */
   @Get("stats")

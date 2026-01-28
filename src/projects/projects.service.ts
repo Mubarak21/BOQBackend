@@ -7,7 +7,7 @@ import {
   forwardRef,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, In, Between, Like } from "typeorm";
+import { Repository, In, Between, Like, DataSource } from "typeorm";
 import {
   Project,
   ProjectStatus,
@@ -41,6 +41,10 @@ import { ProjectContractorService } from "./services/project-contractor.service"
 import { ProjectPhaseService } from "./services/project-phase.service";
 import { ProjectBoqService } from "./services/project-boq.service";
 import { ProjectCollaborationService } from "./services/project-collaboration.service";
+import { ProjectBoq, BOQType, BOQStatus } from "../entities/project-boq.entity";
+import { ProjectFinancialSummary } from "../entities/project-financial-summary.entity";
+import { ProjectMetadata } from "../entities/project-metadata.entity";
+import { ProjectSettings } from "../entities/project-settings.entity";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -90,6 +94,14 @@ export class ProjectsService {
     private readonly inventoryRepository: Repository<Inventory>,
     @InjectRepository(InventoryUsage)
     private readonly inventoryUsageRepository: Repository<InventoryUsage>,
+    @InjectRepository(ProjectBoq)
+    private readonly projectBoqRepository: Repository<ProjectBoq>,
+    @InjectRepository(ProjectFinancialSummary)
+    private readonly financialSummaryRepository: Repository<ProjectFinancialSummary>,
+    @InjectRepository(ProjectMetadata)
+    private readonly metadataRepository: Repository<ProjectMetadata>,
+    @InjectRepository(ProjectSettings)
+    private readonly settingsRepository: Repository<ProjectSettings>,
     private readonly usersService: UsersService,
     @Inject(forwardRef(() => ActivitiesService))
     private readonly activitiesService: ActivitiesService,
@@ -102,7 +114,8 @@ export class ProjectsService {
     private readonly projectContractorService: ProjectContractorService,
     private readonly projectPhaseService: ProjectPhaseService,
     private readonly projectBoqService: ProjectBoqService,
-    private readonly projectCollaborationService: ProjectCollaborationService
+    private readonly projectCollaborationService: ProjectCollaborationService,
+    private readonly dataSource: DataSource
   ) {}
 
   async findAll(): Promise<Project[]> {
@@ -230,22 +243,28 @@ export class ProjectsService {
       throw new NotFoundException(`Project with ID ${id} not found`);
     }
 
-    // Check if user is contractor, sub_contractor, admin, or consultant - they can access all projects
+    // Check project access based on user role
     if (userId) {
       const user = await this.usersService.findOne(userId);
       const isContractor = user?.role === "contractor";
       const isSubContractor = user?.role === "sub_contractor";
-      const isAdmin = user?.role === "consultant";
       const isConsultant = user?.role === "consultant";
 
-      if (
-        !isContractor &&
-        !isSubContractor &&
-        !isAdmin &&
-        !isConsultant &&
-        !this.hasProjectAccess(project, userId)
-      ) {
-        throw new ForbiddenException("You don't have access to this project");
+      // Consultants can access all projects (they create projects)
+      if (isConsultant) {
+        // Allow access - consultants can view all projects
+      } 
+      // Contractors and sub-contractors can only access projects they're invited to (owner or collaborator)
+      else if (isContractor || isSubContractor) {
+        if (!this.hasProjectAccess(project, userId)) {
+          throw new ForbiddenException("You don't have access to this project. You need to be invited or added as a collaborator.");
+        }
+      }
+      // Other users must be owner or collaborator
+      else {
+        if (!this.hasProjectAccess(project, userId)) {
+          throw new ForbiddenException("You don't have access to this project");
+        }
       }
     }
 
@@ -267,45 +286,89 @@ export class ProjectsService {
       throw new BadRequestException("Owner is required");
     }
 
-    const project = this.projectsRepository.create({
-      title: createProjectDto.title,
-      description: createProjectDto.description,
-      status: createProjectDto.status,
-      priority: createProjectDto.priority,
-      start_date: createProjectDto.start_date
-        ? new Date(createProjectDto.start_date)
-        : null,
-      end_date: createProjectDto.end_date
-        ? new Date(createProjectDto.end_date)
-        : null,
-      tags: createProjectDto.tags,
-      owner_id: owner.id,
-      totalAmount: this.validateAndNormalizeProjectAmount(
-        createProjectDto.totalAmount ?? 0
-      ),
-      // Set totalBudget to the same value as totalAmount when project is created
-      totalBudget: this.validateAndNormalizeProjectAmount(
-        createProjectDto.totalAmount ?? 0
-      ),
-    });
-
-    // Handle collaborators if provided
-    if (createProjectDto.collaborator_ids?.length) {
-      const collaborators = await this.getValidatedCollaborators(
-        createProjectDto.collaborator_ids
-      );
-      project.collaborators = collaborators;
-    }
-
-    const savedProject = await this.projectsRepository.save(project);
+    // Use QueryRunner for transaction management
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
     try {
-      await this.activitiesService.logProjectCreated(owner, savedProject, null);
+      // Create project
+      const project = queryRunner.manager.create(Project, {
+        title: createProjectDto.title,
+        description: createProjectDto.description,
+        status: createProjectDto.status,
+        priority: createProjectDto.priority,
+        start_date: createProjectDto.start_date
+          ? new Date(createProjectDto.start_date)
+          : null,
+        end_date: createProjectDto.end_date
+          ? new Date(createProjectDto.end_date)
+          : null,
+        tags: createProjectDto.tags,
+        owner_id: owner.id,
+        totalAmount: this.validateAndNormalizeProjectAmount(
+          createProjectDto.totalAmount ?? 0
+        ),
+      });
+
+      // Handle collaborators if provided
+      if (createProjectDto.collaborator_ids?.length) {
+        const collaborators = await this.getValidatedCollaborators(
+          createProjectDto.collaborator_ids
+        );
+        project.collaborators = collaborators;
+      }
+
+      const savedProject = await queryRunner.manager.save(Project, project);
+
+      // Create financial summary
+      const financialSummary = queryRunner.manager.create(ProjectFinancialSummary, {
+        project_id: savedProject.id,
+        totalBudget: createProjectDto.totalAmount || 0,
+        spentAmount: 0,
+        allocatedBudget: 0,
+        estimatedSavings: 0,
+        financialStatus: 'on_track',
+        budgetLastUpdated: new Date(),
+      });
+      await queryRunner.manager.save(ProjectFinancialSummary, financialSummary);
+
+      // Create metadata
+      const metadata = queryRunner.manager.create(ProjectMetadata, {
+        project_id: savedProject.id,
+      });
+      await queryRunner.manager.save(ProjectMetadata, metadata);
+
+      // Create settings
+      const settings = queryRunner.manager.create(ProjectSettings, {
+        project_id: savedProject.id,
+      });
+      await queryRunner.manager.save(ProjectSettings, settings);
+
+      await queryRunner.commitTransaction();
+
+      // Log activity outside transaction
+      try {
+        await this.activitiesService.logProjectCreated(owner, savedProject, null);
+      } catch (error) {
+        // Failed to log project creation activity - don't fail the operation
+        console.error('Failed to log project creation activity:', error);
+      }
+
+      // Update dashboard stats outside transaction
+      try {
+        await this.dashboardService.updateStats();
+      } catch (error) {
+        console.error('Failed to update dashboard stats:', error);
+      }
+
+      return this.findOne(savedProject.id);
     } catch (error) {
-      // Failed to log project creation activity
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
-    await this.dashboardService.updateStats();
-    return this.findOne(savedProject.id);
   }
 
   async update(
@@ -315,7 +378,7 @@ export class ProjectsService {
   ): Promise<Project> {
     const project = await this.findOne(id);
     const user = await this.usersService.findOne(userId);
-    const isAdmin = user?.role === "admin";
+    const isAdmin = user?.role === "consultant";
     const isConsultant = user?.role === "consultant";
 
     if (project.owner_id !== userId && !isAdmin && !isConsultant) {
@@ -352,7 +415,7 @@ export class ProjectsService {
   async remove(id: string, userId: string): Promise<void> {
     const project = await this.findOne(id);
     const user = await this.usersService.findOne(userId);
-    const isAdmin = user?.role === "admin";
+    const isAdmin = user?.role === "consultant";
     const isConsultant = user?.role === "consultant";
 
     if (project.owner_id !== userId && !isAdmin && !isConsultant) {
@@ -402,14 +465,17 @@ export class ProjectsService {
     data: any[],
     totalAmount: number,
     userId: string,
-    fileName?: string
+    file?: Express.Multer.File,
+    type?: 'contractor' | 'sub_contractor'
   ): Promise<ProcessBoqResult> {
     return this.projectBoqService.processBoqFileFromParsedData(
       projectId,
       data,
       totalAmount,
       userId,
-      fileName
+      file?.originalname,
+      file,
+      type
     );
   }
 
@@ -456,11 +522,27 @@ export class ProjectsService {
     userId: string,
     { page = 1, limit = 10 }: { page?: number; limit?: number }
   ) {
-    return this.projectPhaseService.getProjectPhasesPaginated(
-      projectId,
-      userId,
-      { page, limit }
-    );
+    // Use projectContractorService for contractors/sub-contractors, projectPhaseService for others
+    const user = await this.usersService.findOne(userId);
+    const userRole = user?.role?.toLowerCase();
+    
+    if (userRole === 'contractor' || userRole === 'sub_contractor') {
+      return this.projectContractorService.getProjectPhasesPaginated(
+        projectId,
+        userId,
+        { page, limit }
+      );
+    } else {
+      return this.projectPhaseService.getProjectPhasesPaginated(
+        projectId,
+        userId,
+        { page, limit }
+      );
+    }
+  }
+
+  async getContractorPhasesForLinking(projectId: string, userId: string): Promise<any[]> {
+    return this.projectContractorService.getContractorPhasesForLinking(projectId, userId);
   }
 
   async getAvailableAssignees(projectId: string): Promise<User[]> {
@@ -477,7 +559,7 @@ export class ProjectsService {
     return [project.owner, ...(project.collaborators || [])];
   }
 
-  async getProjectResponse(project: Project): Promise<any> {
+  async getProjectResponse(project: Project, userId?: string): Promise<any> {
     // Calculate progress the same way as ContractorProjectDetails
     const calculatePhaseCompletion = (phase: Phase): number => {
       // If phase has subPhases, calculate based on subPhase completion
@@ -524,6 +606,12 @@ export class ProjectsService {
     }
     // If phases not loaded, progress/phase counts will be 0 (can be fetched when viewing project details)
 
+    // Determine if user is owner or collaborator
+    const isOwner = userId ? project.owner_id === userId : false;
+    const isCollaborator = userId
+      ? (project.collaborators || []).some((c) => c.id === userId)
+      : false;
+
     return {
       id: project.id,
       name: project.title,
@@ -531,7 +619,7 @@ export class ProjectsService {
       progress: projectProgress,
       completedPhases,
       totalPhases,
-      totalAmount: project.totalAmount ?? project.totalBudget ?? 0,
+      totalAmount: project.totalAmount ?? 0,
       startDate: project.start_date,
       estimatedCompletion: project.end_date,
       owner: project.owner?.display_name || project.owner_id,
@@ -539,6 +627,8 @@ export class ProjectsService {
         (c) => c.display_name || c.id
       ),
       tags: project.tags,
+      isOwner: isOwner,
+      isCollaborator: isCollaborator,
       // Only include phases if they were loaded (for performance)
       phases:
         phases.length > 0
@@ -737,7 +827,7 @@ export class ProjectsService {
           completedPhases,
           totalPhases,
           totalAmount: p.totalAmount || 0,
-          totalBudget: totalBudget || p.totalBudget || 0,
+          totalBudget: totalBudget || 0,
           startDate: p.start_date || p.created_at,
           estimatedCompletion: p.end_date || p.updated_at,
         };
@@ -1559,12 +1649,13 @@ export class ProjectsService {
       }
 
       // Insert phase using raw query to avoid TypeORM relation issues
+      // Note: boq_type is determined by the BOQ type being processed
       const insertQuery = `
         INSERT INTO phase (
           title, description, budget, start_date, end_date, due_date, 
-          progress, status, project_id, is_active, from_boq, created_at, updated_at
+          progress, status, project_id, is_active, from_boq, boq_type, created_at, updated_at
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         ) RETURNING *
       `;
 
@@ -1581,6 +1672,7 @@ export class ProjectsService {
           phaseData.project_id,
           phaseData.is_active,
           phaseData.from_boq,
+          null, // boq_type will be set by project-boq.service.ts
         ]);
 
         if (!result || result.length === 0) {
@@ -1741,6 +1833,7 @@ export class ProjectsService {
   }
 
   async getAllConsultantProjectsPaginated(
+    userId: string,
     page: number = 1,
     limit: number = 10,
     search?: string,
@@ -1753,6 +1846,7 @@ export class ProjectsService {
     totalPages: number;
   }> {
     return this.projectConsultantService.getAllConsultantProjectsPaginated(
+      userId,
       page,
       limit,
       search,
@@ -1786,7 +1880,7 @@ export class ProjectsService {
    * Get BOQ draft phases (inactive phases created from BOQ upload)
    * These are hidden phases that user can choose to activate
    */
-  async getBoqDraftPhases(projectId: string, userId: string): Promise<Phase[]> {
+  async getBoqDraftPhases(projectId: string, userId: string): Promise<any[]> {
     return this.projectPhaseService.getBoqDraftPhases(projectId, userId);
   }
 
@@ -1796,12 +1890,14 @@ export class ProjectsService {
   async activateBoqPhases(
     projectId: string,
     phaseIds: string[],
-    userId: string
+    userId: string,
+    linkedContractorPhaseId?: string
   ): Promise<{ activated: number; phases: Phase[] }> {
     return this.projectPhaseService.activateBoqPhases(
       projectId,
       phaseIds,
-      userId
+      userId,
+      linkedContractorPhaseId
     );
   }
 
@@ -2039,5 +2135,45 @@ export class ProjectsService {
 
   async getDashboardMonthlyGrowth() {
     return this.projectDashboardService.getDashboardMonthlyGrowth();
+  }
+
+  async getProjectBoqs(projectId: string, userId: string) {
+    // Verify user has access to project
+    await this.findOne(projectId, userId);
+    
+    // Get user to determine role-based filtering
+    const user = await this.usersService.findOne(userId);
+    const userRole = user?.role?.toLowerCase();
+    
+    // Build where clause based on user role
+    const whereClause: any = { project_id: projectId };
+    
+    // Filter BOQs by user role:
+    // - Contractors see only contractor BOQs
+    // - Sub-contractors see only sub-contractor BOQs
+    // - Consultants see all BOQs
+    if (userRole === 'contractor') {
+      whereClause.type = 'contractor';
+    } else if (userRole === 'sub_contractor') {
+      whereClause.type = 'sub_contractor';
+    }
+    // Consultants and other roles see all BOQs (no type filter)
+    
+    const boqs = await this.projectBoqRepository.find({
+      where: whereClause,
+      order: { created_at: 'ASC' },
+    });
+
+    return boqs.map(boq => ({
+      id: boq.id,
+      type: boq.type,
+      status: boq.status,
+      fileName: boq.file_name,
+      totalAmount: boq.total_amount,
+      phasesCount: boq.phases_count,
+      createdAt: boq.created_at,
+      updatedAt: boq.updated_at,
+      errorMessage: boq.error_message,
+    }));
   }
 }

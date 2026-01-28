@@ -233,7 +233,7 @@ __decorate([
 ], FinanceController.prototype, "configureBudgetAlerts", null);
 __decorate([
     (0, common_1.Post)("recalculate-all"),
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.FINANCE),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.CONSULTANT, user_entity_1.UserRole.FINANCE),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)

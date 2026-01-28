@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID } from "class-validator";
+import { IsString, IsOptional, IsUUID, IsBoolean } from "class-validator";
 
 export class CreateSubPhaseDto {
   @IsString()
@@ -11,4 +11,8 @@ export class CreateSubPhaseDto {
   @IsOptional()
   @IsUUID()
   parentSubPhaseId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isCompleted?: boolean;
 }

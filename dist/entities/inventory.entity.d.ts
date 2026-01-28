@@ -1,5 +1,7 @@
 import { User } from "./user.entity";
 import { Project } from "./project.entity";
+import { Supplier } from "./supplier.entity";
+import { InventoryUsageLog } from "./inventory-usage-log.entity";
 export declare enum InventoryCategory {
     MATERIALS = "materials",
     EQUIPMENT = "equipment",
@@ -17,8 +19,9 @@ export declare class Inventory {
     category: InventoryCategory;
     brand: string;
     model: string;
-    supplier: string;
-    supplier_contact: string;
+    supplierId: string;
+    supplier: Supplier;
+    usageLogs: InventoryUsageLog[];
     quantity_available: number;
     quantity_used: number;
     minimum_stock: number;

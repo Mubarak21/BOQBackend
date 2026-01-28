@@ -1,6 +1,8 @@
 import { Project } from "../../entities/project.entity";
 import { User } from "../../entities/user.entity";
 import { BudgetCategory } from "./budget-category.entity";
+import { TransactionAttachment } from "../../entities/transaction-attachment.entity";
+import { TransactionApprovalHistory } from "../../entities/transaction-approval-history.entity";
 export declare enum TransactionType {
     EXPENSE = "expense",
     REFUND = "refund",
@@ -28,7 +30,8 @@ export declare class ProjectTransaction {
     approvedBy: string;
     approver: User;
     approvedAt: Date;
-    receiptUrl: string;
+    attachments: TransactionAttachment[];
+    approvalHistory: TransactionApprovalHistory[];
     notes: string;
     createdAt: Date;
     updatedAt: Date;

@@ -4,7 +4,7 @@ import { Repository, Between } from "typeorm";
 import { Project, ProjectStatus } from "../entities/project.entity";
 import { User, UserRole } from "../entities/user.entity";
 import { Task } from "../entities/task.entity";
-import { Phase } from "../entities/phase.entity";
+import { Phase, PhaseStatus } from "../entities/phase.entity";
 import { Stats } from "../entities/stats.entity";
 
 @Injectable()
@@ -21,10 +21,12 @@ export class DashboardService {
   ) {}
 
   async getStats(userId: string, userRole?: string) {
-    // Contractors and sub-contractors can see all projects
+    // Consultants can see all projects (they create projects)
+    // Contractors and sub-contractors can only see projects they're invited to
+    const isConsultant = userRole?.toLowerCase() === UserRole.CONSULTANT.toLowerCase();
     const isContractor = userRole?.toLowerCase() === UserRole.CONTRACTOR.toLowerCase();
     const isSubContractor = userRole?.toLowerCase() === UserRole.SUB_CONTRACTOR.toLowerCase();
-    const canSeeAllProjects = isContractor || isSubContractor;
+    const canSeeAllProjects = isConsultant; // Only consultants can see all projects
 
     const [
       totalProjects,
@@ -60,6 +62,7 @@ export class DashboardService {
         completedPhases: phaseStats.completed_phases,
         inProgressPhases: phaseStats.in_progress_phases,
         totalBudget: phaseStats.total_budget,
+        completionRate: phaseStats.completion_rate || 0,
       },
       completion_rate:
         totalProjects > 0 ? (completedProjects / totalProjects) * 100 : 0,
@@ -126,12 +129,14 @@ export class DashboardService {
 
   /**
    * Get user-specific dashboard stats in the format expected by frontend
-   * Contractors and sub-contractors see stats for ALL projects
+   * Consultants see stats for ALL projects (they create projects)
+   * Contractors and sub-contractors see stats only for projects they're invited to
    */
   async getUserStatsForDashboard(userId: string, userRole?: string) {
+    const isConsultant = userRole?.toLowerCase() === UserRole.CONSULTANT.toLowerCase();
     const isContractor = userRole?.toLowerCase() === UserRole.CONTRACTOR.toLowerCase();
     const isSubContractor = userRole?.toLowerCase() === UserRole.SUB_CONTRACTOR.toLowerCase();
-    const canSeeAllProjects = isContractor || isSubContractor;
+    const canSeeAllProjects = isConsultant; // Only consultants can see all projects
 
     const [totalProjects, completedProjects, totalTeamMembers, totalValue] =
       await Promise.all([
@@ -220,6 +225,7 @@ export class DashboardService {
   }
 
   private async getPhaseStats(userId: string, canSeeAllProjects: boolean = false): Promise<any> {
+    // Get projects first based on access
     const projects = canSeeAllProjects
       ? await this.projectsRepository.find({
           relations: ["phases"],
@@ -237,21 +243,31 @@ export class DashboardService {
     };
 
     projects.forEach((project) => {
-      const projectPhases: Phase[] = project.phases || [];
+      const projectPhases: Phase[] = (project.phases || []).filter(
+        (phase) => phase.is_active !== false // Only count active phases
+      );
       stats.total_phases += projectPhases.length;
       stats.completed_phases += projectPhases.filter(
-        (phase) => phase.status === "completed"
+        (phase) => phase.status === PhaseStatus.COMPLETED
       ).length;
       stats.in_progress_phases += projectPhases.filter(
-        (phase) => phase.status === "in_progress"
+        (phase) => phase.status === PhaseStatus.IN_PROGRESS
       ).length;
       stats.total_budget += projectPhases.reduce(
-        (sum, phase) => sum + (phase.budget || 0),
+        (sum, phase) => sum + (Number(phase.budget) || 0),
         0
       );
     });
 
-    return stats;
+    // Calculate completion rate
+    const completionRate = stats.total_phases > 0 
+      ? Math.round((stats.completed_phases / stats.total_phases) * 100) 
+      : 0;
+
+    return {
+      ...stats,
+      completion_rate: completionRate,
+    };
   }
 
   private async getMonthlyGrowth(userId: string, canSeeAllProjects: boolean = false): Promise<number> {
@@ -301,16 +317,18 @@ export class DashboardService {
   private async getTotalProjectValues(userId: string, canSeeAllProjects: boolean = false): Promise<number> {
     const projects = canSeeAllProjects
       ? await this.projectsRepository.find({
-          select: ["totalBudget", "totalAmount"],
+          select: ["totalAmount"],
+          relations: ["financialSummary"],
         })
       : await this.projectsRepository.find({
           where: [{ owner_id: userId }, { collaborators: { id: userId } }],
-          select: ["totalBudget", "totalAmount"],
+          select: ["totalAmount"],
+          relations: ["financialSummary"],
         });
 
     return projects.reduce(
       (sum, project) => {
-        const budget = project.totalBudget != null ? Number(project.totalBudget) : null;
+        const budget = project.financialSummary?.totalBudget != null ? Number(project.financialSummary.totalBudget) : null;
         const amount = project.totalAmount != null ? Number(project.totalAmount) : null;
         const value = (budget != null && !isNaN(budget)) ? budget : 
                       (amount != null && !isNaN(amount)) ? amount : 0;

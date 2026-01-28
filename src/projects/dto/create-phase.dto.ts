@@ -65,6 +65,10 @@ export class CreatePhaseDto {
   @IsOptional()
   referenceTaskId?: string;
 
+  @IsString()
+  @IsOptional()
+  linkedContractorPhaseId?: string; // For sub-contractors to link to contractor phases
+
   @ValidateNested({ each: true })
   @Type(() => CreateTaskDto)
   @IsOptional()

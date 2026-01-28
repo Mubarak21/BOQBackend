@@ -5,12 +5,15 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
   Check,
 } from "typeorm";
 import { Project } from "../../entities/project.entity";
 import { User } from "../../entities/user.entity";
 import { BudgetCategory } from "./budget-category.entity";
+import { TransactionAttachment } from "../../entities/transaction-attachment.entity";
+import { TransactionApprovalHistory } from "../../entities/transaction-approval-history.entity";
 
 export enum TransactionType {
   EXPENSE = "expense",
@@ -86,8 +89,17 @@ export class ProjectTransaction {
   @Column({ type: "timestamp", nullable: true, name: "approved_at" })
   approvedAt: Date;
 
-  @Column({ length: 500, nullable: true, name: "receipt_url" })
-  receiptUrl: string;
+  // Attachments moved to TransactionAttachment table (supports multiple files)
+  @OneToMany(() => TransactionAttachment, (attachment) => attachment.transaction, {
+    cascade: true,
+  })
+  attachments: TransactionAttachment[];
+
+  // Approval history moved to TransactionApprovalHistory table
+  @OneToMany(() => TransactionApprovalHistory, (history) => history.transaction, {
+    cascade: true,
+  })
+  approvalHistory: TransactionApprovalHistory[];
 
   @Column({ type: "text", nullable: true })
   notes: string;

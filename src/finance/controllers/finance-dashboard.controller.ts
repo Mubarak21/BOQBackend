@@ -20,7 +20,7 @@ import { RequestWithUser } from "../../auth/interfaces/request-with-user.interfa
 
 @Controller("finance/dashboard")
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.FINANCE)
+@Roles(UserRole.FINANCE, UserRole.CONSULTANT)
 export class FinanceDashboardController {
   constructor(
     private readonly financeService: FinanceService,

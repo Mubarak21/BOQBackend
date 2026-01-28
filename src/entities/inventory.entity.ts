@@ -5,10 +5,13 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from "typeorm";
 import { User } from "./user.entity";
 import { Project } from "./project.entity";
+import { Supplier } from "./supplier.entity";
+import { InventoryUsageLog } from "./inventory-usage-log.entity";
 
 export enum InventoryCategory {
   MATERIALS = "materials",
@@ -53,11 +56,19 @@ export class Inventory {
   @Column({ nullable: true })
   model: string;
 
-  @Column({ nullable: true })
-  supplier: string;
+  // Supplier moved to separate Supplier table
+  @Column({ name: "supplier_id", nullable: true })
+  supplierId: string;
 
-  @Column({ nullable: true })
-  supplier_contact: string;
+  @ManyToOne(() => Supplier, (supplier) => supplier.inventory_items, {
+    nullable: true,
+  })
+  @JoinColumn({ name: "supplier_id" })
+  supplier: Supplier;
+
+  // Usage logs tracking
+  @OneToMany(() => InventoryUsageLog, (log) => log.inventory)
+  usageLogs: InventoryUsageLog[];
 
   @Column({ type: "int", default: 0 })
   quantity_available: number;

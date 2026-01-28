@@ -23,7 +23,6 @@ export class UsersService {
         "bio",
         "avatar_url",
         "role",
-        "notification_preferences",
         "created_at",
         "updated_at",
       ],

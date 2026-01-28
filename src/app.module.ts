@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
@@ -22,6 +22,8 @@ import { User } from "./entities/user.entity";
 import { Department } from "./entities/department.entity";
 import { Project } from "./entities/project.entity";
 import { Phase } from "./entities/phase.entity";
+import { ContractorPhase } from "./entities/contractor-phase.entity";
+import { SubContractorPhase } from "./entities/sub-contractor-phase.entity";
 import { Task } from "./entities/task.entity";
 import { BudgetCategory } from "./finance/entities/budget-category.entity";
 import { ProjectTransaction } from "./finance/entities/project-transaction.entity";
@@ -34,6 +36,19 @@ import { Comment } from "./entities/comment.entity";
 import { Complaint } from "./entities/complaint.entity";
 import { SubPhase } from "./entities/sub-phase.entity";
 import { Inventory } from "./entities/inventory.entity";
+import { ProjectBoq } from "./entities/project-boq.entity";
+// New normalized entities
+import { ProjectFinancialSummary } from "./entities/project-financial-summary.entity";
+import { ProjectMetadata } from "./entities/project-metadata.entity";
+import { ProjectSettings } from "./entities/project-settings.entity";
+import { Supplier } from "./entities/supplier.entity";
+import { TransactionAttachment } from "./entities/transaction-attachment.entity";
+import { TransactionApprovalHistory } from "./entities/transaction-approval-history.entity";
+import { UserPreferences } from "./entities/user-preferences.entity";
+import { UserSession } from "./entities/user-session.entity";
+import { AuditLog } from "./entities/audit-log.entity";
+import { InventoryUsageLog } from "./entities/inventory-usage-log.entity";
+import { PhaseFinancialSummary } from "./entities/phase-financial-summary.entity";
 
 @Module({
   imports: [
@@ -66,6 +81,8 @@ import { Inventory } from "./entities/inventory.entity";
       Department,
       Project,
       Phase,
+      ContractorPhase,
+      SubContractorPhase,
       Task,
       BudgetCategory,
       ProjectTransaction,
@@ -78,10 +95,23 @@ import { Inventory } from "./entities/inventory.entity";
       Complaint,
       SubPhase,
       Inventory,
+      ProjectBoq,
+      // New normalized entities
+      ProjectFinancialSummary,
+      ProjectMetadata,
+      ProjectSettings,
+      Supplier,
+      TransactionAttachment,
+      TransactionApprovalHistory,
+      UserPreferences,
+      UserSession,
+      AuditLog,
+      InventoryUsageLog,
+      PhaseFinancialSummary,
     ]),
     AuthModule,
     UsersModule,
-    ProjectsModule,
+    forwardRef(() => ProjectsModule),
     TasksModule,
     CommentsModule,
     DashboardModule,

@@ -36,17 +36,25 @@ const project_contractor_service_1 = require("./services/project-contractor.serv
 const project_phase_service_1 = require("./services/project-phase.service");
 const project_boq_service_1 = require("./services/project-boq.service");
 const project_collaboration_service_1 = require("./services/project-collaboration.service");
+const project_boq_entity_1 = require("../entities/project-boq.entity");
+const project_financial_summary_entity_1 = require("../entities/project-financial-summary.entity");
+const project_metadata_entity_1 = require("../entities/project-metadata.entity");
+const project_settings_entity_1 = require("../entities/project-settings.entity");
 function normalizeColumnName(name) {
     return name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
 }
 let ProjectsService = class ProjectsService {
-    constructor(projectsRepository, tasksRepository, phasesRepository, accessRequestRepository, inventoryRepository, inventoryUsageRepository, usersService, activitiesService, tasksService, dashboardService, boqParserService, projectDashboardService, projectConsultantService, projectContractorService, projectPhaseService, projectBoqService, projectCollaborationService) {
+    constructor(projectsRepository, tasksRepository, phasesRepository, accessRequestRepository, inventoryRepository, inventoryUsageRepository, projectBoqRepository, financialSummaryRepository, metadataRepository, settingsRepository, usersService, activitiesService, tasksService, dashboardService, boqParserService, projectDashboardService, projectConsultantService, projectContractorService, projectPhaseService, projectBoqService, projectCollaborationService, dataSource) {
         this.projectsRepository = projectsRepository;
         this.tasksRepository = tasksRepository;
         this.phasesRepository = phasesRepository;
         this.accessRequestRepository = accessRequestRepository;
         this.inventoryRepository = inventoryRepository;
         this.inventoryUsageRepository = inventoryUsageRepository;
+        this.projectBoqRepository = projectBoqRepository;
+        this.financialSummaryRepository = financialSummaryRepository;
+        this.metadataRepository = metadataRepository;
+        this.settingsRepository = settingsRepository;
         this.usersService = usersService;
         this.activitiesService = activitiesService;
         this.tasksService = tasksService;
@@ -58,6 +66,7 @@ let ProjectsService = class ProjectsService {
         this.projectPhaseService = projectPhaseService;
         this.projectBoqService = projectBoqService;
         this.projectCollaborationService = projectCollaborationService;
+        this.dataSource = dataSource;
         this.parseAmountValue = amount_utils_1.parseAmount;
     }
     async findAll() {
@@ -142,14 +151,18 @@ let ProjectsService = class ProjectsService {
             const user = await this.usersService.findOne(userId);
             const isContractor = user?.role === "contractor";
             const isSubContractor = user?.role === "sub_contractor";
-            const isAdmin = user?.role === "consultant";
             const isConsultant = user?.role === "consultant";
-            if (!isContractor &&
-                !isSubContractor &&
-                !isAdmin &&
-                !isConsultant &&
-                !this.hasProjectAccess(project, userId)) {
-                throw new common_1.ForbiddenException("You don't have access to this project");
+            if (isConsultant) {
+            }
+            else if (isContractor || isSubContractor) {
+                if (!this.hasProjectAccess(project, userId)) {
+                    throw new common_1.ForbiddenException("You don't have access to this project. You need to be invited or added as a collaborator.");
+                }
+            }
+            else {
+                if (!this.hasProjectAccess(project, userId)) {
+                    throw new common_1.ForbiddenException("You don't have access to this project");
+                }
             }
         }
         if (project.phases?.length > 0) {
@@ -161,39 +174,75 @@ let ProjectsService = class ProjectsService {
         if (!owner?.id) {
             throw new common_1.BadRequestException("Owner is required");
         }
-        const project = this.projectsRepository.create({
-            title: createProjectDto.title,
-            description: createProjectDto.description,
-            status: createProjectDto.status,
-            priority: createProjectDto.priority,
-            start_date: createProjectDto.start_date
-                ? new Date(createProjectDto.start_date)
-                : null,
-            end_date: createProjectDto.end_date
-                ? new Date(createProjectDto.end_date)
-                : null,
-            tags: createProjectDto.tags,
-            owner_id: owner.id,
-            totalAmount: this.validateAndNormalizeProjectAmount(createProjectDto.totalAmount ?? 0),
-            totalBudget: this.validateAndNormalizeProjectAmount(createProjectDto.totalAmount ?? 0),
-        });
-        if (createProjectDto.collaborator_ids?.length) {
-            const collaborators = await this.getValidatedCollaborators(createProjectDto.collaborator_ids);
-            project.collaborators = collaborators;
-        }
-        const savedProject = await this.projectsRepository.save(project);
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
         try {
-            await this.activitiesService.logProjectCreated(owner, savedProject, null);
+            const project = queryRunner.manager.create(project_entity_1.Project, {
+                title: createProjectDto.title,
+                description: createProjectDto.description,
+                status: createProjectDto.status,
+                priority: createProjectDto.priority,
+                start_date: createProjectDto.start_date
+                    ? new Date(createProjectDto.start_date)
+                    : null,
+                end_date: createProjectDto.end_date
+                    ? new Date(createProjectDto.end_date)
+                    : null,
+                tags: createProjectDto.tags,
+                owner_id: owner.id,
+                totalAmount: this.validateAndNormalizeProjectAmount(createProjectDto.totalAmount ?? 0),
+            });
+            if (createProjectDto.collaborator_ids?.length) {
+                const collaborators = await this.getValidatedCollaborators(createProjectDto.collaborator_ids);
+                project.collaborators = collaborators;
+            }
+            const savedProject = await queryRunner.manager.save(project_entity_1.Project, project);
+            const financialSummary = queryRunner.manager.create(project_financial_summary_entity_1.ProjectFinancialSummary, {
+                project_id: savedProject.id,
+                totalBudget: createProjectDto.totalAmount || 0,
+                spentAmount: 0,
+                allocatedBudget: 0,
+                estimatedSavings: 0,
+                financialStatus: 'on_track',
+                budgetLastUpdated: new Date(),
+            });
+            await queryRunner.manager.save(project_financial_summary_entity_1.ProjectFinancialSummary, financialSummary);
+            const metadata = queryRunner.manager.create(project_metadata_entity_1.ProjectMetadata, {
+                project_id: savedProject.id,
+            });
+            await queryRunner.manager.save(project_metadata_entity_1.ProjectMetadata, metadata);
+            const settings = queryRunner.manager.create(project_settings_entity_1.ProjectSettings, {
+                project_id: savedProject.id,
+            });
+            await queryRunner.manager.save(project_settings_entity_1.ProjectSettings, settings);
+            await queryRunner.commitTransaction();
+            try {
+                await this.activitiesService.logProjectCreated(owner, savedProject, null);
+            }
+            catch (error) {
+                console.error('Failed to log project creation activity:', error);
+            }
+            try {
+                await this.dashboardService.updateStats();
+            }
+            catch (error) {
+                console.error('Failed to update dashboard stats:', error);
+            }
+            return this.findOne(savedProject.id);
         }
         catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
         }
-        await this.dashboardService.updateStats();
-        return this.findOne(savedProject.id);
+        finally {
+            await queryRunner.release();
+        }
     }
     async update(id, updateProjectDto, userId) {
         const project = await this.findOne(id);
         const user = await this.usersService.findOne(userId);
-        const isAdmin = user?.role === "admin";
+        const isAdmin = user?.role === "consultant";
         const isConsultant = user?.role === "consultant";
         if (project.owner_id !== userId && !isAdmin && !isConsultant) {
             throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can update the project");
@@ -219,7 +268,7 @@ let ProjectsService = class ProjectsService {
     async remove(id, userId) {
         const project = await this.findOne(id);
         const user = await this.usersService.findOne(userId);
-        const isAdmin = user?.role === "admin";
+        const isAdmin = user?.role === "consultant";
         const isConsultant = user?.role === "consultant";
         if (project.owner_id !== userId && !isAdmin && !isConsultant) {
             throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can delete the project");
@@ -236,8 +285,8 @@ let ProjectsService = class ProjectsService {
     async processBoqFile(projectId, file, userId) {
         return this.projectBoqService.processBoqFile(projectId, file, userId);
     }
-    async processBoqFileFromParsedData(projectId, data, totalAmount, userId, fileName) {
-        return this.projectBoqService.processBoqFileFromParsedData(projectId, data, totalAmount, userId, fileName);
+    async processBoqFileFromParsedData(projectId, data, totalAmount, userId, file, type) {
+        return this.projectBoqService.processBoqFileFromParsedData(projectId, data, totalAmount, userId, file?.originalname, file, type);
     }
     async createPhase(projectId, createPhaseDto, userId) {
         return this.projectPhaseService.createPhase(projectId, createPhaseDto, userId);
@@ -252,7 +301,17 @@ let ProjectsService = class ProjectsService {
         return this.projectContractorService.getProjectPhases(projectId, userId);
     }
     async getProjectPhasesPaginated(projectId, userId, { page = 1, limit = 10 }) {
-        return this.projectPhaseService.getProjectPhasesPaginated(projectId, userId, { page, limit });
+        const user = await this.usersService.findOne(userId);
+        const userRole = user?.role?.toLowerCase();
+        if (userRole === 'contractor' || userRole === 'sub_contractor') {
+            return this.projectContractorService.getProjectPhasesPaginated(projectId, userId, { page, limit });
+        }
+        else {
+            return this.projectPhaseService.getProjectPhasesPaginated(projectId, userId, { page, limit });
+        }
+    }
+    async getContractorPhasesForLinking(projectId, userId) {
+        return this.projectContractorService.getContractorPhasesForLinking(projectId, userId);
     }
     async getAvailableAssignees(projectId) {
         const project = await this.projectsRepository.findOne({
@@ -264,7 +323,7 @@ let ProjectsService = class ProjectsService {
         }
         return [project.owner, ...(project.collaborators || [])];
     }
-    async getProjectResponse(project) {
+    async getProjectResponse(project, userId) {
         const calculatePhaseCompletion = (phase) => {
             if (phase.subPhases && phase.subPhases.length > 0) {
                 const completed = phase.subPhases.filter((sp) => sp.isCompleted).length;
@@ -297,6 +356,10 @@ let ProjectsService = class ProjectsService {
             completedPhases = phases.filter((p) => p.status === "completed").length;
             totalPhases = phases.length;
         }
+        const isOwner = userId ? project.owner_id === userId : false;
+        const isCollaborator = userId
+            ? (project.collaborators || []).some((c) => c.id === userId)
+            : false;
         return {
             id: project.id,
             name: project.title,
@@ -304,12 +367,14 @@ let ProjectsService = class ProjectsService {
             progress: projectProgress,
             completedPhases,
             totalPhases,
-            totalAmount: project.totalAmount ?? project.totalBudget ?? 0,
+            totalAmount: project.totalAmount ?? 0,
             startDate: project.start_date,
             estimatedCompletion: project.end_date,
             owner: project.owner?.display_name || project.owner_id,
             collaborators: (project.collaborators || []).map((c) => c.display_name || c.id),
             tags: project.tags,
+            isOwner: isOwner,
+            isCollaborator: isCollaborator,
             phases: phases.length > 0
                 ? phases.map((phase) => ({
                     id: phase.id,
@@ -457,7 +522,7 @@ let ProjectsService = class ProjectsService {
                     completedPhases,
                     totalPhases,
                     totalAmount: p.totalAmount || 0,
-                    totalBudget: totalBudget || p.totalBudget || 0,
+                    totalBudget: totalBudget || 0,
                     startDate: p.start_date || p.created_at,
                     estimatedCompletion: p.end_date || p.updated_at,
                 };
@@ -1036,9 +1101,9 @@ let ProjectsService = class ProjectsService {
             const insertQuery = `
         INSERT INTO phase (
           title, description, budget, start_date, end_date, due_date, 
-          progress, status, project_id, is_active, from_boq, created_at, updated_at
+          progress, status, project_id, is_active, from_boq, boq_type, created_at, updated_at
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         ) RETURNING *
       `;
             try {
@@ -1054,6 +1119,7 @@ let ProjectsService = class ProjectsService {
                     phaseData.project_id,
                     phaseData.is_active,
                     phaseData.from_boq,
+                    null,
                 ]);
                 if (!result || result.length === 0) {
                     throw new Error(`Failed to create phase: ${itemDescription}`);
@@ -1146,8 +1212,8 @@ let ProjectsService = class ProjectsService {
     async getAllConsultantProjects() {
         return this.projectConsultantService.getAllConsultantProjects();
     }
-    async getAllConsultantProjectsPaginated(page = 1, limit = 10, search, status) {
-        return this.projectConsultantService.getAllConsultantProjectsPaginated(page, limit, search, status);
+    async getAllConsultantProjectsPaginated(userId, page = 1, limit = 10, search, status) {
+        return this.projectConsultantService.getAllConsultantProjectsPaginated(userId, page, limit, search, status);
     }
     async getConsultantProjectDetails(id) {
         return this.projectConsultantService.getConsultantProjectDetails(id);
@@ -1161,8 +1227,8 @@ let ProjectsService = class ProjectsService {
     async getBoqDraftPhases(projectId, userId) {
         return this.projectPhaseService.getBoqDraftPhases(projectId, userId);
     }
-    async activateBoqPhases(projectId, phaseIds, userId) {
-        return this.projectPhaseService.activateBoqPhases(projectId, phaseIds, userId);
+    async activateBoqPhases(projectId, phaseIds, userId, linkedContractorPhaseId) {
+        return this.projectPhaseService.activateBoqPhases(projectId, phaseIds, userId, linkedContractorPhaseId);
     }
     async getConsultantProjectTasks(projectId) {
         return this.projectConsultantService.getConsultantProjectTasks(projectId);
@@ -1248,6 +1314,33 @@ let ProjectsService = class ProjectsService {
     async getDashboardMonthlyGrowth() {
         return this.projectDashboardService.getDashboardMonthlyGrowth();
     }
+    async getProjectBoqs(projectId, userId) {
+        await this.findOne(projectId, userId);
+        const user = await this.usersService.findOne(userId);
+        const userRole = user?.role?.toLowerCase();
+        const whereClause = { project_id: projectId };
+        if (userRole === 'contractor') {
+            whereClause.type = 'contractor';
+        }
+        else if (userRole === 'sub_contractor') {
+            whereClause.type = 'sub_contractor';
+        }
+        const boqs = await this.projectBoqRepository.find({
+            where: whereClause,
+            order: { created_at: 'ASC' },
+        });
+        return boqs.map(boq => ({
+            id: boq.id,
+            type: boq.type,
+            status: boq.status,
+            fileName: boq.file_name,
+            totalAmount: boq.total_amount,
+            phasesCount: boq.phases_count,
+            createdAt: boq.created_at,
+            updatedAt: boq.updated_at,
+            errorMessage: boq.error_message,
+        }));
+    }
 };
 exports.ProjectsService = ProjectsService;
 exports.ProjectsService = ProjectsService = __decorate([
@@ -1258,9 +1351,17 @@ exports.ProjectsService = ProjectsService = __decorate([
     __param(3, (0, typeorm_1.InjectRepository)(project_access_request_entity_1.ProjectAccessRequest)),
     __param(4, (0, typeorm_1.InjectRepository)(inventory_entity_1.Inventory)),
     __param(5, (0, typeorm_1.InjectRepository)(inventory_usage_entity_1.InventoryUsage)),
-    __param(7, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
-    __param(9, (0, common_1.Inject)((0, common_1.forwardRef)(() => dashboard_service_1.DashboardService))),
+    __param(6, (0, typeorm_1.InjectRepository)(project_boq_entity_1.ProjectBoq)),
+    __param(7, (0, typeorm_1.InjectRepository)(project_financial_summary_entity_1.ProjectFinancialSummary)),
+    __param(8, (0, typeorm_1.InjectRepository)(project_metadata_entity_1.ProjectMetadata)),
+    __param(9, (0, typeorm_1.InjectRepository)(project_settings_entity_1.ProjectSettings)),
+    __param(11, (0, common_1.Inject)((0, common_1.forwardRef)(() => activities_service_1.ActivitiesService))),
+    __param(13, (0, common_1.Inject)((0, common_1.forwardRef)(() => dashboard_service_1.DashboardService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
@@ -1276,6 +1377,7 @@ exports.ProjectsService = ProjectsService = __decorate([
         project_contractor_service_1.ProjectContractorService,
         project_phase_service_1.ProjectPhaseService,
         project_boq_service_1.ProjectBoqService,
-        project_collaboration_service_1.ProjectCollaborationService])
+        project_collaboration_service_1.ProjectCollaborationService,
+        typeorm_2.DataSource])
 ], ProjectsService);
 //# sourceMappingURL=projects.service.js.map

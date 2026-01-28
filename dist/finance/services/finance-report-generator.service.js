@@ -74,6 +74,7 @@ let FinanceReportGeneratorService = FinanceReportGeneratorService_1 = class Fina
             .leftJoinAndSelect("project.owner", "owner")
             .leftJoinAndSelect("project.collaborators", "collaborators")
             .leftJoinAndSelect("project.phases", "phases")
+            .leftJoinAndSelect("project.financialSummary", "financialSummary")
             .where("project.status = :status", { status: project_entity_1.ProjectStatus.IN_PROGRESS });
         if (dto.projectIds && dto.projectIds.length > 0) {
             queryBuilder.andWhere("project.id IN (:...projectIds)", {
@@ -110,9 +111,10 @@ let FinanceReportGeneratorService = FinanceReportGeneratorService_1 = class Fina
             const totalSpent = categories.reduce((sum, cat) => sum + (parseFloat(String(cat.spentAmount || 0)) || 0), 0);
             const totalBudget = categories.reduce((sum, cat) => sum + (parseFloat(String(cat.budgetedAmount || 0)) || 0), 0);
             const totalSavings = savings.reduce((sum, s) => sum + (parseFloat(String(s.savedAmount || 0)) || 0), 0);
-            const projectTotalBudget = parseFloat(String(project.totalBudget || 0)) || totalBudget;
-            const projectAllocatedBudget = parseFloat(String(project.allocatedBudget || 0)) || 0;
-            const projectSpentAmount = parseFloat(String(project.spentAmount || 0)) || totalSpent;
+            const financialSummary = project.financialSummary;
+            const projectTotalBudget = parseFloat(String(financialSummary?.totalBudget || 0)) || totalBudget;
+            const projectAllocatedBudget = parseFloat(String(financialSummary?.allocatedBudget || 0)) || 0;
+            const projectSpentAmount = parseFloat(String(financialSummary?.spentAmount || 0)) || totalSpent;
             const projectInfo = {
                 id: project.id,
                 title: project.title,

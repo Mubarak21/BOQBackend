@@ -14,6 +14,7 @@ export declare class CreatePhaseDto {
     status?: PhaseStatus;
     parentPhaseId?: string;
     referenceTaskId?: string;
+    linkedContractorPhaseId?: string;
     tasks?: CreateTaskDto[];
     subPhases?: CreateSubPhaseDto[];
 }

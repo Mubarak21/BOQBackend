@@ -9,6 +9,7 @@ import { ProjectTransaction } from "./entities/project-transaction.entity";
 import { ProjectSavings } from "./entities/project-savings.entity";
 import { BudgetAlert } from "./entities/budget-alert.entity";
 import { FinancialReport } from "./entities/financial-report.entity";
+import { ProjectFinancialSummary } from "../entities/project-financial-summary.entity";
 import { FinanceService } from "./services/finance.service";
 import { AnalyticsService } from "./services/analytics.service";
 import { FinanceReportGeneratorService } from "./services/finance-report-generator.service";
@@ -24,6 +25,7 @@ import { FinanceDashboardController } from "./controllers/finance-dashboard.cont
     InventoryModule,
     TypeOrmModule.forFeature([
       Project,
+      ProjectFinancialSummary,
       BudgetCategory,
       ProjectTransaction,
       ProjectSavings,

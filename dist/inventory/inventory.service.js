@@ -53,8 +53,14 @@ let InventoryService = class InventoryService {
             fs.writeFileSync(filePath, invoiceFile.buffer);
             invoiceUrl = `/uploads/inventory/invoices/${fileName}`;
         }
+        let supplierId = null;
+        if (createInventoryDto.supplier) {
+            supplierId = null;
+        }
+        const { supplier, supplier_contact, ...inventoryData } = createInventoryDto;
         const inventory = this.inventoryRepository.create({
-            ...createInventoryDto,
+            ...inventoryData,
+            supplierId,
             picture_url: pictureUrl,
             invoice_url: invoiceUrl,
             created_by: userId,
@@ -65,7 +71,8 @@ let InventoryService = class InventoryService {
         const { page = 1, limit = 10, search, category, supplier, is_active, low_stock, sortBy = "name", sortOrder = "ASC", } = query;
         const queryBuilder = this.inventoryRepository
             .createQueryBuilder("inventory")
-            .leftJoinAndSelect("inventory.creator", "creator");
+            .leftJoinAndSelect("inventory.creator", "creator")
+            .leftJoinAndSelect("inventory.supplier", "supplier");
         if (search) {
             queryBuilder.andWhere("(inventory.name ILIKE :search OR inventory.description ILIKE :search OR inventory.brand ILIKE :search OR inventory.model ILIKE :search)", { search: `%${search}%` });
         }
@@ -73,7 +80,7 @@ let InventoryService = class InventoryService {
             queryBuilder.andWhere("inventory.category = :category", { category });
         }
         if (supplier) {
-            queryBuilder.andWhere("inventory.supplier ILIKE :supplier", {
+            queryBuilder.andWhere("supplier.name ILIKE :supplier", {
                 supplier: `%${supplier}%`,
             });
         }
@@ -94,7 +101,12 @@ let InventoryService = class InventoryService {
             'is_active',
         ];
         const validSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'name';
-        queryBuilder.orderBy(`inventory.${validSortBy}`, sortOrder);
+        if (validSortBy === 'supplier') {
+            queryBuilder.orderBy("supplier.name", sortOrder);
+        }
+        else {
+            queryBuilder.orderBy(`inventory.${validSortBy}`, sortOrder);
+        }
         const skip = (page - 1) * limit;
         queryBuilder.skip(skip).take(limit);
         const [items, total] = await queryBuilder.getManyAndCount();
@@ -469,7 +481,7 @@ let InventoryService = class InventoryService {
             category: inventoryCategory,
             brand: brand?.toString().trim() || null,
             model: model?.toString().trim() || null,
-            supplier: supplier?.toString().trim() || null,
+            supplierId: null,
             quantity_available: quantityAvailable
                 ? parseInt(quantityAvailable.toString()) || 0
                 : 0,
@@ -481,7 +493,7 @@ let InventoryService = class InventoryService {
             created_by: userId,
             source_document: sourceDocument,
         });
-        return this.inventoryRepository.save(inventory);
+        return await this.inventoryRepository.save(inventory);
     }
     async getStats() {
         const [totalItems, activeItems, lowStockItems, allItems] = await Promise.all([

@@ -237,7 +237,7 @@ export class FinanceController {
 
   // 1.11 POST /api/admin/finance/recalculate-all
   @Post("recalculate-all")
-  @Roles(UserRole.ADMIN, UserRole.FINANCE)
+  @Roles(UserRole.CONSULTANT, UserRole.FINANCE)
   async recalculateAllProjects() {
     return await this.financeService.recalculateAllProjectsSpentAmounts();
   }

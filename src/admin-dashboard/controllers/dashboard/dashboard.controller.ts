@@ -39,9 +39,7 @@ export class AdminDashboardController {
   // Comprehensive stats endpoint for consultant dashboard - Optimized with database aggregations
   @Get("stats")
   async getStats(@Request() req: RequestWithUser) {
-
-    const startTime = Date.now();
-    
+    try {
     // Use optimized aggregation methods instead of loading all projects
     const [
       projectStats,
@@ -63,16 +61,23 @@ export class AdminDashboardController {
       monthlyGrowth: monthlyGrowth,
       teamMembers: teamMembersCount,
       phaseStats: {
-        totalPhases: phaseStats.total,
-        completedPhases: phaseStats.completed,
-        inProgressPhases: phaseStats.inProgress,
-        totalBudget: phaseStats.totalBudget,
-        completionRate: phaseStats.completionRate,
+          totalPhases: phaseStats.total || 0,
+          completedPhases: phaseStats.completed || 0,
+          inProgressPhases: phaseStats.inProgress || 0,
+          totalBudget: phaseStats.totalBudget || 0,
+          completionRate: phaseStats.completionRate || 0,
       },
     };
 
-    const duration = Date.now() - startTime;
     return stats;
+    } catch (error) {
+      console.error('[AdminDashboardController] GET /consultant/dashboard/stats - Error:', {
+        userId: req.user.id,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      throw error;
+    }
   }
 
   // 2. Recent activities

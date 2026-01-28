@@ -17,28 +17,43 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const project_entity_1 = require("../../entities/project.entity");
+const project_financial_summary_entity_1 = require("../../entities/project-financial-summary.entity");
 const budget_category_entity_1 = require("../entities/budget-category.entity");
 const project_transaction_entity_1 = require("../entities/project-transaction.entity");
 const budget_alert_entity_1 = require("../entities/budget-alert.entity");
 const amount_utils_1 = require("../../utils/amount.utils");
 let BudgetManagementService = class BudgetManagementService {
-    constructor(projectRepository, budgetCategoryRepository, transactionRepository, alertRepository) {
+    constructor(projectRepository, financialSummaryRepository, budgetCategoryRepository, transactionRepository, alertRepository, dataSource) {
         this.projectRepository = projectRepository;
+        this.financialSummaryRepository = financialSummaryRepository;
         this.budgetCategoryRepository = budgetCategoryRepository;
         this.transactionRepository = transactionRepository;
         this.alertRepository = alertRepository;
+        this.dataSource = dataSource;
     }
     async updateProjectBudget(projectId, updateBudgetDto) {
         const { totalBudget, categories } = updateBudgetDto;
         const project = await this.projectRepository.findOne({
             where: { id: projectId },
+            relations: ["financialSummary"],
         });
         if (!project) {
             throw new common_1.NotFoundException("Project not found");
         }
-        project.totalBudget = totalBudget;
-        project.budgetLastUpdated = new Date();
-        await this.projectRepository.save(project);
+        let financialSummary = project.financialSummary;
+        if (!financialSummary) {
+            financialSummary = this.financialSummaryRepository.create({
+                project_id: projectId,
+                totalBudget: totalBudget,
+                budgetLastUpdated: new Date(),
+            });
+            await this.financialSummaryRepository.save(financialSummary);
+        }
+        else {
+            financialSummary.totalBudget = totalBudget;
+            financialSummary.budgetLastUpdated = new Date();
+            await this.financialSummaryRepository.save(financialSummary);
+        }
         for (const categoryUpdate of categories) {
             const category = await this.budgetCategoryRepository.findOne({
                 where: { id: categoryUpdate.categoryId },
@@ -87,9 +102,25 @@ let BudgetManagementService = class BudgetManagementService {
         });
         const totalSpent = (0, amount_utils_1.sumAmounts)(validTransactions);
         const normalizedSpent = (0, amount_utils_1.validateAndNormalizeAmount)(totalSpent, 9999999999999.99, 2);
-        await this.projectRepository.update(projectId, {
-            spentAmount: normalizedSpent,
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["financialSummary"],
         });
+        if (!project) {
+            throw new common_1.NotFoundException("Project not found");
+        }
+        let financialSummary = project.financialSummary;
+        if (!financialSummary) {
+            financialSummary = this.financialSummaryRepository.create({
+                project_id: projectId,
+                spentAmount: normalizedSpent,
+            });
+            await this.financialSummaryRepository.save(financialSummary);
+        }
+        else {
+            financialSummary.spentAmount = normalizedSpent;
+            await this.financialSummaryRepository.save(financialSummary);
+        }
         return normalizedSpent;
     }
     async updateProjectAllocatedBudget(projectId) {
@@ -97,45 +128,66 @@ let BudgetManagementService = class BudgetManagementService {
             where: { projectId, isActive: true },
         });
         const totalAllocated = categories.reduce((sum, c) => sum + c.budgetedAmount, 0);
-        await this.projectRepository.update(projectId, {
-            allocatedBudget: totalAllocated,
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["financialSummary"],
         });
+        if (!project) {
+            throw new common_1.NotFoundException("Project not found");
+        }
+        let financialSummary = project.financialSummary;
+        if (!financialSummary) {
+            financialSummary = this.financialSummaryRepository.create({
+                project_id: projectId,
+                allocatedBudget: totalAllocated,
+            });
+            await this.financialSummaryRepository.save(financialSummary);
+        }
+        else {
+            financialSummary.allocatedBudget = totalAllocated;
+            await this.financialSummaryRepository.save(financialSummary);
+        }
     }
     async updateProjectFinancialStatus(projectId) {
         const project = await this.projectRepository.findOne({
             where: { id: projectId },
+            relations: ["financialSummary"],
         });
         if (!project)
             return;
+        const financialSummary = project.financialSummary;
+        if (!financialSummary)
+            return;
         let financialStatus;
-        if (project.spentAmount > project.totalBudget) {
+        if (financialSummary.spentAmount > financialSummary.totalBudget) {
             financialStatus = "over_budget";
         }
-        else if (project.spentAmount > project.totalBudget * 0.9) {
+        else if (financialSummary.spentAmount > financialSummary.totalBudget * 0.9) {
             financialStatus = "warning";
         }
-        else if (project.estimatedSavings > project.totalBudget * 0.1) {
+        else if (financialSummary.estimatedSavings > financialSummary.totalBudget * 0.1) {
             financialStatus = "excellent";
         }
         else {
             financialStatus = "on_track";
         }
-        await this.projectRepository.update(projectId, {
-            financialStatus,
-        });
+        financialSummary.financialStatus = financialStatus;
+        await this.financialSummaryRepository.save(financialSummary);
     }
     async checkAndCreateBudgetAlerts(projectId) {
         const project = await this.projectRepository.findOne({
             where: { id: projectId },
+            relations: ["financialSummary"],
         });
-        if (!project)
+        if (!project || !project.financialSummary)
             return;
-        const totalBudget = typeof project.totalBudget === 'number'
-            ? project.totalBudget
-            : parseFloat(String(project.totalBudget || 0)) || 0;
-        const spentAmount = typeof project.spentAmount === 'number'
-            ? project.spentAmount
-            : parseFloat(String(project.spentAmount || 0)) || 0;
+        const financialSummary = project.financialSummary;
+        const totalBudget = typeof financialSummary.totalBudget === 'number'
+            ? financialSummary.totalBudget
+            : parseFloat(String(financialSummary.totalBudget || 0)) || 0;
+        const spentAmount = typeof financialSummary.spentAmount === 'number'
+            ? financialSummary.spentAmount
+            : parseFloat(String(financialSummary.spentAmount || 0)) || 0;
         let utilizationPercentage = 0;
         if (totalBudget > 0) {
             utilizationPercentage = (spentAmount / totalBudget) * 100;
@@ -233,12 +285,15 @@ exports.BudgetManagementService = BudgetManagementService;
 exports.BudgetManagementService = BudgetManagementService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(project_entity_1.Project)),
-    __param(1, (0, typeorm_1.InjectRepository)(budget_category_entity_1.BudgetCategory)),
-    __param(2, (0, typeorm_1.InjectRepository)(project_transaction_entity_1.ProjectTransaction)),
-    __param(3, (0, typeorm_1.InjectRepository)(budget_alert_entity_1.BudgetAlert)),
+    __param(1, (0, typeorm_1.InjectRepository)(project_financial_summary_entity_1.ProjectFinancialSummary)),
+    __param(2, (0, typeorm_1.InjectRepository)(budget_category_entity_1.BudgetCategory)),
+    __param(3, (0, typeorm_1.InjectRepository)(project_transaction_entity_1.ProjectTransaction)),
+    __param(4, (0, typeorm_1.InjectRepository)(budget_alert_entity_1.BudgetAlert)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
-        typeorm_2.Repository])
+        typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.DataSource])
 ], BudgetManagementService);
 //# sourceMappingURL=budget-management.service.js.map

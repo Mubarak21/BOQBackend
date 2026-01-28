@@ -13,6 +13,8 @@ exports.Task = void 0;
 const typeorm_1 = require("typeorm");
 const project_entity_1 = require("./project.entity");
 const phase_entity_1 = require("./phase.entity");
+const contractor_phase_entity_1 = require("./contractor-phase.entity");
+const sub_contractor_phase_entity_1 = require("./sub-contractor-phase.entity");
 let Task = class Task {
 };
 exports.Task = Task;
@@ -54,6 +56,24 @@ __decorate([
     (0, typeorm_1.JoinColumn)({ name: "phase_id" }),
     __metadata("design:type", phase_entity_1.Phase)
 ], Task.prototype, "phase", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true, name: "contractor_phase_id" }),
+    __metadata("design:type", String)
+], Task.prototype, "contractorPhaseId", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => contractor_phase_entity_1.ContractorPhase, (phase) => phase.tasks, { nullable: true }),
+    (0, typeorm_1.JoinColumn)({ name: "contractor_phase_id" }),
+    __metadata("design:type", contractor_phase_entity_1.ContractorPhase)
+], Task.prototype, "contractorPhase", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true, name: "sub_contractor_phase_id" }),
+    __metadata("design:type", String)
+], Task.prototype, "subContractorPhaseId", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => sub_contractor_phase_entity_1.SubContractorPhase, (phase) => phase.tasks, { nullable: true }),
+    (0, typeorm_1.JoinColumn)({ name: "sub_contractor_phase_id" }),
+    __metadata("design:type", sub_contractor_phase_entity_1.SubContractorPhase)
+], Task.prototype, "subContractorPhase", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)(),
     __metadata("design:type", Date)

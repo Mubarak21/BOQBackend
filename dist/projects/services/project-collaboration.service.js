@@ -32,7 +32,7 @@ let ProjectCollaborationService = class ProjectCollaborationService {
     async addCollaborator(projectId, collaborator, userId) {
         const project = await this.projectsService.findOne(projectId);
         const user = await this.usersService.findOne(userId);
-        const isAdmin = user?.role === "admin";
+        const isAdmin = user?.role === "consultant";
         const isConsultant = user?.role === "consultant";
         if (project.owner_id !== userId && !isAdmin && !isConsultant) {
             throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can add collaborators");
@@ -52,7 +52,7 @@ let ProjectCollaborationService = class ProjectCollaborationService {
     async removeCollaborator(projectId, collaboratorId, userId) {
         const project = await this.projectsService.findOne(projectId);
         const user = await this.usersService.findOne(userId);
-        const isAdmin = user?.role === "admin";
+        const isAdmin = user?.role === "consultant";
         const isConsultant = user?.role === "consultant";
         if (project.owner_id !== userId && !isAdmin && !isConsultant) {
             throw new common_1.ForbiddenException("Only the project owner, admin, or consultant can remove collaborators");
@@ -90,7 +90,7 @@ let ProjectCollaborationService = class ProjectCollaborationService {
         if (!project)
             throw new common_1.NotFoundException("Project not found");
         const user = await this.usersService.findOne(ownerId);
-        const isAdmin = user?.role === "admin";
+        const isAdmin = user?.role === "consultant";
         const isConsultant = user?.role === "consultant";
         if (project.owner_id !== ownerId && !isAdmin && !isConsultant)
             throw new common_1.ForbiddenException("Only the owner, admin, or consultant can view join requests");
@@ -107,7 +107,7 @@ let ProjectCollaborationService = class ProjectCollaborationService {
         if (!project)
             throw new common_1.NotFoundException("Project not found");
         const user = await this.usersService.findOne(ownerId);
-        const isAdmin = user?.role === "admin";
+        const isAdmin = user?.role === "consultant";
         const isConsultant = user?.role === "consultant";
         if (project.owner_id !== ownerId && !isAdmin && !isConsultant)
             throw new common_1.ForbiddenException("Only the owner, admin, or consultant can approve join requests");
@@ -134,7 +134,7 @@ let ProjectCollaborationService = class ProjectCollaborationService {
         if (!project)
             throw new common_1.NotFoundException("Project not found");
         const user = await this.usersService.findOne(ownerId);
-        const isAdmin = user?.role === "admin";
+        const isAdmin = user?.role === "consultant";
         const isConsultant = user?.role === "consultant";
         if (project.owner_id !== ownerId && !isAdmin && !isConsultant)
             throw new common_1.ForbiddenException("Only the owner, admin, or consultant can deny join requests");

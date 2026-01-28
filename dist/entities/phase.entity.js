@@ -14,6 +14,7 @@ const typeorm_1 = require("typeorm");
 const project_entity_1 = require("./project.entity");
 const task_entity_1 = require("./task.entity");
 const sub_phase_entity_1 = require("./sub-phase.entity");
+const phase_financial_summary_entity_1 = require("./phase-financial-summary.entity");
 var PhaseStatus;
 (function (PhaseStatus) {
     PhaseStatus["NOT_STARTED"] = "not_started";
@@ -108,12 +109,42 @@ __decorate([
     __metadata("design:type", Boolean)
 ], Phase.prototype, "from_boq", void 0);
 __decorate([
+    (0, typeorm_1.Column)({
+        type: "enum",
+        enum: ["contractor", "sub_contractor"],
+        nullable: true,
+        name: "boq_type",
+    }),
+    __metadata("design:type", String)
+], Phase.prototype, "boqType", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true, name: "linked_contractor_phase_id" }),
+    __metadata("design:type", String)
+], Phase.prototype, "linkedContractorPhaseId", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => Phase, (phase) => phase.linkedSubContractorPhases, {
+        nullable: true,
+    }),
+    (0, typeorm_1.JoinColumn)({ name: "linked_contractor_phase_id" }),
+    __metadata("design:type", Phase)
+], Phase.prototype, "linkedContractorPhase", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => Phase, (phase) => phase.linkedContractorPhase),
+    __metadata("design:type", Array)
+], Phase.prototype, "linkedSubContractorPhases", void 0);
+__decorate([
     (0, typeorm_1.OneToMany)(() => sub_phase_entity_1.SubPhase, (subPhase) => subPhase.phase, {
         cascade: true,
         eager: true,
     }),
     __metadata("design:type", Array)
 ], Phase.prototype, "subPhases", void 0);
+__decorate([
+    (0, typeorm_1.OneToOne)(() => phase_financial_summary_entity_1.PhaseFinancialSummary, (summary) => summary.phase, {
+        cascade: true,
+    }),
+    __metadata("design:type", phase_financial_summary_entity_1.PhaseFinancialSummary)
+], Phase.prototype, "financialSummary", void 0);
 exports.Phase = Phase = __decorate([
     (0, typeorm_1.Entity)()
 ], Phase);

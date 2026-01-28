@@ -8,7 +8,7 @@ export declare class ProjectConsultantService {
     private readonly projectsService;
     constructor(projectsRepository: Repository<Project>, phasesRepository: Repository<Phase>, projectsService: ProjectsService);
     getAllConsultantProjects(): Promise<any[]>;
-    getAllConsultantProjectsPaginated(page?: number, limit?: number, search?: string, status?: string): Promise<{
+    getAllConsultantProjectsPaginated(userId: string, page?: number, limit?: number, search?: string, status?: string): Promise<{
         items: any[];
         total: number;
         page: number;
