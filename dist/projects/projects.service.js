@@ -204,7 +204,7 @@ let ProjectsService = class ProjectsService {
                 spentAmount: 0,
                 allocatedBudget: 0,
                 estimatedSavings: 0,
-                financialStatus: 'on_track',
+                financialStatus: "on_track",
                 budgetLastUpdated: new Date(),
             });
             await queryRunner.manager.save(project_financial_summary_entity_1.ProjectFinancialSummary, financialSummary);
@@ -221,13 +221,13 @@ let ProjectsService = class ProjectsService {
                 await this.activitiesService.logProjectCreated(owner, savedProject, null);
             }
             catch (error) {
-                console.error('Failed to log project creation activity:', error);
+                console.error("Failed to log project creation activity:", error);
             }
             try {
                 await this.dashboardService.updateStats();
             }
             catch (error) {
-                console.error('Failed to update dashboard stats:', error);
+                console.error("Failed to update dashboard stats:", error);
             }
             return this.findOne(savedProject.id);
         }
@@ -303,7 +303,7 @@ let ProjectsService = class ProjectsService {
     async getProjectPhasesPaginated(projectId, userId, { page = 1, limit = 10 }) {
         const user = await this.usersService.findOne(userId);
         const userRole = user?.role?.toLowerCase();
-        if (userRole === 'contractor' || userRole === 'sub_contractor') {
+        if (userRole === "contractor" || userRole === "sub_contractor") {
             return this.projectContractorService.getProjectPhasesPaginated(projectId, userId, { page, limit });
         }
         else {
@@ -1319,17 +1319,17 @@ let ProjectsService = class ProjectsService {
         const user = await this.usersService.findOne(userId);
         const userRole = user?.role?.toLowerCase();
         const whereClause = { project_id: projectId };
-        if (userRole === 'contractor') {
-            whereClause.type = 'contractor';
+        if (userRole === "contractor") {
+            whereClause.type = "contractor";
         }
-        else if (userRole === 'sub_contractor') {
-            whereClause.type = 'sub_contractor';
+        else if (userRole === "sub_contractor") {
+            whereClause.type = "sub_contractor";
         }
         const boqs = await this.projectBoqRepository.find({
             where: whereClause,
-            order: { created_at: 'ASC' },
+            order: { created_at: "ASC" },
         });
-        return boqs.map(boq => ({
+        return boqs.map((boq) => ({
             id: boq.id,
             type: boq.type,
             status: boq.status,

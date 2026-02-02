@@ -87,7 +87,7 @@ export declare class ProjectsService {
     addCollaborator(projectId: string, collaborator: User, userId: string): Promise<Project>;
     removeCollaborator(projectId: string, collaboratorId: string, userId: string): Promise<Project>;
     processBoqFile(projectId: string, file: Express.Multer.File, userId: string): Promise<ProcessBoqResult>;
-    processBoqFileFromParsedData(projectId: string, data: any[], totalAmount: number, userId: string, file?: Express.Multer.File, type?: 'contractor' | 'sub_contractor'): Promise<ProcessBoqResult>;
+    processBoqFileFromParsedData(projectId: string, data: any[], totalAmount: number, userId: string, file?: Express.Multer.File, type?: "contractor" | "sub_contractor"): Promise<ProcessBoqResult>;
     createPhase(projectId: string, createPhaseDto: CreatePhaseDto, userId: string): Promise<Phase>;
     updatePhase(projectId: string, phaseId: string, updatePhaseDto: UpdatePhaseDto, userId: string): Promise<Phase>;
     deletePhase(projectId: string, phaseId: string, userId: string): Promise<void>;

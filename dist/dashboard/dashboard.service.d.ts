@@ -3,12 +3,35 @@ import { Project } from "../entities/project.entity";
 import { User } from "../entities/user.entity";
 import { Task } from "../entities/task.entity";
 import { Stats } from "../entities/stats.entity";
+import { Comment } from "../entities/comment.entity";
+import { Penalty } from "../entities/penalty.entity";
+import { Complaint } from "../entities/complaint.entity";
+import { Accident } from "../entities/accident.entity";
+import { DailyAttendance } from "../entities/daily-attendance.entity";
+import { PhaseEvidence } from "../entities/phase-evidence.entity";
+import { ProjectsService } from "../projects/projects.service";
+export interface DashboardNotification {
+    id: string;
+    type: "feedback" | "penalty" | "complaint" | "accident" | "attendance" | "evidence";
+    title: string;
+    message: string;
+    projectId: string;
+    projectName: string;
+    createdAt: string;
+}
 export declare class DashboardService {
     private projectsRepository;
     private usersRepository;
     private tasksRepository;
     private readonly statsRepository;
-    constructor(projectsRepository: Repository<Project>, usersRepository: Repository<User>, tasksRepository: Repository<Task>, statsRepository: Repository<Stats>);
+    private readonly commentsRepository;
+    private readonly penaltiesRepository;
+    private readonly complaintsRepository;
+    private readonly accidentsRepository;
+    private readonly dailyAttendanceRepository;
+    private readonly phaseEvidenceRepository;
+    private readonly projectsService;
+    constructor(projectsRepository: Repository<Project>, usersRepository: Repository<User>, tasksRepository: Repository<Task>, statsRepository: Repository<Stats>, commentsRepository: Repository<Comment>, penaltiesRepository: Repository<Penalty>, complaintsRepository: Repository<Complaint>, accidentsRepository: Repository<Accident>, dailyAttendanceRepository: Repository<DailyAttendance>, phaseEvidenceRepository: Repository<PhaseEvidence>, projectsService: ProjectsService);
     getStats(userId: string, userRole?: string): Promise<{
         totalProjects: number;
         activeProjects: number;
@@ -60,4 +83,5 @@ export declare class DashboardService {
     }>;
     private getTaskStats;
     private getAveragePhaseProgress;
+    getNotifications(userId: string, limit?: number, userRole?: string): Promise<DashboardNotification[]>;
 }

@@ -136,6 +136,13 @@ let ProjectsController = class ProjectsController {
             throw new common_1.BadRequestException("Owner cannot be added as collaborator");
         }
         await this.projectsService.addCollaborator(id, collaboratorUser, req.user.id);
+        const inviterName = user?.display_name || user?.email || "A team member";
+        const projectName = project.title || "the project";
+        if (collaboratorUser?.email) {
+            this.emailService
+                .sendCollaboratorAddedNotification(collaboratorUser.email, inviterName, projectName, collaboratorUser.display_name || collaboratorUser.email, body.companyName || undefined)
+                .catch(() => { });
+        }
         return { message: "Collaborator added successfully" };
     }
     async addCollaborator(id, userId, req) {

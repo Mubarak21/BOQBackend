@@ -157,7 +157,7 @@ let SeedService = class SeedService {
                 email: "admin@kipimo.co.tz",
                 password: "admin123",
                 display_name: "Mwalimu Hassan Kikwete",
-                role: user_entity_1.UserRole.CONSULTANT,
+                role: user_entity_1.UserRole.SUPER_ADMIN,
                 department: departments[0],
                 bio: "Mkurugenzi Mkuu wa Mradi wa Ujenzi Tanzania",
                 phone: "+255 754 123 456",

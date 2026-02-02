@@ -33,7 +33,7 @@ import { RequestWithUser } from "../auth/interfaces/request-with-user.interface"
 
 @Controller("inventory")
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.CONSULTANT, UserRole.FINANCE, UserRole.USER)
+@Roles(UserRole.CONSULTANT, UserRole.FINANCE, UserRole.USER, UserRole.SUPER_ADMIN)
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
@@ -166,7 +166,7 @@ export class InventoryController {
    * Allow contractors and sub-contractors to read inventory items
    */
   @Get()
-  @SetMetadata(ROLES_KEY, [UserRole.CONSULTANT, UserRole.FINANCE, UserRole.USER, UserRole.CONTRACTOR, UserRole.SUB_CONTRACTOR])
+  @SetMetadata(ROLES_KEY, [UserRole.CONSULTANT, UserRole.FINANCE, UserRole.USER, UserRole.CONTRACTOR, UserRole.SUB_CONTRACTOR, UserRole.SUPER_ADMIN])
   async findAll(@Query() query: InventoryQueryDto) {
     return this.inventoryService.findAll(query);
   }
@@ -203,7 +203,7 @@ export class InventoryController {
    * Allow contractors and sub-contractors to read inventory items
    */
   @Get(":id")
-  @SetMetadata(ROLES_KEY, [UserRole.CONSULTANT, UserRole.FINANCE, UserRole.USER, UserRole.CONTRACTOR, UserRole.SUB_CONTRACTOR])
+  @SetMetadata(ROLES_KEY, [UserRole.CONSULTANT, UserRole.FINANCE, UserRole.USER, UserRole.CONTRACTOR, UserRole.SUB_CONTRACTOR, UserRole.SUPER_ADMIN])
   async findOne(@Param("id") id: string) {
     return this.inventoryService.findOne(id);
   }

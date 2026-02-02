@@ -36,4 +36,5 @@ export declare class DashboardController {
         recentProjects: any[];
         totalProjects: number;
     }>;
+    getNotifications(req: RequestWithUser, limit?: string): Promise<import("./dashboard.service").DashboardNotification[]>;
 }

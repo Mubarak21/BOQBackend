@@ -1,11 +1,28 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject, forwardRef } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, Between } from "typeorm";
+import { Repository, Between, In } from "typeorm";
 import { Project, ProjectStatus } from "../entities/project.entity";
 import { User, UserRole } from "../entities/user.entity";
 import { Task } from "../entities/task.entity";
 import { Phase, PhaseStatus } from "../entities/phase.entity";
 import { Stats } from "../entities/stats.entity";
+import { Comment } from "../entities/comment.entity";
+import { Penalty } from "../entities/penalty.entity";
+import { Complaint } from "../entities/complaint.entity";
+import { Accident } from "../entities/accident.entity";
+import { DailyAttendance } from "../entities/daily-attendance.entity";
+import { PhaseEvidence } from "../entities/phase-evidence.entity";
+import { ProjectsService } from "../projects/projects.service";
+
+export interface DashboardNotification {
+  id: string;
+  type: "feedback" | "penalty" | "complaint" | "accident" | "attendance" | "evidence";
+  title: string;
+  message: string;
+  projectId: string;
+  projectName: string;
+  createdAt: string;
+}
 
 @Injectable()
 export class DashboardService {
@@ -17,7 +34,21 @@ export class DashboardService {
     @InjectRepository(Task)
     private tasksRepository: Repository<Task>,
     @InjectRepository(Stats)
-    private readonly statsRepository: Repository<Stats>
+    private readonly statsRepository: Repository<Stats>,
+    @InjectRepository(Comment)
+    private readonly commentsRepository: Repository<Comment>,
+    @InjectRepository(Penalty)
+    private readonly penaltiesRepository: Repository<Penalty>,
+    @InjectRepository(Complaint)
+    private readonly complaintsRepository: Repository<Complaint>,
+    @InjectRepository(Accident)
+    private readonly accidentsRepository: Repository<Accident>,
+    @InjectRepository(DailyAttendance)
+    private readonly dailyAttendanceRepository: Repository<DailyAttendance>,
+    @InjectRepository(PhaseEvidence)
+    private readonly phaseEvidenceRepository: Repository<PhaseEvidence>,
+    @Inject(forwardRef(() => ProjectsService))
+    private readonly projectsService: ProjectsService
   ) {}
 
   async getStats(userId: string, userRole?: string) {
@@ -419,5 +450,174 @@ export class DashboardService {
       });
     });
     return count > 0 ? totalProgress / count : 0;
+  }
+
+  /**
+   * Get notifications for the current user. For all: consultant feedback, penalties.
+   * For consultants only: complaints, accidents, attendance, and evidence reported by contractors/sub-contractors.
+   */
+  async getNotifications(
+    userId: string,
+    limit: number = 20,
+    userRole?: string
+  ): Promise<DashboardNotification[]> {
+    const userProjects = await this.projectsService.findUserProjects(userId);
+    const projectIds = userProjects.map((p) => p.id);
+    if (projectIds.length === 0) return [];
+
+    const projectMap = new Map(userProjects.map((p) => [p.id, p.title]));
+    const consultantRole = UserRole.CONSULTANT.toLowerCase();
+    const contractorRole = UserRole.CONTRACTOR.toLowerCase();
+    const subContractorRole = UserRole.SUB_CONTRACTOR.toLowerCase();
+    const isConsultant = userRole?.toLowerCase() === consultantRole;
+    const items: DashboardNotification[] = [];
+
+    const [comments, penalties] = await Promise.all([
+      this.commentsRepository.find({
+        where: { project_id: In(projectIds) },
+        relations: ["author", "project"],
+        order: { created_at: "DESC" },
+        take: limit,
+      }),
+      this.penaltiesRepository.find({
+        where: { project_id: In(projectIds) },
+        relations: ["project"],
+        order: { created_at: "DESC" },
+        take: limit,
+      }),
+    ]);
+
+    for (const c of comments) {
+      const authorRole = (c.author as User)?.role?.toLowerCase();
+      if (authorRole === consultantRole) {
+        const projectName = (c.project as Project)?.title ?? projectMap.get(c.project_id) ?? "Project";
+        items.push({
+          id: `feedback-${c.id}`,
+          type: "feedback",
+          title: "Consultant feedback",
+          message: c.content.length > 80 ? c.content.slice(0, 80) + "…" : c.content,
+          projectId: c.project_id,
+          projectName,
+          createdAt: c.created_at.toISOString(),
+        });
+      }
+    }
+
+    for (const p of penalties) {
+      const projectName = (p.project as Project)?.title ?? projectMap.get(p.project_id) ?? "Project";
+      items.push({
+        id: `penalty-${p.id}`,
+        type: "penalty",
+        title: "Penalty assigned",
+        message: p.reason.length > 80 ? p.reason.slice(0, 80) + "…" : p.reason,
+        projectId: p.project_id,
+        projectName,
+        createdAt: p.created_at.toISOString(),
+      });
+    }
+
+    if (isConsultant && projectIds.length > 0) {
+      const [complaints, accidents, attendances, evidences] = await Promise.all([
+        this.complaintsRepository.find({
+          where: { project_id: In(projectIds) },
+          relations: ["raiser", "project"],
+          order: { created_at: "DESC" },
+          take: limit,
+        }),
+        this.accidentsRepository.find({
+          where: { project_id: In(projectIds) },
+          relations: ["reportedByUser", "project"],
+          order: { created_at: "DESC" },
+          take: limit,
+        }),
+        this.dailyAttendanceRepository.find({
+          where: { project_id: In(projectIds) },
+          relations: ["recordedByUser", "project"],
+          order: { created_at: "DESC" },
+          take: limit,
+        }),
+        this.phaseEvidenceRepository
+          .createQueryBuilder("ev")
+          .innerJoinAndSelect("ev.phase", "phase")
+          .innerJoinAndSelect("ev.uploader", "uploader")
+          .where("phase.project_id IN (:...projectIds)", { projectIds })
+          .orderBy("ev.created_at", "DESC")
+          .take(limit)
+          .getMany(),
+      ]);
+
+      for (const c of complaints) {
+        const raiserRole = (c.raiser as User)?.role?.toLowerCase();
+        if (raiserRole === contractorRole || raiserRole === subContractorRole) {
+          const projectName = (c.project as Project)?.title ?? projectMap.get(c.project_id) ?? "Project";
+          items.push({
+            id: `complaint-${c.id}`,
+            type: "complaint",
+            title: "New complaint",
+            message: (() => {
+              const raw = c.title || c.description || "Complaint raised";
+              return raw.slice(0, 80) + (raw.length > 80 ? "…" : "");
+            })(),
+            projectId: c.project_id,
+            projectName,
+            createdAt: c.created_at.toISOString(),
+          });
+        }
+      }
+
+      for (const a of accidents) {
+        const reporterRole = (a.reportedByUser as User)?.role?.toLowerCase();
+        if (reporterRole === contractorRole || reporterRole === subContractorRole) {
+          const projectName = (a.project as Project)?.title ?? projectMap.get(a.project_id) ?? "Project";
+          items.push({
+            id: `accident-${a.id}`,
+            type: "accident",
+            title: "Site accident reported",
+            message: a.description?.slice(0, 80) + (a.description && a.description.length > 80 ? "…" : "") || "Accident on site",
+            projectId: a.project_id,
+            projectName,
+            createdAt: a.created_at.toISOString(),
+          });
+        }
+      }
+
+      for (const att of attendances) {
+        const recorderRole = (att.recordedByUser as User)?.role?.toLowerCase();
+        if (recorderRole === contractorRole || recorderRole === subContractorRole) {
+          const projectName = projectMap.get(att.project_id) ?? "Project";
+          items.push({
+            id: `attendance-${att.id}`,
+            type: "attendance",
+            title: "Daily attendance recorded",
+            message: `${att.workers_present} workers on ${att.attendance_date}`,
+            projectId: att.project_id,
+            projectName,
+            createdAt: att.created_at.toISOString(),
+          });
+        }
+      }
+
+      for (const ev of evidences) {
+        const uploaderRole = (ev.uploader as User)?.role?.toLowerCase();
+        if (uploaderRole === contractorRole || uploaderRole === subContractorRole) {
+          const phase = ev.phase as { project_id?: string };
+          const projectId = phase?.project_id;
+          if (!projectId || !projectIds.includes(projectId)) continue;
+          const projectName = projectMap.get(projectId) ?? "Project";
+          items.push({
+            id: `evidence-${ev.id}`,
+            type: "evidence",
+            title: "Evidence uploaded",
+            message: (ev.notes || `${ev.type} evidence`).slice(0, 80),
+            projectId,
+            projectName,
+            createdAt: ev.created_at.toISOString(),
+          });
+        }
+      }
+    }
+
+    items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return items.slice(0, limit);
   }
 }

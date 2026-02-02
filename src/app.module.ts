@@ -17,6 +17,11 @@ import { AdminDashboardModule } from "./admin-dashboard/admin-dashboard.module";
 import { FinanceModule } from "./finance/finance.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { ComplaintsPenaltiesModule } from "./complaints-penalties/complaints-penalties.module";
+import { AttendanceModule } from "./attendance/attendance.module";
+import { AccidentsModule } from "./accidents/accidents.module";
+import { EquipmentModule } from "./equipment/equipment.module";
+import { DocumentsModule } from "./documents/documents.module";
+import { VisitorsModule } from "./visitors/visitors.module";
 // Import entities needed by SeedService
 import { User } from "./entities/user.entity";
 import { Department } from "./entities/department.entity";
@@ -123,6 +128,11 @@ import { PhaseFinancialSummary } from "./entities/phase-financial-summary.entity
     FinanceModule,
     InventoryModule,
     ComplaintsPenaltiesModule,
+    AttendanceModule,
+    AccidentsModule,
+    EquipmentModule,
+    DocumentsModule,
+    VisitorsModule,
   ],
   providers: [SeedService, SeedCommand],
 })

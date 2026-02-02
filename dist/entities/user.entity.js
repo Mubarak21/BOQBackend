@@ -23,6 +23,7 @@ var UserRole;
     UserRole["CONTRACTOR"] = "contractor";
     UserRole["SUB_CONTRACTOR"] = "sub_contractor";
     UserRole["FINANCE"] = "finance";
+    UserRole["SUPER_ADMIN"] = "super_admin";
 })(UserRole || (exports.UserRole = UserRole = {}));
 let User = class User {
 };

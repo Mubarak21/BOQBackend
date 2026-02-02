@@ -148,7 +148,7 @@ export class ProjectsController {
   @UseGuards(RateLimitGuard)
   async inviteCollaborator(
     @Param("id") id: string,
-    @Body() body: { userId?: string; email?: string; role?: string },
+    @Body() body: { userId?: string; email?: string; role?: string; companyName?: string },
     @Request() req
   ) {
     const project = await this.projectsService.findOne(id, req.user.id);
@@ -210,6 +210,21 @@ export class ProjectsController {
 
     // Directly add user as collaborator (skip invitation process)
     await this.projectsService.addCollaborator(id, collaboratorUser, req.user.id);
+
+    // Send notification email (includes company name and invitee name when consultant provides them)
+    const inviterName = user?.display_name || user?.email || "A team member";
+    const projectName = project.title || "the project";
+    if (collaboratorUser?.email) {
+      this.emailService
+        .sendCollaboratorAddedNotification(
+          collaboratorUser.email,
+          inviterName,
+          projectName,
+          collaboratorUser.display_name || collaboratorUser.email,
+          body.companyName || undefined,
+        )
+        .catch(() => {});
+    }
 
     return { message: "Collaborator added successfully" };
   }

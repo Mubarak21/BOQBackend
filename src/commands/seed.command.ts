@@ -236,7 +236,8 @@ export class SeedService {
         email: "admin@kipimo.co.tz",
         password: "admin123",
         display_name: "Mwalimu Hassan Kikwete",
-        role: UserRole.CONSULTANT,
+        // Super admin with full system access
+        role: UserRole.SUPER_ADMIN,
         department: departments[0],
         bio: "Mkurugenzi Mkuu wa Mradi wa Ujenzi Tanzania",
         phone: "+255 754 123 456",

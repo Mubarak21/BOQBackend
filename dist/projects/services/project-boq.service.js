@@ -172,10 +172,13 @@ let ProjectBoqService = class ProjectBoqService {
             if (!projectToUpdate) {
                 throw new common_1.NotFoundException(`Project with ID ${project.id} not found`);
             }
-            projectToUpdate.totalAmount = totalAmount;
-            await queryRunner.manager.save(project_entity_1.Project, projectToUpdate);
+            const projectTotalAmount = Number(project.totalAmount ?? projectToUpdate.totalAmount ?? 0);
+            if (projectTotalAmount > 0) {
+                projectToUpdate.totalAmount = projectTotalAmount;
+                await queryRunner.manager.save(project_entity_1.Project, projectToUpdate);
+            }
             boqRecord.status = project_boq_entity_1.BOQStatus.PROCESSED;
-            boqRecord.total_amount = totalAmount;
+            boqRecord.total_amount = projectTotalAmount > 0 ? projectTotalAmount : totalAmount;
             boqRecord.phases_count = createdPhases.length;
             boqRecord.error_message = null;
             await queryRunner.manager.save(project_boq_entity_1.ProjectBoq, boqRecord);
@@ -187,15 +190,16 @@ let ProjectBoqService = class ProjectBoqService {
                 catch (error) {
                 }
             }
+            const amountForLog = projectTotalAmount > 0 ? projectTotalAmount : totalAmount;
             try {
-                await this.activitiesService.logBoqUploaded(project.owner, project, fileName || "BOQ File", createdPhases.length, totalAmount);
+                await this.activitiesService.logBoqUploaded(project.owner, project, fileName || "BOQ File", createdPhases.length, amountForLog);
             }
             catch (error) {
                 console.error('Failed to log BOQ upload activity:', error);
             }
             return {
                 message: `Successfully processed ${boqType} BOQ file and created ${createdPhases.length} phases from rows with Unit column filled.`,
-                totalAmount,
+                totalAmount: amountForLog,
                 tasks: [],
             };
         }

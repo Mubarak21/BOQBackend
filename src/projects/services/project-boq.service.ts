@@ -244,7 +244,7 @@ export class ProjectBoqService {
         }
       }
 
-      // Update project totalAmount within transaction
+      // Keep project totalAmount as set at creation (from consultant's form) - do not overwrite with BOQ-extracted amount
       const projectToUpdate = await queryRunner.manager.findOne(Project, {
         where: { id: project.id },
       });
@@ -253,12 +253,15 @@ export class ProjectBoqService {
         throw new NotFoundException(`Project with ID ${project.id} not found`);
       }
 
-      projectToUpdate.totalAmount = totalAmount;
-      await queryRunner.manager.save(Project, projectToUpdate);
+      const projectTotalAmount = Number(project.totalAmount ?? projectToUpdate.totalAmount ?? 0);
+      if (projectTotalAmount > 0) {
+        projectToUpdate.totalAmount = projectTotalAmount;
+        await queryRunner.manager.save(Project, projectToUpdate);
+      }
 
-      // Update BOQ record with success status
+      // Update BOQ record with success status; use project total (not extracted from BOQ)
       boqRecord.status = BOQStatus.PROCESSED;
-      boqRecord.total_amount = totalAmount;
+      boqRecord.total_amount = projectTotalAmount > 0 ? projectTotalAmount : totalAmount;
       boqRecord.phases_count = createdPhases.length;
       boqRecord.error_message = null;
       await queryRunner.manager.save(ProjectBoq, boqRecord);
@@ -274,14 +277,15 @@ export class ProjectBoqService {
         }
       }
 
-      // Log activity outside transaction
+      // Log activity outside transaction (use project total, not BOQ-extracted)
+      const amountForLog = projectTotalAmount > 0 ? projectTotalAmount : totalAmount;
       try {
         await this.activitiesService.logBoqUploaded(
           project.owner,
           project,
           fileName || "BOQ File",
           createdPhases.length,
-          totalAmount
+          amountForLog
         );
       } catch (error) {
         // Failed to log BOQ upload activity - don't fail the operation
@@ -290,7 +294,7 @@ export class ProjectBoqService {
 
       return {
         message: `Successfully processed ${boqType} BOQ file and created ${createdPhases.length} phases from rows with Unit column filled.`,
-        totalAmount,
+        totalAmount: amountForLog,
         tasks: [],
       };
     } catch (error) {

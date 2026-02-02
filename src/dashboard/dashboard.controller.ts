@@ -76,4 +76,20 @@ export class DashboardController {
       totalProjects: recentProjects.length,
     };
   }
+
+  /**
+   * Get notifications for the current user (consultant feedback, penalties, project updates).
+   * Available to all authenticated roles.
+   */
+  @Get("notifications")
+  async getNotifications(
+    @Request() req: RequestWithUser,
+    @Query("limit") limit: string = "20"
+  ) {
+    return this.dashboardService.getNotifications(
+      req.user.id,
+      Math.min(parseInt(limit, 10) || 20, 50),
+      req.user.role
+    );
+  }
 }

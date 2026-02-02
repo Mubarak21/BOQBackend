@@ -115,7 +115,7 @@ export class ProjectsService {
     private readonly projectPhaseService: ProjectPhaseService,
     private readonly projectBoqService: ProjectBoqService,
     private readonly projectCollaborationService: ProjectCollaborationService,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
   ) {}
 
   async findAll(): Promise<Project[]> {
@@ -147,7 +147,7 @@ export class ProjectsService {
     if (search) {
       qb.andWhere(
         "(project.title ILIKE :search OR project.description ILIKE :search)",
-        { search: `%${search}%` }
+        { search: `%${search}%` },
       );
     }
 
@@ -188,7 +188,7 @@ export class ProjectsService {
       limit = 10,
       search,
       status,
-    }: { page?: number; limit?: number; search?: string; status?: string }
+    }: { page?: number; limit?: number; search?: string; status?: string },
   ) {
     const pageNum = Number(page) || 1;
     const limitNum = Number(limit) || 10;
@@ -206,7 +206,7 @@ export class ProjectsService {
     if (search) {
       qb.andWhere(
         "(project.title ILIKE :search OR project.description ILIKE :search)",
-        { search: `%${search}%` }
+        { search: `%${search}%` },
       );
     }
 
@@ -253,11 +253,13 @@ export class ProjectsService {
       // Consultants can access all projects (they create projects)
       if (isConsultant) {
         // Allow access - consultants can view all projects
-      } 
+      }
       // Contractors and sub-contractors can only access projects they're invited to (owner or collaborator)
       else if (isContractor || isSubContractor) {
         if (!this.hasProjectAccess(project, userId)) {
-          throw new ForbiddenException("You don't have access to this project. You need to be invited or added as a collaborator.");
+          throw new ForbiddenException(
+            "You don't have access to this project. You need to be invited or added as a collaborator.",
+          );
         }
       }
       // Other users must be owner or collaborator
@@ -271,7 +273,7 @@ export class ProjectsService {
     // Sort phases by creation date
     if (project.phases?.length > 0) {
       project.phases.sort(
-        (a, b) => a.created_at.getTime() - b.created_at.getTime()
+        (a, b) => a.created_at.getTime() - b.created_at.getTime(),
       );
     }
 
@@ -280,7 +282,7 @@ export class ProjectsService {
 
   async create(
     createProjectDto: CreateProjectDto,
-    owner: User
+    owner: User,
   ): Promise<Project> {
     if (!owner?.id) {
       throw new BadRequestException("Owner is required");
@@ -307,14 +309,14 @@ export class ProjectsService {
         tags: createProjectDto.tags,
         owner_id: owner.id,
         totalAmount: this.validateAndNormalizeProjectAmount(
-          createProjectDto.totalAmount ?? 0
+          createProjectDto.totalAmount ?? 0,
         ),
       });
 
       // Handle collaborators if provided
       if (createProjectDto.collaborator_ids?.length) {
         const collaborators = await this.getValidatedCollaborators(
-          createProjectDto.collaborator_ids
+          createProjectDto.collaborator_ids,
         );
         project.collaborators = collaborators;
       }
@@ -322,15 +324,18 @@ export class ProjectsService {
       const savedProject = await queryRunner.manager.save(Project, project);
 
       // Create financial summary
-      const financialSummary = queryRunner.manager.create(ProjectFinancialSummary, {
-        project_id: savedProject.id,
-        totalBudget: createProjectDto.totalAmount || 0,
-        spentAmount: 0,
-        allocatedBudget: 0,
-        estimatedSavings: 0,
-        financialStatus: 'on_track',
-        budgetLastUpdated: new Date(),
-      });
+      const financialSummary = queryRunner.manager.create(
+        ProjectFinancialSummary,
+        {
+          project_id: savedProject.id,
+          totalBudget: createProjectDto.totalAmount || 0,
+          spentAmount: 0,
+          allocatedBudget: 0,
+          estimatedSavings: 0,
+          financialStatus: "on_track",
+          budgetLastUpdated: new Date(),
+        },
+      );
       await queryRunner.manager.save(ProjectFinancialSummary, financialSummary);
 
       // Create metadata
@@ -349,17 +354,21 @@ export class ProjectsService {
 
       // Log activity outside transaction
       try {
-        await this.activitiesService.logProjectCreated(owner, savedProject, null);
+        await this.activitiesService.logProjectCreated(
+          owner,
+          savedProject,
+          null,
+        );
       } catch (error) {
         // Failed to log project creation activity - don't fail the operation
-        console.error('Failed to log project creation activity:', error);
+        console.error("Failed to log project creation activity:", error);
       }
 
       // Update dashboard stats outside transaction
       try {
         await this.dashboardService.updateStats();
       } catch (error) {
-        console.error('Failed to update dashboard stats:', error);
+        console.error("Failed to update dashboard stats:", error);
       }
 
       return this.findOne(savedProject.id);
@@ -374,7 +383,7 @@ export class ProjectsService {
   async update(
     id: string,
     updateProjectDto: UpdateProjectDto,
-    userId: string
+    userId: string,
   ): Promise<Project> {
     const project = await this.findOne(id);
     const user = await this.usersService.findOne(userId);
@@ -383,14 +392,14 @@ export class ProjectsService {
 
     if (project.owner_id !== userId && !isAdmin && !isConsultant) {
       throw new ForbiddenException(
-        "Only the project owner, admin, or consultant can update the project"
+        "Only the project owner, admin, or consultant can update the project",
       );
     }
 
     // Handle collaborators update if provided
     if (updateProjectDto.collaborator_ids) {
       const collaborators = await this.getValidatedCollaborators(
-        updateProjectDto.collaborator_ids
+        updateProjectDto.collaborator_ids,
       );
       project.collaborators = collaborators;
     }
@@ -420,7 +429,7 @@ export class ProjectsService {
 
     if (project.owner_id !== userId && !isAdmin && !isConsultant) {
       throw new ForbiddenException(
-        "Only the project owner, admin, or consultant can delete the project"
+        "Only the project owner, admin, or consultant can delete the project",
       );
     }
 
@@ -431,31 +440,31 @@ export class ProjectsService {
   async addCollaborator(
     projectId: string,
     collaborator: User,
-    userId: string
+    userId: string,
   ): Promise<Project> {
     return this.projectCollaborationService.addCollaborator(
       projectId,
       collaborator,
-      userId
+      userId,
     );
   }
 
   async removeCollaborator(
     projectId: string,
     collaboratorId: string,
-    userId: string
+    userId: string,
   ): Promise<Project> {
     return this.projectCollaborationService.removeCollaborator(
       projectId,
       collaboratorId,
-      userId
+      userId,
     );
   }
 
   async processBoqFile(
     projectId: string,
     file: Express.Multer.File,
-    userId: string
+    userId: string,
   ): Promise<ProcessBoqResult> {
     return this.projectBoqService.processBoqFile(projectId, file, userId);
   }
@@ -466,7 +475,7 @@ export class ProjectsService {
     totalAmount: number,
     userId: string,
     file?: Express.Multer.File,
-    type?: 'contractor' | 'sub_contractor'
+    type?: "contractor" | "sub_contractor",
   ): Promise<ProcessBoqResult> {
     return this.projectBoqService.processBoqFileFromParsedData(
       projectId,
@@ -475,19 +484,19 @@ export class ProjectsService {
       userId,
       file?.originalname,
       file,
-      type
+      type,
     );
   }
 
   async createPhase(
     projectId: string,
     createPhaseDto: CreatePhaseDto,
-    userId: string
+    userId: string,
   ): Promise<Phase> {
     return this.projectPhaseService.createPhase(
       projectId,
       createPhaseDto,
-      userId
+      userId,
     );
   }
 
@@ -495,20 +504,20 @@ export class ProjectsService {
     projectId: string,
     phaseId: string,
     updatePhaseDto: UpdatePhaseDto,
-    userId: string
+    userId: string,
   ): Promise<Phase> {
     return this.projectPhaseService.updatePhase(
       projectId,
       phaseId,
       updatePhaseDto,
-      userId
+      userId,
     );
   }
 
   async deletePhase(
     projectId: string,
     phaseId: string,
-    userId: string
+    userId: string,
   ): Promise<void> {
     return this.projectPhaseService.deletePhase(projectId, phaseId, userId);
   }
@@ -520,29 +529,35 @@ export class ProjectsService {
   async getProjectPhasesPaginated(
     projectId: string,
     userId: string,
-    { page = 1, limit = 10 }: { page?: number; limit?: number }
+    { page = 1, limit = 10 }: { page?: number; limit?: number },
   ) {
     // Use projectContractorService for contractors/sub-contractors, projectPhaseService for others
     const user = await this.usersService.findOne(userId);
     const userRole = user?.role?.toLowerCase();
-    
-    if (userRole === 'contractor' || userRole === 'sub_contractor') {
+
+    if (userRole === "contractor" || userRole === "sub_contractor") {
       return this.projectContractorService.getProjectPhasesPaginated(
         projectId,
         userId,
-        { page, limit }
+        { page, limit },
       );
     } else {
       return this.projectPhaseService.getProjectPhasesPaginated(
         projectId,
         userId,
-        { page, limit }
+        { page, limit },
       );
     }
   }
 
-  async getContractorPhasesForLinking(projectId: string, userId: string): Promise<any[]> {
-    return this.projectContractorService.getContractorPhasesForLinking(projectId, userId);
+  async getContractorPhasesForLinking(
+    projectId: string,
+    userId: string,
+  ): Promise<any[]> {
+    return this.projectContractorService.getContractorPhasesForLinking(
+      projectId,
+      userId,
+    );
   }
 
   async getAvailableAssignees(projectId: string): Promise<User[]> {
@@ -599,7 +614,7 @@ export class ProjectsService {
       // Phases are loaded, calculate detailed progress
       projectProgress = Math.round(
         phases.reduce((sum, p) => sum + calculatePhaseCompletion(p), 0) /
-          phases.length
+          phases.length,
       );
       completedPhases = phases.filter((p) => p.status === "completed").length;
       totalPhases = phases.length;
@@ -624,7 +639,7 @@ export class ProjectsService {
       estimatedCompletion: project.end_date,
       owner: project.owner?.display_name || project.owner_id,
       collaborators: (project.collaborators || []).map(
-        (c) => c.display_name || c.id
+        (c) => c.display_name || c.id,
       ),
       tags: project.tags,
       isOwner: isOwner,
@@ -679,26 +694,26 @@ export class ProjectsService {
   async createJoinRequest(projectId: string, requesterId: string) {
     return this.projectCollaborationService.createJoinRequest(
       projectId,
-      requesterId
+      requesterId,
     );
   }
 
   async listJoinRequestsForProject(projectId: string, ownerId: string) {
     return this.projectCollaborationService.listJoinRequestsForProject(
       projectId,
-      ownerId
+      ownerId,
     );
   }
 
   async approveJoinRequest(
     projectId: string,
     requestId: string,
-    ownerId: string
+    ownerId: string,
   ) {
     return this.projectCollaborationService.approveJoinRequest(
       projectId,
       requestId,
-      ownerId
+      ownerId,
     );
   }
 
@@ -706,7 +721,7 @@ export class ProjectsService {
     return this.projectCollaborationService.denyJoinRequest(
       projectId,
       requestId,
-      ownerId
+      ownerId,
     );
   }
 
@@ -720,7 +735,7 @@ export class ProjectsService {
 
   async getAvailablePhaseTasks(
     projectId: string,
-    userId: string
+    userId: string,
   ): Promise<Task[]> {
     // Verify project access
     await this.findOne(projectId, userId);
@@ -780,7 +795,7 @@ export class ProjectsService {
     if (search) {
       qb.andWhere(
         "project.title ILIKE :search OR project.description ILIKE :search",
-        { search: `%${search}%` }
+        { search: `%${search}%` },
       );
     }
     if (status) {
@@ -796,7 +811,7 @@ export class ProjectsService {
       items: items.map((p) => {
         const phases = p.phases || [];
         const completedPhases = phases.filter(
-          (phase) => phase.status === "completed"
+          (phase) => phase.status === "completed",
         ).length;
         const totalPhases = phases.length;
         const progress =
@@ -805,7 +820,7 @@ export class ProjectsService {
             : 0;
         const totalBudget = phases.reduce(
           (sum, phase) => sum + (phase.budget || 0),
-          0
+          0,
         );
 
         return {
@@ -893,7 +908,7 @@ export class ProjectsService {
 
     const total = results.reduce(
       (sum, result) => sum + parseInt(result.count),
-      0
+      0,
     );
 
     return results.map((result) => ({
@@ -913,7 +928,7 @@ export class ProjectsService {
   }
 
   private async getValidatedCollaborators(
-    collaboratorIds: string[]
+    collaboratorIds: string[],
   ): Promise<User[]> {
     const collaborators = await Promise.all(
       collaboratorIds.map(async (id) => {
@@ -922,7 +937,7 @@ export class ProjectsService {
         } catch (error) {
           throw new BadRequestException(`Collaborator with ID ${id} not found`);
         }
-      })
+      }),
     );
     return collaborators;
   }
@@ -934,7 +949,7 @@ export class ProjectsService {
    * Validate and normalize amount for decimal(20,2) - used for project amounts
    */
   private validateAndNormalizeProjectAmount(
-    value: number | string | null | undefined
+    value: number | string | null | undefined,
   ): number {
     return validateAndNormalizeAmount(value, 999999999999999999.99, 2);
   }
@@ -954,7 +969,7 @@ export class ProjectsService {
 
     // Filter out completely empty lines (but keep lines with just whitespace for now)
     const lines = allLines.filter(
-      (line) => line.trim().length > 0 || line.includes(",")
+      (line) => line.trim().length > 0 || line.includes(","),
     );
 
     // Parse header row
@@ -1083,7 +1098,7 @@ export class ProjectsService {
     // Hierarchical Structure Detection: Identify Main Sections and Sub Sections
     const processedData = this.detectHierarchicalStructure(
       filteredData,
-      headers
+      headers,
     );
 
     // Standardize numerical formatting
@@ -1119,7 +1134,7 @@ export class ProjectsService {
       // Standardize total price/amount
       if (totalPriceCol && row[totalPriceCol]) {
         standardizedRow[totalPriceCol] = this.standardizeNumber(
-          row[totalPriceCol]
+          row[totalPriceCol],
         );
       }
 
@@ -1372,7 +1387,7 @@ export class ProjectsService {
     };
 
     const findColumn = (
-      field: keyof typeof columnSynonyms
+      field: keyof typeof columnSynonyms,
     ): string | undefined => {
       for (const synonym of columnSynonyms[field]) {
         const norm = normalizeColumnName(synonym);
@@ -1424,7 +1439,7 @@ export class ProjectsService {
     };
 
     const findColumn = (
-      field: keyof typeof columnSynonyms
+      field: keyof typeof columnSynonyms,
     ): string | undefined => {
       for (const synonym of columnSynonyms[field]) {
         const norm = normalizeColumnName(synonym);
@@ -1450,7 +1465,7 @@ export class ProjectsService {
   private async createPhasesFromBoqData(
     data: any[],
     projectId: string,
-    userId: string
+    userId: string,
   ): Promise<Phase[]> {
     // STEP 5: Validate projectId BEFORE doing anything (MANDATORY - FAIL FAST)
     if (!projectId || projectId.trim() === "") {
@@ -1480,8 +1495,8 @@ export class ProjectsService {
       1,
       Math.ceil(
         (projectEndDate.getTime() - projectStartDate.getTime()) /
-          (1000 * 60 * 60 * 24)
-      )
+          (1000 * 60 * 60 * 24),
+      ),
     );
 
     const phases: Phase[] = [];
@@ -1549,8 +1564,8 @@ export class ProjectsService {
                     ? item.rawData.Quantity
                     : parseFloat(
                         String(
-                          item.rawData.quantity || item.rawData.Quantity || 0
-                        )
+                          item.rawData.quantity || item.rawData.Quantity || 0,
+                        ),
                       )
                 : 0;
 
@@ -1579,8 +1594,8 @@ export class ProjectsService {
                           item.rawData.rate ||
                             item.rawData["Rate ($)"] ||
                             item.rawData.Rate ||
-                            0
-                        )
+                            0,
+                        ),
                       )
               : 0;
 
@@ -1608,8 +1623,8 @@ export class ProjectsService {
                           item.rawData.amount ||
                             item.rawData["Amount ($)"] ||
                             item.rawData.Amount ||
-                            0
-                        )
+                            0,
+                        ),
                       )
               : 0;
 
@@ -1687,7 +1702,7 @@ export class ProjectsService {
 
         if (!savedPhase) {
           throw new Error(
-            `Failed to retrieve created phase: ${itemDescription}`
+            `Failed to retrieve created phase: ${itemDescription}`,
           );
         }
 
@@ -1721,7 +1736,7 @@ export class ProjectsService {
 
   private async createTasksFromBoqData(
     data: any[],
-    projectId: string
+    projectId: string,
   ): Promise<Task[]> {
     // Get column mappings from the first row keys (CSV headers)
     const rowKeys = data.length > 0 ? Object.keys(data[0]) : [];
@@ -1734,7 +1749,7 @@ export class ProjectsService {
       const description = row[descriptionCol] || "";
       const unit = unitCol ? row[unitCol] || "" : "";
       const quantity = this.parseAmountValue(
-        quantityCol ? row[quantityCol] : undefined
+        quantityCol ? row[quantityCol] : undefined,
       );
       const price = this.parseAmountValue(priceCol ? row[priceCol] : undefined);
 
@@ -1781,7 +1796,7 @@ export class ProjectsService {
     tasks: CreateTaskDto[],
     projectId: string,
     phaseId: string,
-    parentTaskId: string | null = null
+    parentTaskId: string | null = null,
   ): Promise<void> {
     for (const taskDto of tasks) {
       const { subTasks, ...taskData } = taskDto;
@@ -1800,7 +1815,7 @@ export class ProjectsService {
           subTasks,
           projectId,
           phaseId,
-          savedTask.id
+          savedTask.id,
         );
       }
     }
@@ -1837,7 +1852,7 @@ export class ProjectsService {
     page: number = 1,
     limit: number = 10,
     search?: string,
-    status?: string
+    status?: string,
   ): Promise<{
     items: any[];
     total: number;
@@ -1850,7 +1865,7 @@ export class ProjectsService {
       page,
       limit,
       search,
-      status
+      status,
     );
   }
 
@@ -1867,12 +1882,12 @@ export class ProjectsService {
   // Consultant: Get phases for a project with pagination (consultant-facing)
   async getConsultantProjectPhasesPaginated(
     projectId: string,
-    { page = 1, limit = 10 }: { page?: number; limit?: number }
+    { page = 1, limit = 10 }: { page?: number; limit?: number },
   ) {
     return this.projectConsultantService.getConsultantProjectPhasesPaginated(
       projectId,
       page,
-      limit
+      limit,
     );
   }
 
@@ -1891,13 +1906,13 @@ export class ProjectsService {
     projectId: string,
     phaseIds: string[],
     userId: string,
-    linkedContractorPhaseId?: string
+    linkedContractorPhaseId?: string,
   ): Promise<{ activated: number; phases: Phase[] }> {
     return this.projectPhaseService.activateBoqPhases(
       projectId,
       phaseIds,
       userId,
-      linkedContractorPhaseId
+      linkedContractorPhaseId,
     );
   }
 
@@ -1909,7 +1924,7 @@ export class ProjectsService {
   async getProjectCompletionTrends(
     period: string = "daily",
     from?: string,
-    to?: string
+    to?: string,
   ) {
     let startDate: Date | undefined = undefined;
     let endDate: Date | undefined = undefined;
@@ -1936,7 +1951,7 @@ export class ProjectsService {
       .select(`to_char(project.updated_at, '${groupFormat}')`, "date")
       .addSelect(
         "COUNT(CASE WHEN project.status = 'completed' THEN 1 END)",
-        "completed"
+        "completed",
       )
       .addSelect("COUNT(*)", "total");
 
@@ -1976,12 +1991,12 @@ export class ProjectsService {
       limit?: number;
       category?: string;
       search?: string;
-    }
+    },
   ) {
     return this.projectContractorService.getProjectInventory(
       projectId,
       userId,
-      options
+      options,
     );
   }
 
@@ -1992,13 +2007,13 @@ export class ProjectsService {
     projectId: string,
     createInventoryDto: any,
     userId: string,
-    pictureFile?: Express.Multer.File
+    pictureFile?: Express.Multer.File,
   ) {
     return this.projectContractorService.addProjectInventoryItem(
       projectId,
       createInventoryDto,
       userId,
-      pictureFile
+      pictureFile,
     );
   }
 
@@ -2009,13 +2024,13 @@ export class ProjectsService {
     projectId: string,
     inventoryId: string,
     updateData: any,
-    userId: string
+    userId: string,
   ) {
     return this.projectContractorService.updateProjectInventoryItem(
       projectId,
       inventoryId,
       updateData,
-      userId
+      userId,
     );
   }
 
@@ -2025,12 +2040,12 @@ export class ProjectsService {
   async deleteProjectInventoryItem(
     projectId: string,
     inventoryId: string,
-    userId: string
+    userId: string,
   ) {
     return this.projectContractorService.deleteProjectInventoryItem(
       projectId,
       inventoryId,
-      userId
+      userId,
     );
   }
 
@@ -2046,7 +2061,7 @@ export class ProjectsService {
     quantity: number,
     userId: string,
     phaseId?: string,
-    notes?: string
+    notes?: string,
   ) {
     return this.projectContractorService.recordInventoryUsage(
       projectId,
@@ -2054,7 +2069,7 @@ export class ProjectsService {
       quantity,
       userId,
       phaseId,
-      notes
+      notes,
     );
   }
 
@@ -2065,13 +2080,13 @@ export class ProjectsService {
     projectId: string,
     inventoryId: string,
     userId: string,
-    options: { page?: number; limit?: number }
+    options: { page?: number; limit?: number },
   ) {
     return this.projectContractorService.getInventoryUsageHistory(
       projectId,
       inventoryId,
       userId,
-      options
+      options,
     );
   }
 
@@ -2081,12 +2096,12 @@ export class ProjectsService {
   async getProjectInventoryUsage(
     projectId: string,
     userId: string,
-    options: { page?: number; limit?: number }
+    options: { page?: number; limit?: number },
   ) {
     return this.projectContractorService.getProjectInventoryUsage(
       projectId,
       userId,
-      options
+      options,
     );
   }
 
@@ -2096,12 +2111,12 @@ export class ProjectsService {
   async linkInventoryToProject(
     inventoryId: string,
     projectId: string,
-    userId: string
+    userId: string,
   ) {
     return this.projectContractorService.linkInventoryToProject(
       inventoryId,
       projectId,
-      userId
+      userId,
     );
   }
 
@@ -2111,12 +2126,12 @@ export class ProjectsService {
   async unlinkInventoryFromProject(
     inventoryId: string,
     projectId: string,
-    userId: string
+    userId: string,
   ) {
     return this.projectContractorService.unlinkInventoryFromProject(
       inventoryId,
       projectId,
-      userId
+      userId,
     );
   }
 
@@ -2140,31 +2155,31 @@ export class ProjectsService {
   async getProjectBoqs(projectId: string, userId: string) {
     // Verify user has access to project
     await this.findOne(projectId, userId);
-    
+
     // Get user to determine role-based filtering
     const user = await this.usersService.findOne(userId);
     const userRole = user?.role?.toLowerCase();
-    
+
     // Build where clause based on user role
     const whereClause: any = { project_id: projectId };
-    
+
     // Filter BOQs by user role:
     // - Contractors see only contractor BOQs
     // - Sub-contractors see only sub-contractor BOQs
     // - Consultants see all BOQs
-    if (userRole === 'contractor') {
-      whereClause.type = 'contractor';
-    } else if (userRole === 'sub_contractor') {
-      whereClause.type = 'sub_contractor';
+    if (userRole === "contractor") {
+      whereClause.type = "contractor";
+    } else if (userRole === "sub_contractor") {
+      whereClause.type = "sub_contractor";
     }
     // Consultants and other roles see all BOQs (no type filter)
-    
+
     const boqs = await this.projectBoqRepository.find({
       where: whereClause,
-      order: { created_at: 'ASC' },
+      order: { created_at: "ASC" },
     });
 
-    return boqs.map(boq => ({
+    return boqs.map((boq) => ({
       id: boq.id,
       type: boq.type,
       status: boq.status,

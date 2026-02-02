@@ -47,6 +47,9 @@ let DashboardController = class DashboardController {
             totalProjects: recentProjects.length,
         };
     }
+    async getNotifications(req, limit = "20") {
+        return this.dashboardService.getNotifications(req.user.id, Math.min(parseInt(limit, 10) || 20, 50), req.user.role);
+    }
 };
 exports.DashboardController = DashboardController;
 __decorate([
@@ -78,6 +81,14 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], DashboardController.prototype, "getDashboardSummary", null);
+__decorate([
+    (0, common_1.Get)("notifications"),
+    __param(0, (0, common_1.Request)()),
+    __param(1, (0, common_1.Query)("limit")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], DashboardController.prototype, "getNotifications", null);
 exports.DashboardController = DashboardController = __decorate([
     (0, common_1.Controller)("dashboard"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

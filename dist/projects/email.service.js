@@ -158,6 +158,48 @@ let EmailService = class EmailService {
             });
         }
     }
+    async sendCollaboratorAddedNotification(toEmail, inviterName, projectName, inviteeDisplayName, companyName) {
+        const fromEmail = this.configService.get('RESEND_FROM_EMAIL');
+        try {
+            if (!fromEmail)
+                return;
+            this.validateFromEmail(fromEmail);
+            const companyLine = companyName
+                ? `<p style="margin: 5px 0 0 0;"><strong>Company:</strong> ${companyName}</p>`
+                : '';
+            const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #333;">You've been added to a project</h2>
+          <p>Hello${inviteeDisplayName ? ` ${inviteeDisplayName}` : ''},</p>
+          <p>
+            <strong>${inviterName}</strong> has added you as a collaborator on the project:
+            <strong>${projectName}</strong>.
+          </p>
+          <div style="margin-top: 20px; padding: 20px; background-color: #f5f5f5; border-radius: 5px;">
+            <p style="margin: 0;"><strong>Project:</strong> ${projectName}</p>
+            <p style="margin: 5px 0 0 0;"><strong>Invited by:</strong> ${inviterName}</p>
+            <p style="margin: 5px 0 0 0;"><strong>Invitee:</strong> ${inviteeDisplayName}</p>
+            ${companyLine}
+          </div>
+          <p style="margin-top: 30px; font-size: 12px; color: #999;">
+            If you did not expect this, you can safely ignore this email.
+          </p>
+          <p style="margin-top: 20px;">
+            Best regards,<br>
+            Project Management System
+          </p>
+        </div>
+      `;
+            await this.resend.emails.send({
+                from: fromEmail,
+                to: toEmail,
+                subject: `Added to project: ${projectName}`,
+                html: htmlContent,
+            });
+        }
+        catch {
+        }
+    }
 };
 exports.EmailService = EmailService;
 exports.EmailService = EmailService = __decorate([

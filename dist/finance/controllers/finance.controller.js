@@ -150,7 +150,8 @@ __decorate([
         user_entity_1.UserRole.CONSULTANT,
         user_entity_1.UserRole.FINANCE,
         user_entity_1.UserRole.CONTRACTOR,
-        user_entity_1.UserRole.SUB_CONTRACTOR
+        user_entity_1.UserRole.SUB_CONTRACTOR,
+        user_entity_1.UserRole.SUPER_ADMIN
     ]),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.UploadedFile)()),
@@ -241,7 +242,7 @@ __decorate([
 exports.FinanceController = FinanceController = __decorate([
     (0, common_1.Controller)("consultant/finance"),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.CONSULTANT, user_entity_1.UserRole.FINANCE),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.CONSULTANT, user_entity_1.UserRole.FINANCE, user_entity_1.UserRole.SUPER_ADMIN),
     __metadata("design:paramtypes", [finance_service_1.FinanceService,
         analytics_service_1.AnalyticsService,
         finance_report_generator_service_1.FinanceReportGeneratorService])

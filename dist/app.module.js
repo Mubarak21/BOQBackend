@@ -26,6 +26,11 @@ const admin_dashboard_module_1 = require("./admin-dashboard/admin-dashboard.modu
 const finance_module_1 = require("./finance/finance.module");
 const inventory_module_1 = require("./inventory/inventory.module");
 const complaints_penalties_module_1 = require("./complaints-penalties/complaints-penalties.module");
+const attendance_module_1 = require("./attendance/attendance.module");
+const accidents_module_1 = require("./accidents/accidents.module");
+const equipment_module_1 = require("./equipment/equipment.module");
+const documents_module_1 = require("./documents/documents.module");
+const visitors_module_1 = require("./visitors/visitors.module");
 const user_entity_1 = require("./entities/user.entity");
 const department_entity_1 = require("./entities/department.entity");
 const project_entity_1 = require("./entities/project.entity");
@@ -123,6 +128,11 @@ exports.AppModule = AppModule = __decorate([
             finance_module_1.FinanceModule,
             inventory_module_1.InventoryModule,
             complaints_penalties_module_1.ComplaintsPenaltiesModule,
+            attendance_module_1.AttendanceModule,
+            accidents_module_1.AccidentsModule,
+            equipment_module_1.EquipmentModule,
+            documents_module_1.DocumentsModule,
+            visitors_module_1.VisitorsModule,
         ],
         providers: [seed_command_1.SeedService, seed_command_1.SeedCommand],
     })

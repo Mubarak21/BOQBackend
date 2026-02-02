@@ -43,6 +43,7 @@ export declare class ProjectsController {
         userId?: string;
         email?: string;
         role?: string;
+        companyName?: string;
     }, req: any): Promise<{
         message: string;
     }>;

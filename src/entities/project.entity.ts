@@ -77,12 +77,16 @@ export class Project {
       to: (value: number | string | null | undefined) => {
         // Convert number to string to avoid precision loss and scientific notation
         if (value === null || value === undefined) return "0";
-        const numValue = typeof value === "number" ? value : parseFloat(String(value));
+        const numValue =
+          typeof value === "number" ? value : parseFloat(String(value));
         if (isNaN(numValue)) return "0";
         // Use toFixed to ensure proper decimal formatting
         // Ensure value doesn't exceed decimal(20,2) limits
         const MAX_VALUE = 999999999999999999.99;
-        const clampedValue = Math.min(Math.max(numValue, -MAX_VALUE), MAX_VALUE);
+        const clampedValue = Math.min(
+          Math.max(numValue, -MAX_VALUE),
+          MAX_VALUE,
+        );
         return clampedValue.toFixed(2);
       },
       from: (value: string | number | null | undefined) => {

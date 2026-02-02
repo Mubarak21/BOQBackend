@@ -42,7 +42,7 @@ import * as path from "path";
 
 @Controller("consultant/finance")
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.CONSULTANT, UserRole.FINANCE)
+@Roles(UserRole.CONSULTANT, UserRole.FINANCE, UserRole.SUPER_ADMIN)
 export class FinanceController {
   constructor(
     private readonly financeService: FinanceService,
@@ -90,7 +90,8 @@ export class FinanceController {
     UserRole.CONSULTANT,
     UserRole.FINANCE,
     UserRole.CONTRACTOR,
-    UserRole.SUB_CONTRACTOR
+    UserRole.SUB_CONTRACTOR,
+    UserRole.SUPER_ADMIN
   ])
   async createTransaction(
     @Body() createTransactionDto: CreateTransactionDto,
